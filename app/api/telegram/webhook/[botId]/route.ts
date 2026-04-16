@@ -1584,7 +1584,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         console.log(`[v0] Downsell: shortMsgId=${shortMsgId}, planIndex=${planIndex}, price=${price}`)
         
         // Buscar a mensagem original pelo shortMsgId (ultimos 8 chars do id)
-        const { data: scheduledMsg } = await supabase
+        const { data: scheduledMsg, error: scheduledMsgError } = await supabase
           .from("scheduled_messages")
           .select("*")
           .like("id", `%${shortMsgId}`)
@@ -1592,13 +1592,44 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           .limit(1)
           .single()
         
-        const flowId = scheduledMsg?.flow_id || ""
+        console.log(`[v0] Downsell scheduledMsg lookup - shortMsgId: ${shortMsgId}, found: ${!!scheduledMsg}, error: ${scheduledMsgError?.message}`)
+        
+        // Se nao encontrou a mensagem agendada, buscar o flow_id diretamente do bot
+        let flowId = scheduledMsg?.flow_id || ""
+        if (!flowId) {
+          // Tentar buscar o flow vinculado ao bot
+          const { data: botFlow } = await supabase
+            .from("flows")
+            .select("id")
+            .eq("bot_id", botUuid)
+            .limit(1)
+            .single()
+          
+          if (botFlow?.id) {
+            flowId = botFlow.id
+            console.log(`[v0] Downsell: flow_id obtido do bot: ${flowId}`)
+          } else {
+            // Tentar via flow_bots
+            const { data: flowBot } = await supabase
+              .from("flow_bots")
+              .select("flow_id")
+              .eq("bot_id", botUuid)
+              .limit(1)
+              .single()
+            
+            if (flowBot?.flow_id) {
+              flowId = flowBot.flow_id
+              console.log(`[v0] Downsell: flow_id obtido de flow_bots: ${flowId}`)
+            }
+          }
+        }
+        
         const msgMetadata = scheduledMsg?.metadata as Record<string, unknown> | null
         const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number }>) || []
         const selectedPlan = plans[planIndex]
         const planName = selectedPlan?.buttonText || "Oferta Especial"
         
-        console.log(`[v0] Downsell: flowId=${flowId}, planName=${planName}`)
+        console.log(`[v0] Downsell: flowId=${flowId}, planName=${planName}, priceFromCallback=${price}`)
         
         // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
@@ -1658,10 +1689,10 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           console.log("[v0] Downsell PIX gerado com sucesso:", pixResult.paymentId)
           
           // Salvar pagamento do downsell
-          const { error: dsPaymentError } = await supabase.from("payments").insert({
+          const dsPaymentData = {
             user_id: botOwner.user_id,
             bot_id: botUuid,
-            flow_id: flowId,
+            flow_id: flowId || null, // Aceitar null se nao tiver flow_id
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -1680,12 +1711,27 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             pix_code: pixResult.copyPaste || pixResult.qrCode,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          })
+          }
+          
+          console.log("[v0] Downsell payment data to insert:", JSON.stringify({
+            user_id: dsPaymentData.user_id,
+            bot_id: dsPaymentData.bot_id,
+            flow_id: dsPaymentData.flow_id,
+            amount: dsPaymentData.amount,
+            product_type: dsPaymentData.product_type,
+            external_payment_id: dsPaymentData.external_payment_id
+          }))
+          
+          const { data: insertedPayment, error: dsPaymentError } = await supabase
+            .from("payments")
+            .insert(dsPaymentData)
+            .select("id")
+            .single()
           
           if (dsPaymentError) {
-            console.error("[v0] Error saving downsell payment:", dsPaymentError)
+            console.error("[v0] Error saving downsell payment:", dsPaymentError.message, dsPaymentError.details, dsPaymentError.hint)
           } else {
-            console.log("[v0] Downsell payment saved successfully")
+            console.log("[v0] Downsell payment saved successfully - payment_id:", insertedPayment?.id)
           }
           
           // Cancelar demais downsells agendados para este usuario neste fluxo
