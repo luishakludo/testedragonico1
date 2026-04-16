@@ -784,6 +784,13 @@ async function processCallbackQuery({
 }) {
   const supabase = getSupabase()
 
+  // Responder callback IMEDIATAMENTE para evitar "sessao expirada"
+  await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ callback_query_id: callbackQueryId }),
+  })
+
   // Find bot
   const { data: bots } = await supabase
     .from("bots")
@@ -797,13 +804,6 @@ async function processCallbackQuery({
   // ========== ORDER BUMP CALLBACKS ==========
   // Formato: ob_accept_{mainAmount}_{bumpAmount} ou ob_decline_{mainAmount}
   if (callbackData.startsWith("ob_accept_") || callbackData.startsWith("ob_decline_")) {
-    // Responder callback imediatamente
-    await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ callback_query_id: callbackQueryId, text: "Processando..." })
-    })
-    
     await orderBumpLog.info("CALLBACK RECEBIDO - Usuario respondeu ao Order Bump", {
       callback_data: callbackData,
       bot_id: bot.id,
@@ -898,16 +898,7 @@ async function processCallbackQuery({
   // ========== UPSELL CALLBACKS ==========
   // Formato: up_accept_{amount}_{upsellIndex} ou up_decline_{upsellIndex}
   if (callbackData.startsWith("up_accept_") || callbackData.startsWith("up_decline_")) {
-    // Responder callback imediatamente para evitar "sessao expirada"
-    await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        callback_query_id: callbackQueryId,
-        text: "Gerando pagamento..."
-      })
-    })
-    
+    console.log("[UPSELL] up_accept_ handler chamado:", callbackData)
     const isAccept = callbackData.startsWith("up_accept_")
     
     if (isAccept) {
@@ -1087,16 +1078,7 @@ async function processCallbackQuery({
   // ========== DOWNSELL CALLBACKS (FORMATO ANTIGO) ==========
   // Formato: down_accept_{amount}_{downsellIndex} ou down_decline_{downsellIndex}
   if (callbackData.startsWith("down_accept_") || callbackData.startsWith("down_decline_")) {
-    // Responder callback imediatamente para evitar "sessao expirada"
-    await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        callback_query_id: callbackQueryId,
-        text: "Gerando pagamento..."
-      })
-    })
-    
+    console.log("[DOWNSELL] down_accept_ handler chamado:", callbackData)
     const isAccept = callbackData.startsWith("down_accept_")
     const parts = callbackData.replace("down_accept_", "").replace("down_decline_", "").split("_")
     const downsellIndex = isAccept ? parseInt(parts[1]) || 0 : parseInt(parts[0]) || 0
@@ -1142,13 +1124,6 @@ async function processCallbackQuery({
   const isPaymentCallback = callbackData.startsWith("pay_")
   
   if (isPaymentCallback) {
-  // Responder callback imediatamente
-  await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ callback_query_id: callbackQueryId, text: "Processando..." })
-  })
-  
   let amount = 0
     let description = "Pagamento"
     let planId: string | null = null
