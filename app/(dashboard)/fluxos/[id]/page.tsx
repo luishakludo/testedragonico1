@@ -150,28 +150,21 @@ interface FlowPlan {
 
 interface UpsellPlan {
   id: string
-  name: string
   buttonText: string
   price: number
-  }
+}
 
 interface UpsellSequence {
   id: string
-  name: string
   message: string
   medias: string[]
   sendTiming: "immediate" | "custom"
   sendDelayValue?: number
   sendDelayUnit?: "minutes" | "hours" | "days"
   plans: UpsellPlan[]
-  acceptButtonText: string
-  rejectButtonText: string
-  hideRejectButton: boolean
   deliveryType: "global" | "custom"
   deliverableId?: string // ID do entregavel selecionado (se custom)
-  customDeliveryMedias?: string[]
-  customDeliveryLink?: string
-  customDeliveryLinkText?: string
+  customDelivery?: string
 }
 
 interface UpsellConfig {
@@ -1201,25 +1194,18 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     setHasChanges(true)
   }
 
-  // Add upsell sequence
+  // Add upsell sequence (mesma estrutura do downsell)
   const handleAddUpsellSequence = () => {
     if (upsellSequences.length >= 20) return
     const newSequence: UpsellSequence = {
-      id: `seq-${Date.now()}`,
-      name: `Upsell ${upsellSequences.length + 1}`,
+      id: `up-seq-${Date.now()}`,
       message: "",
       medias: [],
-      sendTiming: "immediate",
-      sendDelayValue: 30,
+      sendTiming: "custom",
+      sendDelayValue: 1,
       sendDelayUnit: "minutes",
       plans: [{ id: `plan-${Date.now()}`, buttonText: "Plano 1", price: 0 }],
-      acceptButtonText: "Quero essa oferta!",
-      rejectButtonText: "Nao tenho interesse",
-      hideRejectButton: false,
       deliveryType: "global",
-      customDeliveryMedias: [],
-      customDeliveryLink: "",
-      customDeliveryLinkText: "",
     }
     setUpsellSequences([...upsellSequences, newSequence])
     setExpandedSequence(newSequence.id)
@@ -1230,12 +1216,11 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
   const handleAddUpsellPlan = (seqId: string) => {
     const seq = upsellSequences.find(s => s.id === seqId)
     if (!seq || (seq.plans?.length || 0) >= 5) return
-const newPlan: UpsellPlan = {
-  id: `plan-${Date.now()}`,
-  name: `Plano ${(seq.plans?.length || 0) + 1}`,
-  buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
-  price: 0
-  }
+    const newPlan: UpsellPlan = {
+      id: `plan-${Date.now()}`,
+      buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
+      price: 0
+    }
     handleUpdateUpsellSequence(seqId, "plans", [...(seq.plans || []), newPlan])
   }
 
@@ -3046,6 +3031,14 @@ const newPlan: UpsellPlan = {
                   </div>
                 </div>
 
+                {/* Info sobre upsell */}
+                <div className="px-6 py-3 bg-neutral-50 border-b border-neutral-100 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-[#8fb300]" />
+                  <span className="text-xs text-neutral-500">
+                    Sequencias enviadas automaticamente apos o pagamento ser aprovado
+                  </span>
+                </div>
+
                 {upsellEnabled && (
                   <div className="px-6 py-4 bg-neutral-50 border-b border-neutral-100">
                     <div className="flex items-center gap-6">
@@ -3090,78 +3083,67 @@ const newPlan: UpsellPlan = {
                     <p className="text-sm text-neutral-500">Ative o upsell acima para configurar sequencias de ofertas</p>
                   </div>
                 ) : upsellSequences.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="h-16 w-16 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto mb-4">
-                      <Plus className="h-8 w-8 text-neutral-400" />
-                    </div>
-                    <h4 className="font-bold text-neutral-900 mb-1">Nenhuma sequencia configurada</h4>
-                    <p className="text-sm text-neutral-500 mb-6">Crie uma sequencia de upsell para aumentar suas vendas</p>
-                    <button
-                      onClick={handleAddUpsellSequence}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-[#bfff00] hover:bg-[#d4ff4d] text-neutral-900 transition-colors shadow-[0_0_20px_rgba(190,255,0,0.25)]"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Adicionar Sequencia
-                    </button>
-                  </div>
+                  <Card className="bg-white border-neutral-100 shadow-sm rounded-2xl">
+                    <CardContent className="flex flex-col items-center justify-center py-16">
+                      <Plus className="h-10 w-10 text-neutral-500/30 mb-4" />
+                      <p className="text-neutral-500 mb-4">
+                        Nenhuma sequencia de upsell configurada
+                      </p>
+                      <Button onClick={handleAddUpsellSequence} className="bg-[#bfff00] hover:bg-[#d4ff4d] text-neutral-900">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Adicionar Sequencia
+                      </Button>
+                    </CardContent>
+                  </Card>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {upsellSequences.map((seq, index) => (
-                      <div key={seq.id} className="rounded-xl border border-neutral-100 bg-neutral-50 overflow-hidden hover:border-[#bfff00]/50 hover:bg-[#bfff00]/5 transition-colors">
+                      <Card key={seq.id} className="border-neutral-200">
                         {/* Sequence Header */}
                         <div
                           className="flex items-center justify-between p-4 cursor-pointer"
                           onClick={() => setExpandedSequence(expandedSequence === seq.id ? null : seq.id)}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
                             {expandedSequence === seq.id ? (
                               <ChevronDown className="h-4 w-4 text-neutral-500" />
                             ) : (
                               <ChevronRight className="h-4 w-4 text-neutral-500" />
                             )}
-                            <span className="font-medium text-neutral-900">{seq.name || `Upsell ${index + 1}`}</span>
+                            <span className="font-medium">Sequencia {index + 1}</span>
                             {(seq.plans?.length || 0) > 0 && (
-                              <span className="text-xs text-neutral-500 bg-white px-2 py-0.5 rounded border border-neutral-200">
+                              <span className="text-xs text-neutral-500 bg-secondary/50 px-2 py-0.5 rounded">
                                 {seq.plans?.length} {seq.plans?.length === 1 ? "plano" : "planos"}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <button
-                              className="h-8 w-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-neutral-600 hover:bg-white transition-colors"
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleDuplicateUpsellSequence(seq)
                               }}
                             >
-                              <Copy className="h-4 w-4" />
-                            </button>
-                            <button
-                              className="h-8 w-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              <Copy className="h-4 w-4 text-neutral-500" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleRemoveUpsellSequence(seq.id)
                               }}
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
                           </div>
                         </div>
 
                         {/* Expanded Content */}
                         {expandedSequence === seq.id && (
-                          <div className="px-4 pb-4 space-y-6 border-t border-border pt-4">
-                            {/* Nome do Upsell */}
-                            <div className="space-y-2">
-                              <Label>Nome do Upsell</Label>
-                              <Input
-                                value={seq.name || ""}
-                                onChange={(e) => handleUpdateUpsellSequence(seq.id, "name", e.target.value)}
-                                placeholder="Ex: Pacote Premium"
-                                className="bg-neutral-50 border-neutral-200"
-                              />
-                            </div>
-
+                          <CardContent className="pt-0 space-y-6">
                             {/* Midias */}
                             <div className="space-y-2">
                               <div className="flex items-center gap-2 text-sm text-neutral-500">
@@ -3285,16 +3267,7 @@ const newPlan: UpsellPlan = {
                               <div className="space-y-2">
                                 {(seq.plans || []).map((plan, planIndex) => (
                                   <div key={plan.id} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-3">
-                                    <div className="flex-1 grid grid-cols-3 gap-3">
-                                      <div className="space-y-1">
-                                        <Label className="text-xs text-neutral-500">Nome (interno)</Label>
-                                        <Input
-                                          value={plan.name || ""}
-                                          onChange={(e) => handleUpdateUpsellPlan(seq.id, plan.id, "name", e.target.value)}
-                                          placeholder="Ex: Plano Mensal"
-                                          className="bg-secondary/50 border-neutral-200 h-8 text-sm"
-                                        />
-                                      </div>
+                                    <div className="flex-1 grid grid-cols-2 gap-3">
                                       <div className="space-y-1">
                                         <Label className="text-xs text-neutral-500">Texto do Botao</Label>
                                         <Input
@@ -3353,6 +3326,33 @@ const newPlan: UpsellPlan = {
                             {/* Mensagem */}
                             <div className="space-y-2">
                               <Label>Mensagem <span className="text-destructive">*</span></Label>
+                              <div className="flex items-center gap-1 border-b border-neutral-200 pb-2">
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Bold className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Italic className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Underline className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Strikethrough className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Code className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <LinkIcon className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Quote className="h-4 w-4" />
+                                </Button>
+                                <div className="w-px h-4 bg-border/50 mx-1" />
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Smile className="h-4 w-4" />
+                                </Button>
+                              </div>
                               <Textarea
                                 value={seq.message}
                                 onChange={(e) => handleUpdateUpsellSequence(seq.id, "message", e.target.value)}
@@ -3363,41 +3363,59 @@ const newPlan: UpsellPlan = {
                               <p className="text-xs text-neutral-500 text-right">{seq.message.length}/4000 caracteres</p>
                             </div>
 
-                            {/* Texto dos Botoes - Aceitar e Recusar lado a lado */}
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="space-y-1">
-                                <Label className="text-xs text-neutral-500">Texto Aceitar</Label>
-                                <Input
-                                  value={seq.acceptButtonText}
-                                  onChange={(e) => handleUpdateUpsellSequence(seq.id, "acceptButtonText", e.target.value)}
-                                  placeholder="Quero essa oferta!"
-                                  className="bg-neutral-50 border-neutral-200"
-                                />
+                            <div className="border-t border-neutral-200 pt-4" />
+
+                            {/* Entrega */}
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-[#BEFF00]" />
+                                <h4 className="font-medium">Entrega desta sequencia</h4>
                               </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs text-neutral-500">Texto Recusar</Label>
-                                <Input
-                                  value={seq.rejectButtonText}
-                                  onChange={(e) => handleUpdateUpsellSequence(seq.id, "rejectButtonText", e.target.value)}
-                                  placeholder="Nao tenho interesse"
-                                  className="bg-neutral-50 border-neutral-200"
-                                />
-                              </div>
+                              <Select
+                                value={seq.deliveryType || "global"}
+                                onValueChange={(value: "global" | "custom") => handleUpdateUpsellSequence(seq.id, "deliveryType", value)}
+                              >
+                                <SelectTrigger className="bg-secondary/50 border-neutral-200">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="global">Usar entrega global do upsell</SelectItem>
+                                  <SelectItem value="custom">Entrega personalizada</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              
+                              {seq.deliveryType === "custom" && (
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-neutral-500">Selecione um entregavel</Label>
+                                  <Select
+                                    value={seq.deliverableId || ""}
+                                    onValueChange={(value) => handleUpdateUpsellSequence(seq.id, "deliverableId", value)}
+                                  >
+                                    <SelectTrigger className="bg-secondary/50 border-neutral-200">
+                                      <SelectValue placeholder="Selecione um entregavel" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {deliverables.map((d) => (
+                                        <SelectItem key={d.id} value={d.id}>
+                                          {d.name} ({d.type === "media" ? "Midia" : d.type === "link" ? "Link" : "Grupo VIP"})
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
                             </div>
-                          </div>
+                          </CardContent>
                         )}
-                      </div>
+                      </Card>
                     ))}
 
                     {/* Add Sequence Button */}
                     {upsellSequences.length < 20 && (
-                      <button
-                        onClick={handleAddUpsellSequence}
-                        className="w-full py-4 rounded-xl border-2 border-dashed border-neutral-200 hover:border-[#bfff00]/50 hover:bg-[#bfff00]/5 text-neutral-500 hover:text-neutral-700 transition-all flex items-center justify-center gap-2 text-sm font-medium"
-                      >
-                        <Plus className="h-4 w-4" />
+                      <Button onClick={handleAddUpsellSequence} className="w-full bg-[#bfff00] hover:bg-[#d4ff4d] text-neutral-900">
+                        <Plus className="h-4 w-4 mr-2" />
                         Adicionar Sequencia
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )}
