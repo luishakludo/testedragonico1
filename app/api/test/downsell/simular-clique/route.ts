@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase"
 
 // Simula o clique no botao do downsell para testar se o PIX e gerado corretamente
 export async function GET(request: Request) {
@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const chatId = searchParams.get("chat") || "5099610171"
   const callback = searchParams.get("callback") // ex: ds_77993b15_0_1200
   
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   
   // Se nao passou callback, buscar o ultimo downsell enviado
   let callbackData = callback
