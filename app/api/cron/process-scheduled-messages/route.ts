@@ -281,10 +281,16 @@ export async function GET(request: NextRequest) {
           // Se tem apenas 1 midia, envia COM os botoes
           if (medias.length === 1) {
             const firstMedia = medias[0]
+            console.log(`[CRON] Enviando midia unica COM botoes: ${firstMedia.substring(0, 50)}...`)
+            let sendResult
             if (firstMedia.includes("video") || firstMedia.includes("mp4")) {
-              await sendTelegramVideo(botToken, chatId, firstMedia, message, replyMarkup)
+              sendResult = await sendTelegramVideo(botToken, chatId, firstMedia, message, replyMarkup)
             } else {
-              await sendTelegramPhoto(botToken, chatId, firstMedia, message, replyMarkup)
+              sendResult = await sendTelegramPhoto(botToken, chatId, firstMedia, message, replyMarkup)
+            }
+            console.log(`[CRON] Resultado do envio:`, JSON.stringify(sendResult))
+            if (!sendResult?.ok) {
+              console.error(`[CRON] ERRO no envio Telegram:`, sendResult?.description || sendResult)
             }
           } else {
             // Multiplas midias: enviar todas as midias primeiro
