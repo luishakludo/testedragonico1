@@ -626,6 +626,9 @@ export async function POST(request: NextRequest) {
                   }
 
                   // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS (igual downsell)
+                  console.log(`[UPSELL DEBUG] Verificando upsell - enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
+                  console.log(`[UPSELL DEBUG] upsellConfig:`, JSON.stringify(upsellConfig))
+                  
                   if (upsellConfig?.enabled && upsellSequences.length > 0) {
                     console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
