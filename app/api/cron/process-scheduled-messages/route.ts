@@ -149,77 +149,129 @@ export async function GET(request: NextRequest) {
         const medias = metadata?.medias || []
         const plans = metadata?.plans || []
         
-        // Verificar se o usuario ja pagou (cancelar se ja pagou)
-        // 1. Verificar status no user_flow_state
-        const { data: userState } = await supabaseAdmin
-          .from("user_flow_state")
-          .select("status")
-          .eq("bot_id", msg.bot_id)
-          .eq("telegram_user_id", msg.telegram_user_id)
-          .single()
+        // Logica diferente para DOWNSELL vs UPSELL
+        const messageType = msg.message_type || "downsell"
         
-        if (userState?.status === "paid" || userState?.status === "completed") {
-          // Usuario ja pagou, cancelar downsell
-          console.log(`[CRON] User ${msg.telegram_user_id} already paid (user_flow_state), cancelling downsell`)
-          await supabaseAdmin
-            .from("scheduled_messages")
-            .update({ status: "cancelled" })
-            .eq("id", msg.id)
-          continue
-        }
-        
-        // 2. Verificar se existe pagamento aprovado na tabela payments
-        // APENAS verificar pagamentos do MESMO FLUXO e criados DEPOIS do agendamento
-        const { data: approvedPayment } = await supabaseAdmin
-          .from("payments")
-          .select("id, status, created_at")
-          .eq("bot_id", msg.bot_id)
-          .eq("telegram_user_id", msg.telegram_user_id)
-          .eq("flow_id", msg.flow_id)
-          .eq("status", "approved")
-          .in("product_type", ["main_product", "plan"])
-          .gte("created_at", msg.created_at) // Apenas pagamentos apos o agendamento do downsell
-          .limit(1)
-          .maybeSingle()
-        
-        if (approvedPayment) {
-          // Usuario ja tem pagamento aprovado NESTE FLUXO, cancelar downsell
-          console.log(`[CRON] User ${msg.telegram_user_id} has approved payment in this flow, cancelling downsell`)
-          await supabaseAdmin
-            .from("scheduled_messages")
-            .update({ status: "cancelled" })
-            .eq("id", msg.id)
+        if (messageType === "downsell") {
+          // DOWNSELL: Verificar se o usuario ja pagou (cancelar se ja pagou)
+          // 1. Verificar status no user_flow_state
+          const { data: userState } = await supabaseAdmin
+            .from("user_flow_state")
+            .select("status")
+            .eq("bot_id", msg.bot_id)
+            .eq("telegram_user_id", msg.telegram_user_id)
+            .single()
           
-          continue
+          if (userState?.status === "paid" || userState?.status === "completed") {
+            // Usuario ja pagou, cancelar downsell
+            console.log(`[CRON] User ${msg.telegram_user_id} already paid (user_flow_state), cancelling downsell`)
+            await supabaseAdmin
+              .from("scheduled_messages")
+              .update({ status: "cancelled" })
+              .eq("id", msg.id)
+            continue
+          }
+          
+          // 2. Verificar se existe pagamento aprovado na tabela payments
+          // APENAS verificar pagamentos do MESMO FLUXO e criados DEPOIS do agendamento
+          const { data: approvedPayment } = await supabaseAdmin
+            .from("payments")
+            .select("id, status, created_at")
+            .eq("bot_id", msg.bot_id)
+            .eq("telegram_user_id", msg.telegram_user_id)
+            .eq("flow_id", msg.flow_id)
+            .eq("status", "approved")
+            .in("product_type", ["main_product", "plan"])
+            .gte("created_at", msg.created_at) // Apenas pagamentos apos o agendamento do downsell
+            .limit(1)
+            .maybeSingle()
+          
+          if (approvedPayment) {
+            // Usuario ja tem pagamento aprovado NESTE FLUXO, cancelar downsell
+            console.log(`[CRON] User ${msg.telegram_user_id} has approved payment in this flow, cancelling downsell`)
+            await supabaseAdmin
+              .from("scheduled_messages")
+              .update({ status: "cancelled" })
+              .eq("id", msg.id)
+            
+            continue
+          }
+        } else if (messageType === "upsell") {
+          // UPSELL: Verificar se o usuario ja comprou ESTE upsell especifico ou recusou
+          // Verificar se ja comprou algum upsell apos o agendamento
+          const { data: upsellPayment } = await supabaseAdmin
+            .from("payments")
+            .select("id, status")
+            .eq("bot_id", msg.bot_id)
+            .eq("telegram_user_id", msg.telegram_user_id)
+            .eq("flow_id", msg.flow_id)
+            .eq("status", "approved")
+            .eq("product_type", "upsell")
+            .gte("created_at", msg.created_at)
+            .limit(1)
+            .maybeSingle()
+          
+          if (upsellPayment) {
+            // Usuario ja comprou um upsell, cancelar demais
+            console.log(`[CRON] User ${msg.telegram_user_id} already bought upsell, cancelling remaining`)
+            await supabaseAdmin
+              .from("scheduled_messages")
+              .update({ status: "cancelled" })
+              .eq("id", msg.id)
+            continue
+          }
         }
         
-        // Montar botoes dos planos primeiro
+        // Montar botoes dos planos - logica diferente para DOWNSELL vs UPSELL
         const planButtons: Array<Array<{ text: string; callback_data: string }>> = []
+        const sequenceIndex = (metadata as Record<string, unknown>)?.sequence_index as number || 0
+        const hideRejectButton = (metadata as Record<string, unknown>)?.hideRejectButton as boolean || false
+        const rejectButtonText = (metadata as Record<string, unknown>)?.rejectButtonText as string || "Nao tenho interesse"
         
         if (plans && plans.length > 0) {
-          for (const plan of plans) {
-            // Criar plano temporario na flow_plans com o preco do downsell
-            const tempPlanId = `ds_${msg.id}_${plan.id}_${Date.now()}`
-            
-            const { error: insertError } = await supabaseAdmin.from("flow_plans").insert({
-              id: tempPlanId,
-              flow_id: msg.flow_id,
-              name: plan.buttonText,
-              price: plan.price,
-              is_active: true,
-              position: 999,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            
-            if (!insertError) {
+          if (messageType === "upsell") {
+            // UPSELL: usar callback up_plan_{sequenceIndex}_{planId}_{priceInCents}
+            for (const plan of plans) {
+              const priceInCents = Math.round((plan.price || 0) * 100)
               planButtons.push([{
-                text: plan.buttonText,
-                callback_data: `plan_${tempPlanId}`
+                text: plan.buttonText || plan.name || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
+                callback_data: `up_plan_${sequenceIndex}_${plan.id}_${priceInCents}`
               }])
-              console.log(`[CRON] Plano temporario criado: ${tempPlanId} - ${plan.buttonText} - R$${plan.price}`)
-            } else {
-              console.error("[CRON] Erro ao criar plano temporario:", insertError.message)
+              console.log(`[CRON] Upsell button: ${plan.buttonText} - callback: up_plan_${sequenceIndex}_${plan.id}_${priceInCents}`)
+            }
+            
+            // Adicionar botao de recusar (se nao estiver escondido)
+            if (!hideRejectButton) {
+              planButtons.push([{
+                text: rejectButtonText,
+                callback_data: `up_decline_${sequenceIndex}`
+              }])
+            }
+          } else {
+            // DOWNSELL: criar plano temporario na flow_plans
+            for (const plan of plans) {
+              const tempPlanId = `ds_${msg.id}_${plan.id}_${Date.now()}`
+              
+              const { error: insertError } = await supabaseAdmin.from("flow_plans").insert({
+                id: tempPlanId,
+                flow_id: msg.flow_id,
+                name: plan.buttonText,
+                price: plan.price,
+                is_active: true,
+                position: 999,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              
+              if (!insertError) {
+                planButtons.push([{
+                  text: plan.buttonText,
+                  callback_data: `plan_${tempPlanId}`
+                }])
+                console.log(`[CRON] Plano temporario criado: ${tempPlanId} - ${plan.buttonText} - R$${plan.price}`)
+              } else {
+                console.error("[CRON] Erro ao criar plano temporario:", insertError.message)
+              }
             }
           }
         }
@@ -249,7 +301,8 @@ export async function GET(request: NextRequest) {
           
           // Enviar botoes separadamente apos as midias
           if (replyMarkup) {
-            await sendTelegramMessage(botToken, chatId, "Aproveite a oferta:", replyMarkup)
+            const offerText = messageType === "upsell" ? "Aproveite essa oferta exclusiva!" : "Aproveite a oferta:"
+            await sendTelegramMessage(botToken, chatId, offerText, replyMarkup)
           }
         } else {
           // Apenas texto com botoes

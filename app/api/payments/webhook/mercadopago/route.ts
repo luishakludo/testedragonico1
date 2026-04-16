@@ -658,43 +658,63 @@ export async function POST(request: NextRequest) {
                     console.log(`[VIP] Skipping VIP marking for product_type: ${payment.product_type}`)
                   }
 
-                  // Depois verificar se tem upsell para enviar
+                  // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS
                   if (upsellConfig?.enabled && upsellSequences.length > 0) {
-                    // Pegar a primeira sequencia (indice 0)
-                    const firstUpsell = upsellSequences[0]
+                    console.log(`[v0] UPSELL: Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
-                    console.log(`[v0] UPSELL: Enviando upsell 0 apos entrega`)
+                    // Agendar TODAS as sequencias de upsell na tabela scheduled_messages
+                    let cumulativeDelayMs = 0
                     
-                    // Verificar timing
-                    if (firstUpsell.sendTiming === "immediate") {
-                      // Enviar imediatamente
-                      await sendUpsellOffer(supabase, bot.token, chatId, bot.id, flowId, firstUpsell, 0)
-                    } else {
-                      // Agendar para enviar depois
-                      const delayMs = calculateDelayMs(firstUpsell.sendDelayValue || 30, firstUpsell.sendDelayUnit || "minutes")
+                    for (let i = 0; i < upsellSequences.length; i++) {
+                      const upsellSeq = upsellSequences[i]
                       
-                      // Salvar no estado para ser processado depois
-                      await supabase
-                        .from("user_flow_state")
-                        .upsert({
+                      // Calcular delay para esta sequencia
+                      if (upsellSeq.sendTiming === "immediate" && i === 0) {
+                        // Primeira sequencia imediata - enviar agora
+                        await sendUpsellOffer(supabase, bot.token, chatId, bot.id, flowId, upsellSeq, i)
+                        continue
+                      } else {
+                        // Calcular delay cumulativo
+                        const seqDelayMs = calculateDelayMs(
+                          upsellSeq.sendDelayValue || 30,
+                          upsellSeq.sendDelayUnit || "minutes"
+                        )
+                        cumulativeDelayMs += seqDelayMs
+                      }
+                      
+                      const scheduledFor = new Date(Date.now() + cumulativeDelayMs).toISOString()
+                      
+                      // Inserir na tabela scheduled_messages
+                      const { error: insertError } = await supabase
+                        .from("scheduled_messages")
+                        .insert({
                           bot_id: bot.id,
-                          telegram_user_id: String(chatId),
                           flow_id: flowId,
-                          status: "upsell_scheduled",
+                          telegram_user_id: String(chatId),
+                          telegram_chat_id: chatId,
+                          message_type: "upsell",
+                          scheduled_for: scheduledFor,
+                          status: "pending",
                           metadata: {
-                            upsell_index: 0,
-                            upsell_scheduled_at: new Date().toISOString(),
-                            upsell_send_at: new Date(Date.now() + delayMs).toISOString(),
+                            message: upsellSeq.message || "",
+                            medias: upsellSeq.medias || [],
+                            plans: upsellSeq.plans || [],
+                            sequence_index: i,
+                            botToken: bot.token,
+                            acceptButtonText: upsellSeq.acceptButtonText,
+                            rejectButtonText: upsellSeq.rejectButtonText,
+                            hideRejectButton: upsellSeq.hideRejectButton,
+                            deliveryType: upsellSeq.deliveryType,
+                            deliverableId: upsellSeq.deliverableId,
                           },
+                          created_at: new Date().toISOString(),
                           updated_at: new Date().toISOString()
-                        }, { onConflict: "bot_id,telegram_user_id" })
+                        })
                       
-                      console.log(`[v0] UPSELL: Scheduled upsell 0 for user ${chatId} in ${delayMs}ms`)
-                      
-                      // Por agora, envia com delay simples (em producao usar job queue)
-                      if (delayMs <= 60000) { // Max 1 minuto de delay inline
-                        await sleep(delayMs)
-                        await sendUpsellOffer(supabase, bot.token, chatId, bot.id, flowId, firstUpsell, 0)
+                      if (insertError) {
+                        console.error(`[UPSELL] Error scheduling upsell ${i}:`, insertError)
+                      } else {
+                        console.log(`[UPSELL] Scheduled upsell ${i} for ${scheduledFor}`)
                       }
                     }
                   } else {
