@@ -836,6 +836,178 @@ export async function POST(request: NextRequest) {
                     await sendDelivery(supabase, bot.token, chatId, flowConfig, upsellDeliverableId)
                   }
                 }
+              } else if (payment.product_type === "downsell") {
+                // ========== PAGAMENTO DE DOWNSELL APROVADO ==========
+                console.log(`[DOWNSELL] Downsell payment approved for user ${chatId}`)
+                
+                // 1. Cancelar todos os outros downsells pendentes para este usuario
+                await supabase
+                  .from("scheduled_messages")
+                  .update({ status: "cancelled" })
+                  .eq("bot_id", bot.id)
+                  .eq("telegram_user_id", payment.telegram_user_id)
+                  .eq("message_type", "downsell")
+                  .eq("status", "pending")
+                
+                console.log(`[DOWNSELL] Cancelled remaining pending downsells for user ${payment.telegram_user_id}`)
+                
+                // 2. Atualizar user_flow_state para "paid"
+                await supabase
+                  .from("user_flow_state")
+                  .upsert({
+                    bot_id: bot.id,
+                    telegram_user_id: payment.telegram_user_id,
+                    status: "paid",
+                    updated_at: new Date().toISOString()
+                  }, { onConflict: "bot_id,telegram_user_id" })
+                
+                console.log(`[DOWNSELL] User ${payment.telegram_user_id} marked as paid in user_flow_state`)
+                
+                // 3. Buscar fluxo vinculado para pegar config de entrega
+                let downsellFlowId: string | null = payment.flow_id || null
+                
+                if (!downsellFlowId) {
+                  // Buscar flow vinculado ao bot
+                  const { data: directFlow } = await supabase
+                    .from("flows")
+                    .select("id, config")
+                    .eq("bot_id", bot.id)
+                    .limit(1)
+                    .single()
+                  
+                  if (directFlow) {
+                    downsellFlowId = directFlow.id
+                  } else {
+                    const { data: flowBotLink } = await supabase
+                      .from("flow_bots")
+                      .select("flow_id")
+                      .eq("bot_id", bot.id)
+                      .limit(1)
+                      .single()
+                    
+                    if (flowBotLink) {
+                      downsellFlowId = flowBotLink.flow_id
+                    }
+                  }
+                }
+                
+                if (downsellFlowId) {
+                  // Buscar config do fluxo
+                  const { data: dsFlowData } = await supabase
+                    .from("flows")
+                    .select("config")
+                    .eq("id", downsellFlowId)
+                    .single()
+                  
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const dsFlowConfig = dsFlowData?.config as Record<string, any> | null
+                  const dsConfig = dsFlowConfig?.downsell
+                  const paymentMessages = dsFlowConfig?.paymentMessages as {
+                    approvedMessage?: string
+                    approvedMedias?: string[]
+                    accessButtonText?: string
+                    accessButtonUrl?: string
+                  } | undefined
+                  
+                  // 4. Buscar nome do usuario
+                  let dsUserName = "Cliente"
+                  try {
+                    const { data: userData } = await supabase
+                      .from("bot_users")
+                      .select("first_name, last_name")
+                      .eq("bot_id", bot.id)
+                      .eq("telegram_user_id", String(chatId))
+                      .single()
+                    if (userData?.first_name) {
+                      dsUserName = userData.first_name
+                    }
+                  } catch { /* ignore */ }
+                  
+                  // 5. Enviar midias de pagamento aprovado (se configurado)
+                  if (paymentMessages?.approvedMedias && paymentMessages.approvedMedias.length > 0) {
+                    console.log(`[DOWNSELL] Sending ${paymentMessages.approvedMedias.length} approved medias`)
+                    for (const mediaUrl of paymentMessages.approvedMedias) {
+                      if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
+                        await sendTelegramVideo(bot.token, chatId, mediaUrl, "")
+                      } else {
+                        await sendTelegramPhoto(bot.token, chatId, mediaUrl, "")
+                      }
+                      await sleep(500)
+                    }
+                  }
+                  
+                  // 6. Enviar mensagem de pagamento aprovado
+                  const defaultDsApprovedMsg = `<b>Pagamento Aprovado!</b>\n\nParabens ${dsUserName}! Seu pagamento foi confirmado.\n\nVoce ja tem acesso ao conteudo!`
+                  let dsApprovedMsg = paymentMessages?.approvedMessage || defaultDsApprovedMsg
+                  dsApprovedMsg = dsApprovedMsg.replace(/\{nome\}/gi, dsUserName)
+                  
+                  const dsAccessButtonText = paymentMessages?.accessButtonText || "Acessar Conteudo"
+                  const dsAccessButtonUrl = paymentMessages?.accessButtonUrl
+                  
+                  if (dsAccessButtonUrl) {
+                    await sendTelegramMessage(
+                      bot.token,
+                      chatId,
+                      dsApprovedMsg,
+                      {
+                        inline_keyboard: [[{ text: dsAccessButtonText, url: dsAccessButtonUrl }]]
+                      }
+                    )
+                  } else {
+                    await sendTelegramMessage(
+                      bot.token,
+                      chatId,
+                      dsApprovedMsg,
+                      {
+                        inline_keyboard: [[{ text: dsAccessButtonText, callback_data: "access_deliverable" }]]
+                      }
+                    )
+                  }
+                  
+                  // 7. Enviar entrega - verificar se downsell tem entregavel especifico ou usa o global
+                  // Buscar a sequencia de downsell que foi comprada (pelo preco ou metadata)
+                  const dsSequences = dsConfig?.sequences || []
+                  let dsDeliverableId: string | undefined = undefined
+                  
+                  // Tentar encontrar a sequencia que corresponde ao preco pago
+                  for (const seq of dsSequences) {
+                    const seqPlans = seq.plans || []
+                    for (const plan of seqPlans) {
+                      if (Math.abs(plan.price - payment.amount) < 0.01) {
+                        // Encontrou o plano que foi comprado
+                        if (seq.deliveryType === "custom" && seq.deliverableId) {
+                          dsDeliverableId = seq.deliverableId
+                        }
+                        break
+                      }
+                    }
+                    if (dsDeliverableId) break
+                  }
+                  
+                  console.log(`[DOWNSELL] Sending delivery (deliverableId: ${dsDeliverableId || "main/global"})`)
+                  await sendDelivery(supabase, bot.token, chatId, dsFlowConfig, dsDeliverableId)
+                  
+                  // 8. Marcar usuario como VIP
+                  const { error: vipError } = await supabase
+                    .from("bot_users")
+                    .update({
+                      is_vip: true,
+                      vip_since: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq("bot_id", bot.id)
+                    .eq("telegram_user_id", String(chatId))
+                  
+                  if (vipError) {
+                    console.log(`[DOWNSELL] Error marking user as VIP:`, vipError.message)
+                  } else {
+                    console.log(`[DOWNSELL] User ${chatId} marked as VIP`)
+                  }
+                } else {
+                  console.log(`[DOWNSELL] No flow found for bot ${bot.id}, sending basic confirmation`)
+                  await sendTelegramMessage(bot.token, chatId, "Pagamento aprovado! Seu acesso foi liberado.")
+                }
+                // ========== FIM DOWNSELL ==========
               }
             }
           }
