@@ -967,10 +967,10 @@ async function processCallbackQuery({
     return
   }
 
-  // ========== DOWNSELL CALLBACKS (NOVO FORMATO) ==========
-  // Formato: ds_sequenceId_planId_price
-  if (callbackData.startsWith("ds_") && !callbackData.startsWith("ds_test_")) {
-    console.log("[v0] Downsell Callback (ds_) recebido:", callbackData)
+  // ========== UPSELL CALLBACKS (NOVO FORMATO DO CRON) ==========
+  // Formato: up_msgId_planIndex_priceInCents (ex: up_12345678_0_1990)
+  if (callbackData.startsWith("up_") && !callbackData.startsWith("up_accept_") && !callbackData.startsWith("up_decline_")) {
+    console.log("[UPSELL] Callback (up_) recebido:", callbackData)
     
     // Confirmar recebimento do callback
     await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
@@ -982,16 +982,90 @@ async function processCallbackQuery({
       })
     })
     
-    // Parsear: ds_sequenceId_planId_price
+    // Parsear: up_msgId_planIndex_priceInCents
+    const parts = callbackData.replace("up_", "").split("_")
+    const shortMsgId = parts[0]
+    const priceInCents = parseInt(parts[2]) || 0
+    const price = priceInCents / 100
+    
+    console.log(`[UPSELL] parts: ${JSON.stringify(parts)}, priceInCents: ${priceInCents}, price: ${price}`)
+    
+    // Buscar a scheduled_message para pegar o flow_id e deliverableId
+    const { data: scheduledMsg } = await supabase
+      .from("scheduled_messages")
+      .select("id, flow_id, metadata")
+      .ilike("id", `%${shortMsgId}`)
+      .eq("message_type", "upsell")
+      .limit(1)
+      .maybeSingle()
+    
+    const flowId = scheduledMsg?.flow_id
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metadata = scheduledMsg?.metadata as Record<string, any> | null
+    const deliverableId = metadata?.deliverableId
+    
+    console.log(`[UPSELL] scheduledMsg found: ${!!scheduledMsg}, flowId: ${flowId}, deliverableId: ${deliverableId}`)
+    
+    if (price > 0) {
+      // Usar a funcao generatePayment que ja existe
+      await generatePayment(
+        supabase, botToken, chatId, telegramUserId, bot,
+        price, "Oferta Especial - Upsell",
+        "upsell",
+        { flowId, deliverableId }
+      )
+    } else {
+      await sendTelegramMessage(botToken, chatId, "Erro: Preco invalido.")
+    }
+    return
+  }
+
+  // ========== DOWNSELL CALLBACKS (NOVO FORMATO) ==========
+  // Formato: ds_msgId_planIndex_priceInCents
+  if (callbackData.startsWith("ds_") && !callbackData.startsWith("ds_test_")) {
+    console.log("[DOWNSELL] Callback (ds_) recebido:", callbackData)
+    
+    // Confirmar recebimento do callback
+    await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        callback_query_id: callbackQueryId,
+        text: "Gerando pagamento..."
+      })
+    })
+    
+    // Parsear: ds_msgId_planIndex_priceInCents
     const parts = callbackData.replace("ds_", "").split("_")
-    const price = parseFloat(parts[2]) || 0
+    const shortMsgId = parts[0]
+    const priceInCents = parseInt(parts[2]) || 0
+    const price = priceInCents / 100
+    
+    console.log(`[DOWNSELL] parts: ${JSON.stringify(parts)}, priceInCents: ${priceInCents}, price: ${price}`)
+    
+    // Buscar a scheduled_message para pegar o flow_id e deliverableId
+    const { data: scheduledMsg } = await supabase
+      .from("scheduled_messages")
+      .select("id, flow_id, metadata")
+      .ilike("id", `%${shortMsgId}`)
+      .eq("message_type", "downsell")
+      .limit(1)
+      .maybeSingle()
+    
+    const flowId = scheduledMsg?.flow_id
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metadata = scheduledMsg?.metadata as Record<string, any> | null
+    const deliverableId = metadata?.deliverableId
+    
+    console.log(`[DOWNSELL] scheduledMsg found: ${!!scheduledMsg}, flowId: ${flowId}, deliverableId: ${deliverableId}`)
     
     if (price > 0) {
       // Usar a funcao generatePayment que ja existe
       await generatePayment(
         supabase, botToken, chatId, telegramUserId, bot,
         price, "Oferta Especial - Downsell",
-        "downsell"
+        "downsell",
+        { flowId, deliverableId }
       )
     } else {
       await sendTelegramMessage(botToken, chatId, "Erro: Preco invalido.")
@@ -1322,7 +1396,8 @@ async function generatePayment(
   bot: { id: string; user_id: string },
   amount: number,
   description: string,
-  productType: "main_product" | "order_bump" | "upsell" | "downsell"
+  productType: "main_product" | "order_bump" | "upsell" | "downsell",
+  extraMetadata?: { deliverableId?: string; flowId?: string }
 ) {
   // Get Telegram user data from bot_users table
   const { data: botUser } = await supabase
@@ -1414,6 +1489,8 @@ async function generatePayment(
         qr_code: qrCodeBase64 || null,
         copy_paste: pixCopyPaste || null,
         status: "pending",
+        flow_id: extraMetadata?.flowId || null,
+        metadata: extraMetadata?.deliverableId ? { deliverableId: extraMetadata.deliverableId } : null,
       }).select().single()
       
       if (insertError) {
