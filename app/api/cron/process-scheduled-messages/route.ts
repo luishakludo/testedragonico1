@@ -28,7 +28,8 @@ async function sendTelegramPhoto(
   botToken: string,
   chatId: number | string,
   photoUrl: string,
-  caption?: string
+  caption?: string,
+  replyMarkup?: unknown
 ) {
   const url = `https://api.telegram.org/bot${botToken}/sendPhoto`
   const body: Record<string, unknown> = {
@@ -37,6 +38,7 @@ async function sendTelegramPhoto(
     parse_mode: "HTML",
   }
   if (caption) body.caption = caption
+  if (replyMarkup) body.reply_markup = replyMarkup
   
   const res = await fetch(url, {
     method: "POST",
@@ -50,7 +52,8 @@ async function sendTelegramVideo(
   botToken: string,
   chatId: number | string,
   videoUrl: string,
-  caption?: string
+  caption?: string,
+  replyMarkup?: unknown
 ) {
   const url = `https://api.telegram.org/bot${botToken}/sendVideo`
   const body: Record<string, unknown> = {
@@ -59,6 +62,7 @@ async function sendTelegramVideo(
     parse_mode: "HTML",
   }
   if (caption) body.caption = caption
+  if (replyMarkup) body.reply_markup = replyMarkup
   
   const res = await fetch(url, {
     method: "POST",
@@ -281,28 +285,31 @@ export async function GET(request: NextRequest) {
         
         // Enviar mensagem
         if (medias.length > 0) {
-          // Enviar primeira midia com caption (SEM botoes, telegram nao suporta botoes em foto)
-          const firstMedia = medias[0]
-          if (firstMedia.includes("video") || firstMedia.includes("mp4")) {
-            await sendTelegramVideo(botToken, chatId, firstMedia, message)
-          } else {
-            await sendTelegramPhoto(botToken, chatId, firstMedia, message)
-          }
-          
-          // Enviar demais midias sem caption
-          for (let i = 1; i < medias.length; i++) {
-            const media = medias[i]
-            if (media.includes("video") || media.includes("mp4")) {
-              await sendTelegramVideo(botToken, chatId, media)
+          // Se tem apenas 1 midia, envia COM os botoes
+          if (medias.length === 1) {
+            const firstMedia = medias[0]
+            if (firstMedia.includes("video") || firstMedia.includes("mp4")) {
+              await sendTelegramVideo(botToken, chatId, firstMedia, message, replyMarkup)
             } else {
-              await sendTelegramPhoto(botToken, chatId, media)
+              await sendTelegramPhoto(botToken, chatId, firstMedia, message, replyMarkup)
             }
-          }
-          
-          // Enviar botoes separadamente apos as midias
-          if (replyMarkup) {
-            const offerText = messageType === "upsell" ? "Aproveite essa oferta exclusiva!" : "Aproveite a oferta:"
-            await sendTelegramMessage(botToken, chatId, offerText, replyMarkup)
+          } else {
+            // Multiplas midias: enviar todas as midias primeiro
+            for (let i = 0; i < medias.length; i++) {
+              const media = medias[i]
+              const caption = i === 0 ? message : undefined // Caption apenas na primeira
+              if (media.includes("video") || media.includes("mp4")) {
+                await sendTelegramVideo(botToken, chatId, media, caption)
+              } else {
+                await sendTelegramPhoto(botToken, chatId, media, caption)
+              }
+            }
+            
+            // Enviar botoes separadamente apos as midias (ultima midia nao suporta botoes em media group)
+            if (replyMarkup) {
+              const offerText = messageType === "upsell" ? "Aproveite essa oferta exclusiva!" : "Escolha seu plano:"
+              await sendTelegramMessage(botToken, chatId, offerText, replyMarkup)
+            }
           }
         } else {
           // Apenas texto com botoes
