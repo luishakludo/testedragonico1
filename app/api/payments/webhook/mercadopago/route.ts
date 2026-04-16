@@ -626,6 +626,9 @@ export async function POST(request: NextRequest) {
                   }
 
                   // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS
+                  console.log(`[v0] UPSELL DEBUG: upsellConfig =`, JSON.stringify(upsellConfig))
+                  console.log(`[v0] UPSELL DEBUG: enabled = ${upsellConfig?.enabled}, sequences length = ${upsellSequences.length}`)
+                  
                   if (upsellConfig?.enabled && upsellSequences.length > 0) {
                     console.log(`[v0] UPSELL: Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
@@ -634,18 +637,25 @@ export async function POST(request: NextRequest) {
                     
                     for (let i = 0; i < upsellSequences.length; i++) {
                       const upsellSeq = upsellSequences[i]
+                      console.log(`[v0] UPSELL DEBUG: Sequencia ${i} - sendTiming = ${upsellSeq.sendTiming}, sendDelayValue = ${upsellSeq.sendDelayValue}, sendDelayUnit = ${upsellSeq.sendDelayUnit}`)
                       
                       // Calcular delay para esta sequencia
-                      if (upsellSeq.sendTiming === "immediate" && i === 0) {
+                      const seqDelayMs = calculateDelayMs(
+                        upsellSeq.sendDelayValue || 30,
+                        upsellSeq.sendDelayUnit || "minutes"
+                      )
+                      
+                      // Enviar imediatamente se for a PRIMEIRA sequencia (i === 0)
+                      // O primeiro upsell SEMPRE deve ser enviado logo apos o pagamento aprovado
+                      const shouldSendImmediately = (i === 0)
+                      
+                      if (shouldSendImmediately) {
                         // Primeira sequencia imediata - enviar agora
+                        console.log(`[v0] UPSELL: Enviando IMEDIATAMENTE sequencia ${i} (sendTiming=${upsellSeq.sendTiming}, delay=${seqDelayMs}ms)`)
                         await sendUpsellOffer(supabase, bot.token, chatId, bot.id, flowId, upsellSeq, i)
                         continue
                       } else {
                         // Calcular delay cumulativo
-                        const seqDelayMs = calculateDelayMs(
-                          upsellSeq.sendDelayValue || 30,
-                          upsellSeq.sendDelayUnit || "minutes"
-                        )
                         cumulativeDelayMs += seqDelayMs
                       }
                       
