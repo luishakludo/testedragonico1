@@ -1584,7 +1584,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         console.log(`[v0] Downsell: shortMsgId=${shortMsgId}, planIndex=${planIndex}, price=${price}`)
         
         // Buscar a mensagem original pelo shortMsgId (ultimos 8 chars do id)
-        const { data: scheduledMsg } = await supabase
+        const { data: scheduledMsg, error: scheduledMsgError } = await supabase
           .from("scheduled_messages")
           .select("*")
           .like("id", `%${shortMsgId}`)
@@ -1592,13 +1592,38 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           .limit(1)
           .single()
         
-        const flowId = scheduledMsg?.flow_id || ""
+        // Se nao encontrou a mensagem agendada, buscar o flow_id diretamente do bot
+        let flowId = scheduledMsg?.flow_id || ""
+        if (!flowId) {
+          // Tentar buscar o flow vinculado ao bot
+          const { data: botFlow } = await supabase
+            .from("flows")
+            .select("id")
+            .eq("bot_id", botUuid)
+            .limit(1)
+            .single()
+          
+          if (botFlow?.id) {
+            flowId = botFlow.id
+          } else {
+            // Tentar via flow_bots
+            const { data: flowBot } = await supabase
+              .from("flow_bots")
+              .select("flow_id")
+              .eq("bot_id", botUuid)
+              .limit(1)
+              .single()
+            
+            if (flowBot?.flow_id) {
+              flowId = flowBot.flow_id
+            }
+          }
+        }
+        
         const msgMetadata = scheduledMsg?.metadata as Record<string, unknown> | null
         const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number }>) || []
         const selectedPlan = plans[planIndex]
         const planName = selectedPlan?.buttonText || "Oferta Especial"
-        
-        console.log(`[v0] Downsell: flowId=${flowId}, planName=${planName}`)
         
         // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
@@ -1655,13 +1680,11 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             return
           }
           
-          console.log("[v0] Downsell PIX gerado com sucesso:", pixResult.paymentId)
-          
-          // Salvar pagamento do downsell
+          // Salvar pagamento do downsell (igual ao plano normal)
           const { error: dsPaymentError } = await supabase.from("payments").insert({
             user_id: botOwner.user_id,
             bot_id: botUuid,
-            flow_id: flowId,
+            flow_id: flowId || null,
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -1683,9 +1706,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           })
           
           if (dsPaymentError) {
-            console.error("[v0] Error saving downsell payment:", dsPaymentError)
-          } else {
-            console.log("[v0] Downsell payment saved successfully")
+            console.error("Error saving downsell payment:", dsPaymentError.message)
           }
           
           // Cancelar demais downsells agendados para este usuario neste fluxo
@@ -2055,140 +2076,6 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         return
       }
       // ========== FIM UPSELL CALLBACKS ==========
-      
-      // ========== DOWNSELL CALLBACKS ==========
-      // ========== DOWNSELL CALLBACKS ==========
-      // Formato: ds_sequenceId_planId_price (sem o accept no nome)
-      if (callbackData.startsWith("ds_") && !callbackData.startsWith("ds_test_")) {
-        console.log("[v0] Downsell Callback recebido:", callbackData)
-        
-        // Confirmar recebimento do callback
-        await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callback_query_id: callbackQueryId,
-            text: "Gerando pagamento..."
-          })
-        })
-        
-        // ds_sequenceId_planId_price
-        const parts = callbackData.replace("ds_", "").split("_")
-        const sequenceId = parts[0]
-        const planId = parts[1]
-        const price = parseFloat(parts[2]) || 0
-          
-          if (price > 0) {
-            // USAR MESMA ESTRUTURA DOS PLANOS NORMAIS
-            // 1. Buscar user_id do bot
-            const { data: botDataDS } = await supabase
-              .from("bots")
-              .select("user_id")
-              .eq("id", botUuid)
-              .single()
-            
-            if (!botDataDS?.user_id) {
-              await sendTelegramMessage(botToken, chatId, "Erro: Bot nao encontrado.")
-              return
-            }
-            
-            // 2. Buscar gateway do usuario (IGUAL AOS PLANOS)
-            const { data: gatewayDS } = await supabase
-              .from("user_gateways")
-              .select("*")
-              .eq("user_id", botDataDS.user_id)
-              .eq("is_active", true)
-              .limit(1)
-              .single()
-            
-            if (!gatewayDS || !gatewayDS.access_token) {
-              await sendTelegramMessage(botToken, chatId, "Gateway de pagamento nao configurado. Entre em contato com o suporte.")
-              return
-            }
-            
-            try {
-              // 3. Gerar PIX usando a MESMA funcao dos planos
-              const pixResult = await createPixPayment({
-                accessToken: gatewayDS.access_token,
-                amount: price,
-                description: `Downsell - Oferta Especial`,
-                payerEmail: "luismarquesdevp@gmail.com",
-              })
-              
-              if (!pixResult.success) {
-                await sendTelegramMessage(botToken, chatId, `Erro ao gerar PIX: ${pixResult.error || "Tente novamente"}`)
-                return
-              }
-              
-              // 4. Salvar pagamento (IGUAL AOS PLANOS)
-              console.log("[v0] Saving downsell payment - user_id:", botDataDS.user_id, "bot_id:", botUuid, "amount:", price)
-              const { error: downsellPaymentError } = await supabase.from("payments").insert({
-                user_id: botDataDS.user_id,
-                bot_id: botUuid,
-                telegram_user_id: String(telegramUserId),
-                telegram_username: userUsername || null,
-                telegram_first_name: userFirstName || null,
-                telegram_last_name: userLastName || null,
-                payment_method: "pix",
-                gateway: gatewayDS.gateway_name || "mercadopago",
-                external_payment_id: String(pixResult.paymentId),
-                amount: price,
-                description: `Downsell - Oferta Especial`,
-                product_name: "Oferta Especial",
-                product_type: "downsell",
-                qr_code: pixResult.qrCode,
-                qr_code_url: pixResult.qrCodeUrl,
-                copy_paste: pixResult.copyPaste,
-                pix_code: pixResult.copyPaste || pixResult.qrCode,
-                status: "pending",
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              })
-              
-              if (downsellPaymentError) {
-                console.error("[v0] Error saving downsell payment:", downsellPaymentError)
-              } else {
-                console.log("[v0] Downsell payment saved successfully")
-              }
-              
-              // 5. Enviar PIX (IGUAL AOS PLANOS)
-              const flowDS = await getActiveFlowForBot(supabase, botUuid)
-              const flowConfigDS = (flowDS?.config as Record<string, unknown>) || {}
-              const paymentMessagesDS = (flowConfigDS.paymentMessages as PaymentMessagesConfig) || {}
-              
-              await sendPixPaymentMessages({
-                botToken,
-                chatId,
-                pixCode: pixResult.copyPaste || pixResult.qrCode || "",
-                qrCodeUrl: pixResult.qrCodeUrl,
-                amount: price,
-                productName: "Oferta Especial",
-                paymentId: String(pixResult.paymentId),
-                config: paymentMessagesDS,
-                userName: userFirstName || "Cliente"
-              })
-              
-              // 6. Cancelar outros downsells pendentes
-              await getSupabaseAdmin()
-                .from("scheduled_messages")
-                .update({ status: "cancelled" })
-                .eq("bot_id", botUuid)
-                .eq("telegram_user_id", String(telegramUserId))
-                .eq("message_type", "downsell")
-                .eq("status", "pending")
-                
-            } catch (err) {
-              const errorMsg = err instanceof Error ? err.message : String(err)
-              console.error("Erro ao gerar PIX do downsell:", errorMsg)
-              await sendTelegramMessage(botToken, chatId, `Erro ao processar pagamento: ${errorMsg}`)
-            }
-          } else {
-            await sendTelegramMessage(botToken, chatId, "Erro: Preco invalido no downsell.")
-          }
-        
-        return
-      }
-      // ========== FIM DOWNSELL CALLBACKS ==========
       
       // Handle plan selection - generate PIX
       if (callbackData.startsWith("plan_")) {

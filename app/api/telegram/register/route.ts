@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing botId" }, { status: 400 })
     }
 
-    // Usar BASE_URL hardcoded para a Render
     const webhookUrl = `${BASE_URL}/api/telegram/webhook/${telegramBotId}`
 
     console.log("[v0] Registrando webhook com URL:", webhookUrl)
