@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { getSupabaseAdmin } from "@/lib/supabase"
 
 export async function GET() {
+  const supabase = getSupabaseAdmin()
+  
   const results: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
     tests: []
