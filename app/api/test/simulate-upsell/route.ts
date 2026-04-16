@@ -187,15 +187,16 @@ export async function GET() {
           bot_id: testBotId,
           flow_id: flowToTest.id,
           telegram_user_id: String(testChatId),
-          telegram_chat_id: parseInt(testChatId),
+          telegram_chat_id: String(testChatId),
           message_type: "upsell",
+          sequence_id: upsellSeq.id || `seq-${i}`,
+          sequence_index: i,
           scheduled_for: scheduledFor,
           status: "pending",
           metadata: {
             message: upsellSeq.message || "",
             medias: upsellSeq.medias || [],
             plans: upsellSeq.plans || [],
-            sequence_index: i,
             deliveryType: upsellSeq.deliveryType || "global",
             deliverableId: upsellSeq.deliverableId,
             is_test: true // Marcar como teste
