@@ -1,5 +1,5 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getSupabaseAdmin } from "@/lib/supabase"
 import { createPixPayment } from "@/lib/payments/gateways/mercadopago"
 
 // API para debugar todo o fluxo do downsell - simula EXATAMENTE o callback ds_
@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   try {
-    const supabase = await createClient()
+    const supabase = getSupabaseAdmin()
     
     // ========== STEP 1: Buscar um bot ativo ==========
     log("STEP 1: Buscando bot ativo...")
