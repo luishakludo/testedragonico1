@@ -626,10 +626,12 @@ export async function POST(request: NextRequest) {
                   }
 
                   // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS (igual downsell)
-                  console.log(`[UPSELL DEBUG] Verificando upsell - enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
-                  console.log(`[UPSELL DEBUG] upsellConfig:`, JSON.stringify(upsellConfig))
+                  // APENAS para produto principal (main_product, plan), NAO para order_bump, upsell, downsell
+                  const shouldScheduleUpsell = payment.product_type === "main_product" || payment.product_type === "plan"
+                  console.log(`[UPSELL] product_type: ${payment.product_type}, shouldScheduleUpsell: ${shouldScheduleUpsell}`)
+                  console.log(`[UPSELL] upsellConfig enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
                   
-                  if (upsellConfig?.enabled && upsellSequences.length > 0) {
+                  if (shouldScheduleUpsell && upsellConfig?.enabled && upsellSequences.length > 0) {
                     console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
                     // Agendar TODAS as sequencias de upsell na tabela scheduled_messages
@@ -790,9 +792,17 @@ export async function POST(request: NextRequest) {
                     }
                   } else {
                     // Acabou os upsells - enviar entrega
-                    // Verificar se o ultimo upsell aceito tinha entregavel especifico
-                    const lastUpsell = upsellSequences[currentIndex]
-                    const upsellDeliverableId = lastUpsell?.deliveryType === "custom" ? lastUpsell?.deliverableId : undefined
+                    // Primeiro verificar se tem deliverableId no metadata do pagamento
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const paymentMetadata = payment.metadata as Record<string, any> | null
+                    let upsellDeliverableId = paymentMetadata?.deliverableId
+                    
+                    // Se nao tiver no metadata, verificar na sequencia de upsell (formato antigo)
+                    if (!upsellDeliverableId) {
+                      const lastUpsell = upsellSequences[currentIndex]
+                      upsellDeliverableId = lastUpsell?.deliveryType === "custom" ? lastUpsell?.deliverableId : undefined
+                    }
+                    
                     console.log(`[UPSELL] All upsells processed, sending delivery (deliverableId: ${upsellDeliverableId || "main"})`)
                     await sendDelivery(supabase, bot.token, chatId, flowConfig, upsellDeliverableId)
                   }
@@ -926,23 +936,28 @@ export async function POST(request: NextRequest) {
                   }
                   
                   // 7. Enviar entrega - verificar se downsell tem entregavel especifico ou usa o global
-                  // Buscar a sequencia de downsell que foi comprada (pelo preco ou metadata)
-                  const dsSequences = dsConfig?.sequences || []
-                  let dsDeliverableId: string | undefined = undefined
+                  // Primeiro verificar se tem no metadata do pagamento (novo formato)
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const paymentMetadata = payment.metadata as Record<string, any> | null
+                  let dsDeliverableId: string | undefined = paymentMetadata?.deliverableId
                   
-                  // Tentar encontrar a sequencia que corresponde ao preco pago
-                  for (const seq of dsSequences) {
-                    const seqPlans = seq.plans || []
-                    for (const plan of seqPlans) {
-                      if (Math.abs(plan.price - payment.amount) < 0.01) {
-                        // Encontrou o plano que foi comprado
-                        if (seq.deliveryType === "custom" && seq.deliverableId) {
-                          dsDeliverableId = seq.deliverableId
+                  // Se nao tiver no metadata, tentar encontrar pelo preco (formato antigo)
+                  if (!dsDeliverableId) {
+                    const dsSequences = dsConfig?.sequences || []
+                    // Tentar encontrar a sequencia que corresponde ao preco pago
+                    for (const seq of dsSequences) {
+                      const seqPlans = seq.plans || []
+                      for (const plan of seqPlans) {
+                        if (Math.abs(plan.price - payment.amount) < 0.01) {
+                          // Encontrou o plano que foi comprado
+                          if (seq.deliveryType === "custom" && seq.deliverableId) {
+                            dsDeliverableId = seq.deliverableId
+                          }
+                          break
                         }
-                        break
                       }
+                      if (dsDeliverableId) break
                     }
-                    if (dsDeliverableId) break
                   }
                   
                   console.log(`[DOWNSELL] Sending delivery (deliverableId: ${dsDeliverableId || "main/global"})`)

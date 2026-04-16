@@ -236,30 +236,22 @@ export async function GET(request: NextRequest) {
   
   if (plans && plans.length > 0) {
   if (messageType === "upsell") {
-  // UPSELL: usar callback up_{msgId}_{planIndex}_{priceInCents} (igual downsell)
-  // Limite do Telegram: 64 caracteres
+  // UPSELL: usar callback up_accept_{price}_{index} (formato que ja tem handler funcionando)
   for (let planIdx = 0; planIdx < plans.length; planIdx++) {
   const plan = plans[planIdx]
-  const priceInCents = Math.round((plan.price || 0) * 100)
-  // Usar apenas os ultimos 8 chars do msg.id para encurtar
-  const shortMsgId = String(msg.id).slice(-8)
-  const callbackData = `up_${shortMsgId}_${planIdx}_${priceInCents}`
+  const callbackData = `up_accept_${plan.price || 0}_${planIdx}`
   
   planButtons.push([{
   text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
   callback_data: callbackData
   }])
-  console.log(`[CRON] Upsell button: ${plan.buttonText} - callback: ${callbackData} (${callbackData.length} chars)`)
+  console.log(`[CRON] Upsell button: ${plan.buttonText} - callback: ${callbackData}`)
   }
   } else {
-            // DOWNSELL: usar callback curto ds_{msgId}_{planIndex}_{priceInCents}
-            // Limite do Telegram: 64 caracteres
+            // DOWNSELL: usar callback down_accept_{price}_{index} (formato que ja tem handler funcionando)
             for (let planIdx = 0; planIdx < plans.length; planIdx++) {
               const plan = plans[planIdx]
-              const priceInCents = Math.round((plan.price || 0) * 100)
-              // Usar apenas os ultimos 8 chars do msg.id para encurtar
-              const shortMsgId = String(msg.id).slice(-8)
-              const callbackData = `ds_${shortMsgId}_${planIdx}_${priceInCents}`
+              const callbackData = `down_accept_${plan.price || 0}_${planIdx}`
               
               planButtons.push([{
                 text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
