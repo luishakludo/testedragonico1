@@ -153,6 +153,10 @@ export async function GET(request: NextRequest) {
         const medias = metadata?.medias || []
         const plans = metadata?.plans || []
         
+        console.log(`[CRON] Processando msg ${msg.id} - tipo: ${msg.message_type}`)
+        console.log(`[CRON] Metadata recebido:`, JSON.stringify(metadata))
+        console.log(`[CRON] Planos encontrados: ${plans.length}`, JSON.stringify(plans))
+        
         // Logica diferente para DOWNSELL vs UPSELL
         const messageType = msg.message_type || "downsell"
         
@@ -252,36 +256,25 @@ export async function GET(request: NextRequest) {
               }])
             }
           } else {
-            // DOWNSELL: criar plano temporario na flow_plans
+            // DOWNSELL: usar callback ds_plan_{flowId}_{sequenceIndex}_{planId}_{priceInCents}
             for (const plan of plans) {
-              const tempPlanId = `ds_${msg.id}_${plan.id}_${Date.now()}`
+              const priceInCents = Math.round((plan.price || 0) * 100)
+              const callbackData = `ds_plan_${msg.flow_id}_${sequenceIndex}_${plan.id}_${priceInCents}`
               
-              const { error: insertError } = await supabaseAdmin.from("flow_plans").insert({
-                id: tempPlanId,
-                flow_id: msg.flow_id,
-                name: plan.buttonText,
-                price: plan.price,
-                is_active: true,
-                position: 999,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              })
-              
-              if (!insertError) {
-                planButtons.push([{
-                  text: plan.buttonText,
-                  callback_data: `plan_${tempPlanId}`
-                }])
-                console.log(`[CRON] Plano temporario criado: ${tempPlanId} - ${plan.buttonText} - R$${plan.price}`)
-              } else {
-                console.error("[CRON] Erro ao criar plano temporario:", insertError.message)
-              }
+              planButtons.push([{
+                text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
+                callback_data: callbackData
+              }])
+              console.log(`[CRON] Downsell button: ${plan.buttonText} - callback: ${callbackData}`)
             }
           }
         }
         
         // Reply markup com os botoes (se houver)
         const replyMarkup = planButtons.length > 0 ? { inline_keyboard: planButtons } : undefined
+        
+        console.log(`[CRON] planButtons montados: ${planButtons.length}`)
+        console.log(`[CRON] replyMarkup:`, JSON.stringify(replyMarkup))
         
         // Enviar mensagem
         if (medias.length > 0) {
