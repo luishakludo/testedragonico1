@@ -4,29 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 // POST /api/telegram/register
 // Body: { botToken: string, botId: string, action: "register" | "unregister" }
 
-// Usar a URL da Vercel em producao ou env var se definida
-function getBaseUrl(req: NextRequest): string {
-  // Primeiro, verificar se tem WEBHOOK_BASE_URL definida
-  if (process.env.WEBHOOK_BASE_URL) {
-    return process.env.WEBHOOK_BASE_URL
-  }
-  
-  // Em producao na Vercel, usar a URL do request
-  const host = req.headers.get("host")
-  const protocol = req.headers.get("x-forwarded-proto") || "https"
-  
-  if (host) {
-    return `${protocol}://${host}`
-  }
-  
-  // Fallback para Vercel URL
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
-  }
-  
-  // Fallback para development
-  return "http://localhost:3000"
-}
+const BASE_URL = "https://dragonteste.onrender.com"
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,9 +30,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing botId" }, { status: 400 })
     }
 
-    // Usar URL dinamica baseada no ambiente
-    const baseUrl = getBaseUrl(req)
-    const webhookUrl = `${baseUrl}/api/telegram/webhook/${telegramBotId}`
+    const webhookUrl = `${BASE_URL}/api/telegram/webhook/${telegramBotId}`
 
     console.log("[v0] Registrando webhook com URL:", webhookUrl)
 
