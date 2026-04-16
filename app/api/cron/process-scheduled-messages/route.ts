@@ -256,30 +256,16 @@ export async function GET(request: NextRequest) {
               }])
             }
           } else {
-            // DOWNSELL: criar plano temporario na flow_plans
+            // DOWNSELL: usar callback ds_plan_{flowId}_{sequenceIndex}_{planId}_{priceInCents}
             for (const plan of plans) {
-              const tempPlanId = `ds_${msg.id}_${plan.id}_${Date.now()}`
+              const priceInCents = Math.round((plan.price || 0) * 100)
+              const callbackData = `ds_plan_${msg.flow_id}_${sequenceIndex}_${plan.id}_${priceInCents}`
               
-              const { error: insertError } = await supabaseAdmin.from("flow_plans").insert({
-                id: tempPlanId,
-                flow_id: msg.flow_id,
-                name: plan.buttonText,
-                price: plan.price,
-                is_active: true,
-                position: 999,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              })
-              
-              if (!insertError) {
-                planButtons.push([{
-                  text: plan.buttonText,
-                  callback_data: `plan_${tempPlanId}`
-                }])
-                console.log(`[CRON] Plano temporario criado: ${tempPlanId} - ${plan.buttonText} - R$${plan.price}`)
-              } else {
-                console.error("[CRON] Erro ao criar plano temporario:", insertError.message)
-              }
+              planButtons.push([{
+                text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
+                callback_data: callbackData
+              }])
+              console.log(`[CRON] Downsell button: ${plan.buttonText} - callback: ${callbackData}`)
             }
           }
         }
