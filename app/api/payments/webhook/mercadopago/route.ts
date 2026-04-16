@@ -625,39 +625,22 @@ export async function POST(request: NextRequest) {
                     console.log(`[VIP] Skipping VIP marking for product_type: ${payment.product_type}`)
                   }
 
-                  // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS
-                  console.log(`[v0] UPSELL DEBUG: upsellConfig =`, JSON.stringify(upsellConfig))
-                  console.log(`[v0] UPSELL DEBUG: enabled = ${upsellConfig?.enabled}, sequences length = ${upsellSequences.length}`)
-                  
+                  // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS (igual downsell)
                   if (upsellConfig?.enabled && upsellSequences.length > 0) {
-                    console.log(`[v0] UPSELL: Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
+                    console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
                     // Agendar TODAS as sequencias de upsell na tabela scheduled_messages
                     let cumulativeDelayMs = 0
                     
                     for (let i = 0; i < upsellSequences.length; i++) {
                       const upsellSeq = upsellSequences[i]
-                      console.log(`[v0] UPSELL DEBUG: Sequencia ${i} - sendTiming = ${upsellSeq.sendTiming}, sendDelayValue = ${upsellSeq.sendDelayValue}, sendDelayUnit = ${upsellSeq.sendDelayUnit}`)
                       
                       // Calcular delay para esta sequencia
                       const seqDelayMs = calculateDelayMs(
-                        upsellSeq.sendDelayValue || 30,
+                        upsellSeq.sendDelayValue || 1,
                         upsellSeq.sendDelayUnit || "minutes"
                       )
-                      
-                      // Enviar imediatamente se for a PRIMEIRA sequencia (i === 0)
-                      // O primeiro upsell SEMPRE deve ser enviado logo apos o pagamento aprovado
-                      const shouldSendImmediately = (i === 0)
-                      
-                      if (shouldSendImmediately) {
-                        // Primeira sequencia imediata - enviar agora
-                        console.log(`[v0] UPSELL: Enviando IMEDIATAMENTE sequencia ${i} (sendTiming=${upsellSeq.sendTiming}, delay=${seqDelayMs}ms)`)
-                        await sendUpsellOffer(supabase, bot.token, chatId, bot.id, flowId, upsellSeq, i)
-                        continue
-                      } else {
-                        // Calcular delay cumulativo
-                        cumulativeDelayMs += seqDelayMs
-                      }
+                      cumulativeDelayMs += seqDelayMs
                       
                       const scheduledFor = new Date(Date.now() + cumulativeDelayMs).toISOString()
                       
