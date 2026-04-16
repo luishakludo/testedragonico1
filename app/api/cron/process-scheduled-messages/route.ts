@@ -256,16 +256,20 @@ export async function GET(request: NextRequest) {
               }])
             }
           } else {
-            // DOWNSELL: usar callback ds_plan_{flowId}_{sequenceIndex}_{planId}_{priceInCents}
-            for (const plan of plans) {
+            // DOWNSELL: usar callback curto ds_{msgId}_{planIndex}_{priceInCents}
+            // Limite do Telegram: 64 caracteres
+            for (let planIdx = 0; planIdx < plans.length; planIdx++) {
+              const plan = plans[planIdx]
               const priceInCents = Math.round((plan.price || 0) * 100)
-              const callbackData = `ds_plan_${msg.flow_id}_${sequenceIndex}_${plan.id}_${priceInCents}`
+              // Usar apenas os ultimos 8 chars do msg.id para encurtar
+              const shortMsgId = String(msg.id).slice(-8)
+              const callbackData = `ds_${shortMsgId}_${planIdx}_${priceInCents}`
               
               planButtons.push([{
                 text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
                 callback_data: callbackData
               }])
-              console.log(`[CRON] Downsell button: ${plan.buttonText} - callback: ${callbackData}`)
+              console.log(`[CRON] Downsell button: ${plan.buttonText} - callback: ${callbackData} (${callbackData.length} chars)`)
             }
           }
         }

@@ -64,17 +64,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ erro: "botToken nao encontrado no metadata" })
   }
   
-  // Montar botoes
+  // Montar botoes - formato curto: ds_{shortMsgId}_{planIndex}_{priceInCents}
+  // Limite de 64 chars do Telegram
   const planButtons: Array<Array<{ text: string; callback_data: string }>> = []
+  const shortMsgId = String(lastMsg.id).slice(-8)
   
-  for (const plan of plans) {
+  for (let i = 0; i < plans.length; i++) {
+    const plan = plans[i]
     const priceInCents = Math.round((plan.price || 0) * 100)
-    const callbackData = `ds_plan_${lastMsg.flow_id}_0_${plan.id}_${priceInCents}`
+    const callbackData = `ds_${shortMsgId}_${i}_${priceInCents}`
     
     planButtons.push([{
       text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
       callback_data: callbackData
     }])
+    
+    console.log(`[TESTE] Callback: ${callbackData} (${callbackData.length} chars)`)
   }
   
   const replyMarkup = planButtons.length > 0 ? { inline_keyboard: planButtons } : undefined
