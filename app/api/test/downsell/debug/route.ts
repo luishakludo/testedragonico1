@@ -120,7 +120,26 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 3. Se passou chat, enviar mensagem de teste
+    // 3. Buscar mensagens agendadas recentes
+    const { data: scheduledMessages } = await db
+      .from("scheduled_messages")
+      .select("*")
+      .eq("message_type", "downsell")
+      .order("created_at", { ascending: false })
+      .limit(10)
+    
+    const mensagensAgendadas = (scheduledMessages || []).map(m => ({
+      id: m.id,
+      status: m.status,
+      scheduled_for: m.scheduled_for,
+      telegram_chat_id: m.telegram_chat_id,
+      metadata_plans: (m.metadata as Record<string, unknown>)?.plans || [],
+      metadata_message: ((m.metadata as Record<string, unknown>)?.message as string || "").substring(0, 50),
+      metadata_medias: (m.metadata as Record<string, unknown>)?.medias || [],
+      has_botToken: !!(m.metadata as Record<string, unknown>)?.botToken
+    }))
+
+    // 4. Se passou chat, enviar mensagem de teste
     let testeMensagem = null
     if (chatId && analise.length > 0) {
       const primeiraAnalise = analise[0]
@@ -156,6 +175,7 @@ export async function GET(request: NextRequest) {
       total_fluxos: flows.length,
       fluxos_com_downsell: analise.length,
       analise,
+      mensagens_agendadas_recentes: mensagensAgendadas,
       teste_mensagem: testeMensagem,
       instrucao: chatId 
         ? "Clique no botao que foi enviado no Telegram e veja se o PIX e gerado"

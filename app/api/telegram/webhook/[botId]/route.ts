@@ -2757,6 +2757,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               console.error(`[DOWNSELL] ERRO ao agendar: ${insertError.message}`)
             } else {
               console.log(`[DOWNSELL] Agendado com sucesso para user ${telegramUserId}`)
+              console.log(`[DOWNSELL] Planos salvos: ${JSON.stringify(seq.plans || [])}`)
+              console.log(`[DOWNSELL] Medias salvas: ${JSON.stringify(seq.medias || [])}`)
             }
           }
           

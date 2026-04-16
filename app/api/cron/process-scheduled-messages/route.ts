@@ -153,6 +153,10 @@ export async function GET(request: NextRequest) {
         const medias = metadata?.medias || []
         const plans = metadata?.plans || []
         
+        console.log(`[CRON] Processando msg ${msg.id} - tipo: ${msg.message_type}`)
+        console.log(`[CRON] Metadata recebido:`, JSON.stringify(metadata))
+        console.log(`[CRON] Planos encontrados: ${plans.length}`, JSON.stringify(plans))
+        
         // Logica diferente para DOWNSELL vs UPSELL
         const messageType = msg.message_type || "downsell"
         
@@ -282,6 +286,9 @@ export async function GET(request: NextRequest) {
         
         // Reply markup com os botoes (se houver)
         const replyMarkup = planButtons.length > 0 ? { inline_keyboard: planButtons } : undefined
+        
+        console.log(`[CRON] planButtons montados: ${planButtons.length}`)
+        console.log(`[CRON] replyMarkup:`, JSON.stringify(replyMarkup))
         
         // Enviar mensagem
         if (medias.length > 0) {
