@@ -106,16 +106,13 @@ export async function GET() {
     log(`DeliveryType: ${upsellSeq.deliveryType || "global"}`)
     log(`DeliverableId: ${upsellSeq.deliverableId || "N/A"}`)
     
-    // Criar um ID curto para o callback (usar timestamp)
-    const shortMsgId = Date.now().toString().slice(-8)
-    
-    // Montar os botoes dos planos
+    // Montar os botoes dos planos - USANDO O FORMATO QUE JA FUNCIONA
+    // Formato: up_accept_{amount}_{upsellIndex} (mesmo handler do downsell)
     const plans = upsellSeq.plans || []
     const inlineKeyboard = plans.map((plan: { name: string; price: number }, idx: number) => {
-      const priceInCents = Math.round(plan.price * 100)
       return [{
         text: `${plan.name} - R$ ${plan.price.toFixed(2)}`,
-        callback_data: `up_${shortMsgId}_${idx}_${priceInCents}`
+        callback_data: `up_accept_${plan.price}_${idx}`
       }]
     })
     
@@ -174,39 +171,7 @@ export async function GET() {
       log("SUCESSO! Mensagem enviada.")
       log(`Message ID: ${result.result?.message_id}`)
       
-      // 6. Salvar na scheduled_messages para ter o deliverableId disponivel
-      const { error: insertError } = await supabase
-        .from("scheduled_messages")
-        .insert({
-          id: `test-${shortMsgId}`,
-          bot_id: botId,
-          flow_id: flowToTest.id,
-          telegram_user_id: targetUserId,
-          telegram_chat_id: targetUserId,
-          message_type: "upsell",
-          sequence_id: upsellSeq.id || `seq-0`,
-          sequence_index: 0,
-          scheduled_for: new Date().toISOString(),
-          status: "sent",
-          sent_at: new Date().toISOString(),
-          metadata: {
-            message: upsellSeq.message || "",
-            medias: upsellSeq.medias || [],
-            plans: upsellSeq.plans || [],
-            deliverableId: upsellSeq.deliverableId,
-            deliveryType: upsellSeq.deliveryType || "global",
-            is_test: true,
-            shortMsgId
-          },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-      
-      if (insertError) {
-        log(`Aviso: Erro ao salvar scheduled_message: ${insertError.message}`)
-      } else {
-        log(`Salvo em scheduled_messages com shortMsgId: ${shortMsgId}`)
-      }
+      log("Botao usa formato up_accept_{price}_{index} que ja tem handler funcionando")
     } else {
       log("")
       log(`ERRO ao enviar: ${result.description}`)
@@ -216,7 +181,7 @@ export async function GET() {
       success: result.ok,
       logs,
       telegramResponse: result,
-      callbackFormat: `up_${shortMsgId}_PLANINDEX_PRICEINCENTAVOS`
+      callbackFormat: "up_accept_{price}_{index}"
     })
     
   } catch (error) {
