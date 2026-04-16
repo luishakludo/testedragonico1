@@ -626,10 +626,12 @@ export async function POST(request: NextRequest) {
                   }
 
                   // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS (igual downsell)
-                  console.log(`[UPSELL DEBUG] Verificando upsell - enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
-                  console.log(`[UPSELL DEBUG] upsellConfig:`, JSON.stringify(upsellConfig))
+                  // APENAS para produto principal (main_product, plan), NAO para order_bump, upsell, downsell
+                  const shouldScheduleUpsell = payment.product_type === "main_product" || payment.product_type === "plan"
+                  console.log(`[UPSELL] product_type: ${payment.product_type}, shouldScheduleUpsell: ${shouldScheduleUpsell}`)
+                  console.log(`[UPSELL] upsellConfig enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
                   
-                  if (upsellConfig?.enabled && upsellSequences.length > 0) {
+                  if (shouldScheduleUpsell && upsellConfig?.enabled && upsellSequences.length > 0) {
                     console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
                     // Agendar TODAS as sequencias de upsell na tabela scheduled_messages

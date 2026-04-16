@@ -50,6 +50,11 @@ export async function GET(request: NextRequest) {
       p.status === "approved"
     ) || []
     
+    // 6.1 Buscar pagamentos principais (main_product ou plan) que deveriam ter upsell
+    const mainProductPayments = approvedPayments.filter(p =>
+      p.product_type === "main_product" || p.product_type === "plan"
+    )
+    
     // 7. Para cada pagamento aprovado, verificar se tem upsell configurado e agendado
     const pagamentosComUpsellInfo = await Promise.all(
       approvedPayments.slice(0, 5).map(async (payment) => {
@@ -99,7 +104,10 @@ export async function GET(request: NextRequest) {
         porStatus: statusCounts,
         orderBumpCount: orderBumpPayments.length,
         aprovadosCount: approvedPayments.length,
+        produtosPrincipaisAprovados: mainProductPayments.length,
       },
+      IMPORTANTE: "Upsell so e enviado para pagamentos de 'main_product' ou 'plan'. Downsell, upsell e order_bump NAO geram novo upsell.",
+      pagamentosPrincipais: mainProductPayments.slice(0, 5),
       pagamentosComUpsellInfo,
       orderBumpPayments,
       estadosOrderBumpPendentes: obStates,
