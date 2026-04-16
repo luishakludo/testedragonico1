@@ -3198,56 +3198,35 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
 
                             {/* Enviar + Preco */}
                             <div className="flex flex-wrap gap-4">
+                              {/* Tempo de envio */}
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                                   <Clock className="h-4 w-4" />
-                                  <span>Enviar:</span>
+                                  <span>Enviar apos:</span>
                                 </div>
-                                <Select
-                                  value={seq.sendTiming}
-                                  onValueChange={(value: "immediate" | "custom") => handleUpdateUpsellSequence(seq.id, "sendTiming", value)}
-                                >
-                                  <SelectTrigger className="w-40 bg-secondary/50 border-neutral-200">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="immediate">Imediato</SelectItem>
-                                    <SelectItem value="custom">Personalizado</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                <div className="flex gap-2">
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={seq.sendDelayValue || 1}
+                                    onChange={(e) => handleUpdateUpsellSequence(seq.id, "sendDelayValue", parseInt(e.target.value) || 1)}
+                                    className="w-20 bg-secondary/50 border-neutral-200"
+                                  />
+                                  <Select
+                                    value={seq.sendDelayUnit || "minutes"}
+                                    onValueChange={(value: "minutes" | "hours" | "days") => handleUpdateUpsellSequence(seq.id, "sendDelayUnit", value)}
+                                  >
+                                    <SelectTrigger className="w-28 bg-secondary/50 border-neutral-200">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="minutes">Minutos</SelectItem>
+                                      <SelectItem value="hours">Horas</SelectItem>
+                                      <SelectItem value="days">Dias</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </div>
-
-                              {/* Tempo personalizado */}
-                              {seq.sendTiming === "custom" && (
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2 text-sm text-neutral-500">
-                                    <Clock className="h-4 w-4" />
-                                    <span>Tempo:</span>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <Input
-                                      type="number"
-                                      min="1"
-                                      value={seq.sendDelayValue || 30}
-                                      onChange={(e) => handleUpdateUpsellSequence(seq.id, "sendDelayValue", parseInt(e.target.value) || 1)}
-                                      className="w-20 bg-secondary/50 border-neutral-200"
-                                    />
-                                    <Select
-                                      value={seq.sendDelayUnit || "minutes"}
-                                      onValueChange={(value: "minutes" | "hours" | "days") => handleUpdateUpsellSequence(seq.id, "sendDelayUnit", value)}
-                                    >
-                                      <SelectTrigger className="w-28 bg-secondary/50 border-neutral-200">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="minutes">Minutos</SelectItem>
-                                        <SelectItem value="hours">Horas</SelectItem>
-                                        <SelectItem value="days">Dias</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
-                              )}
 
                             </div>
 
@@ -3621,56 +3600,35 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
 
                               {/* Enviar + Preco */}
                               <div className="flex flex-wrap gap-4">
+                                {/* Tempo de envio */}
                                 <div className="space-y-2">
                                   <div className="flex items-center gap-2 text-sm text-neutral-500">
                                     <Clock className="h-4 w-4" />
-                                    <span>Enviar:</span>
+                                    <span>Enviar apos:</span>
                                   </div>
-                                  <Select
-                                    value={seq.sendTiming || "immediate"}
-                                    onValueChange={(value: "immediate" | "custom") => handleUpdateDownsellSequence(seq.id, "sendTiming", value)}
-                                  >
-                                    <SelectTrigger className="w-40 bg-secondary/50 border-neutral-200">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="immediate">Imediato</SelectItem>
-                                      <SelectItem value="custom">Personalizado</SelectItem>
-                                    </SelectContent>
-                                  </Select>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      value={seq.sendDelayValue || 1}
+                                      onChange={(e) => handleUpdateDownsellSequence(seq.id, "sendDelayValue", parseInt(e.target.value) || 1)}
+                                      className="w-20 bg-secondary/50 border-neutral-200"
+                                      min={1}
+                                    />
+                                    <Select
+                                      value={seq.sendDelayUnit || "minutes"}
+                                      onValueChange={(value: "minutes" | "hours" | "days") => handleUpdateDownsellSequence(seq.id, "sendDelayUnit", value)}
+                                    >
+                                      <SelectTrigger className="w-28 bg-secondary/50 border-neutral-200">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="minutes">Minutos</SelectItem>
+                                        <SelectItem value="hours">Horas</SelectItem>
+                                        <SelectItem value="days">Dias</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
                                 </div>
-
-                                {/* Tempo personalizado */}
-                                {seq.sendTiming === "custom" && (
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-sm text-neutral-500">
-                                      <Clock className="h-4 w-4" />
-                                      <span>Tempo:</span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <Input
-                                        type="number"
-                                        value={seq.sendDelayValue || 30}
-                                        onChange={(e) => handleUpdateDownsellSequence(seq.id, "sendDelayValue", parseInt(e.target.value) || 0)}
-                                        className="w-20 bg-secondary/50 border-neutral-200"
-                                        min={1}
-                                      />
-                                      <Select
-                                        value={seq.sendDelayUnit || "minutes"}
-                                        onValueChange={(value: "minutes" | "hours" | "days") => handleUpdateDownsellSequence(seq.id, "sendDelayUnit", value)}
-                                      >
-                                        <SelectTrigger className="w-28 bg-secondary/50 border-neutral-200">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="minutes">Minutos</SelectItem>
-                                          <SelectItem value="hours">Horas</SelectItem>
-                                          <SelectItem value="days">Dias</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-                                )}
 
                               </div>
 

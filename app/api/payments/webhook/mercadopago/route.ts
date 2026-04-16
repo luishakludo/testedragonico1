@@ -625,9 +625,9 @@ export async function POST(request: NextRequest) {
                     console.log(`[VIP] Skipping VIP marking for product_type: ${payment.product_type}`)
                   }
 
-                  // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS
+                  // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS (igual downsell)
                   if (upsellConfig?.enabled && upsellSequences.length > 0) {
-                    console.log(`[v0] UPSELL: Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
+                    console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
                     // Agendar TODAS as sequencias de upsell na tabela scheduled_messages
                     let cumulativeDelayMs = 0
@@ -636,18 +636,11 @@ export async function POST(request: NextRequest) {
                       const upsellSeq = upsellSequences[i]
                       
                       // Calcular delay para esta sequencia
-                      if (upsellSeq.sendTiming === "immediate" && i === 0) {
-                        // Primeira sequencia imediata - enviar agora
-                        await sendUpsellOffer(supabase, bot.token, chatId, bot.id, flowId, upsellSeq, i)
-                        continue
-                      } else {
-                        // Calcular delay cumulativo
-                        const seqDelayMs = calculateDelayMs(
-                          upsellSeq.sendDelayValue || 30,
-                          upsellSeq.sendDelayUnit || "minutes"
-                        )
-                        cumulativeDelayMs += seqDelayMs
-                      }
+                      const seqDelayMs = calculateDelayMs(
+                        upsellSeq.sendDelayValue || 1,
+                        upsellSeq.sendDelayUnit || "minutes"
+                      )
+                      cumulativeDelayMs += seqDelayMs
                       
                       const scheduledFor = new Date(Date.now() + cumulativeDelayMs).toISOString()
                       
