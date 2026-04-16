@@ -1,0 +1,770 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 78 85% 55%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 92%;
+    --input: 0 0% 92%;
+    --ring: 78 85% 55%;
+    --chart-1: 78 85% 55%;
+    --chart-2: 250 60% 60%;
+    --chart-3: 220 70% 55%;
+    --chart-4: 140 60% 40%;
+    --chart-5: 180 50% 45%;
+    --radius: 0.75rem;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 45%;
+    --sidebar-primary: 0 0% 9%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 78 85% 55%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 94%;
+    --sidebar-ring: 78 85% 55%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 9%;
+  }
+
+  .dark {
+    --background: 0 0% 5%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 78 85% 55%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 16%;
+    --input: 0 0% 12%;
+    --ring: 78 85% 55%;
+    --chart-1: 78 85% 55%;
+    --chart-2: 250 60% 60%;
+    --chart-3: 220 70% 55%;
+    --chart-4: 140 60% 40%;
+    --chart-5: 180 50% 45%;
+    --sidebar-background: 0 0% 5%;
+    --sidebar-foreground: 0 0% 60%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 0 0% 5%;
+    --sidebar-accent: 78 85% 55%;
+    --sidebar-accent-foreground: 0 0% 5%;
+    --sidebar-border: 0 0% 14%;
+    --sidebar-ring: 78 85% 55%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ========================================
+   PREMIUM DESIGN SYSTEM
+   ======================================== */
+
+/* Premium Card Styles */
+@layer components {
+  .card-premium {
+    @apply bg-card border border-border rounded-xl transition-all duration-200;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  }
+  
+  .card-premium:hover {
+    box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.05);
+  }
+  
+  /* Premium Button Accent */
+  .btn-accent {
+    @apply bg-accent text-accent-foreground font-medium rounded-lg transition-all duration-200;
+    box-shadow: 0 0 0 0 hsl(var(--accent) / 0);
+  }
+  
+  .btn-accent:hover {
+    @apply brightness-105;
+    box-shadow: 0 0 20px 0 hsl(var(--accent) / 0.25);
+  }
+  
+  /* Premium Input Focus */
+  .input-premium {
+    @apply bg-secondary/50 border-border rounded-lg transition-all duration-200;
+  }
+  
+  .input-premium:focus {
+    @apply bg-background border-accent/50 ring-2 ring-accent/20;
+  }
+  
+  /* Premium Tab System */
+  .tabs-premium {
+    @apply bg-muted/50 p-1 rounded-lg;
+  }
+  
+  .tab-trigger-premium {
+    @apply px-4 py-2 rounded-md text-sm font-medium text-muted-foreground transition-all duration-200;
+  }
+  
+  .tab-trigger-premium[data-state="active"] {
+    @apply bg-background text-foreground shadow-sm;
+  }
+  
+  /* Empty State Container */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-12 px-6 text-center;
+  }
+  
+  .empty-state-icon {
+    @apply h-14 w-14 rounded-2xl bg-muted flex items-center justify-center mb-4;
+  }
+  
+  .empty-state-icon svg {
+    @apply h-6 w-6 text-muted-foreground;
+  }
+  
+  .empty-state-title {
+    @apply text-base font-semibold text-foreground mb-1;
+  }
+  
+  .empty-state-description {
+    @apply text-sm text-muted-foreground mb-6 max-w-xs;
+  }
+  
+  /* Section Header */
+  .section-header {
+    @apply flex items-center justify-between pb-4 border-b border-border mb-4;
+  }
+  
+  .section-title {
+    @apply flex items-center gap-3;
+  }
+  
+  .section-icon {
+    @apply h-10 w-10 rounded-xl flex items-center justify-center;
+  }
+  
+  /* Form Group */
+  .form-group {
+    @apply space-y-2;
+  }
+  
+  .form-label {
+    @apply text-xs font-medium text-muted-foreground uppercase tracking-wider;
+  }
+  
+  /* Plan Card */
+  .plan-card {
+    @apply rounded-xl border border-border bg-card overflow-hidden transition-all duration-200;
+  }
+  
+  .plan-card:hover {
+    @apply border-border/80 shadow-sm;
+  }
+  
+  .plan-card-header {
+    @apply flex items-center justify-between p-4 cursor-pointer;
+  }
+  
+  .plan-card-content {
+    @apply px-4 pb-4 space-y-4 border-t border-border pt-4;
+  }
+  
+  /* Badge Variants */
+  .badge-success {
+    @apply bg-emerald-500/10 text-emerald-600 border-emerald-500/20;
+  }
+  
+  .badge-warning {
+    @apply bg-amber-500/10 text-amber-600 border-amber-500/20;
+  }
+  
+  .badge-info {
+    @apply bg-blue-500/10 text-blue-600 border-blue-500/20;
+  }
+  
+  .badge-accent {
+    @apply bg-accent/10 text-accent border-accent/20;
+  }
+}
+
+/* Hide scrollbar but keep scroll functionality */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* ========================================
+   INPUT AUTOFILL FIX - DARK MODE
+   ======================================== */
+
+/* Fix for Chrome/Safari autofill that overrides dark backgrounds */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus,
+select:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #2a2a2e inset !important;
+  -webkit-text-fill-color: white !important;
+  caret-color: white !important;
+  transition: background-color 5000s ease-in-out 0s;
+  background-color: #2a2a2e !important;
+}
+
+/* Ensure inputs in dark containers maintain dark styling */
+.dark input,
+.dark textarea,
+.dark select,
+[class*="bg-[#0"] input,
+[class*="bg-[#1"] input,
+[class*="bg-[#2"] input,
+[class*="bg-[#0"] textarea,
+[class*="bg-[#1"] textarea,
+[class*="bg-[#2"] textarea {
+  color-scheme: dark;
+}
+
+/* Fix input caret color in dark mode */
+.dark input,
+.dark textarea {
+  caret-color: white;
+}
+
+/* Inputs inside dark dialogs/modals */
+[data-state="open"] input:-webkit-autofill,
+[data-state="open"] input:-webkit-autofill:hover,
+[data-state="open"] input:-webkit-autofill:focus,
+[role="dialog"] input:-webkit-autofill,
+[role="dialog"] input:-webkit-autofill:hover,
+[role="dialog"] input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #2a2a2e inset !important;
+  -webkit-text-fill-color: white !important;
+  background-color: #2a2a2e !important;
+}
+
+/* Dark input utility class - use on inputs in dark backgrounds */
+.dark-input:-webkit-autofill,
+.dark-input:-webkit-autofill:hover,
+.dark-input:-webkit-autofill:focus,
+.dark-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #2a2a2e inset !important;
+  -webkit-text-fill-color: white !important;
+  background-color: #2a2a2e !important;
+}
+
+/* All inputs with dark background classes */
+input[class*="bg-[#2"],
+input[class*="bg-[#1"],
+input[class*="bg-[#0"],
+textarea[class*="bg-[#2"],
+textarea[class*="bg-[#1"],
+textarea[class*="bg-[#0"] {
+  color-scheme: dark !important;
+}
+
+input[class*="bg-[#2"]:-webkit-autofill,
+input[class*="bg-[#2"]:-webkit-autofill:hover,
+input[class*="bg-[#2"]:-webkit-autofill:focus,
+input[class*="bg-[#1"]:-webkit-autofill,
+input[class*="bg-[#1"]:-webkit-autofill:hover,
+input[class*="bg-[#1"]:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #2a2a2e inset !important;
+  -webkit-text-fill-color: white !important;
+  background-color: #2a2a2e !important;
+}
+
+/* Dragon AI Sphere Float Animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-10px) scale(1.02);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* ========================================
+   DRAGON ADMIN - PREMIUM THEME
+   ======================================== */
+
+.admin-theme {
+  /* Deep black base for true dark mode */
+  --admin-bg: #050505;
+  --admin-bg-elevated: #0a0a0a;
+  --admin-bg-card: #0f0f0f;
+  --admin-bg-card-hover: #141414;
+  
+  /* Subtle depth layers */
+  --admin-surface: #111111;
+  --admin-surface-hover: #161616;
+  --admin-surface-active: #1a1a1a;
+  
+  /* Borders with subtle visibility */
+  --admin-border: rgba(255, 255, 255, 0.06);
+  --admin-border-subtle: rgba(255, 255, 255, 0.03);
+  --admin-border-accent: rgba(149, 228, 104, 0.2);
+  
+  /* Text hierarchy */
+  --admin-text-primary: #ffffff;
+  --admin-text-secondary: #a1a1a1;
+  --admin-text-muted: #666666;
+  --admin-text-dimmed: #444444;
+  
+  /* Green accent variations */
+  --admin-accent: #95e468;
+  --admin-accent-hover: #a8ec80;
+  --admin-accent-dim: #7bc752;
+  --admin-accent-glow: rgba(149, 228, 104, 0.15);
+  --admin-accent-subtle: rgba(149, 228, 104, 0.08);
+  
+  /* Deep purple for depth accents */
+  --admin-purple: #8b5cf6;
+  --admin-purple-dim: rgba(139, 92, 246, 0.1);
+  --admin-purple-glow: rgba(139, 92, 246, 0.15);
+  
+  /* Status colors */
+  --admin-success: #22c55e;
+  --admin-success-bg: rgba(34, 197, 94, 0.1);
+  --admin-warning: #f59e0b;
+  --admin-warning-bg: rgba(245, 158, 11, 0.1);
+  --admin-error: #ef4444;
+  --admin-error-bg: rgba(239, 68, 68, 0.1);
+  --admin-info: #3b82f6;
+  --admin-info-bg: rgba(59, 130, 246, 0.1);
+  
+  /* Shadows & Glows */
+  --admin-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --admin-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --admin-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --admin-glow-accent: 0 0 20px rgba(149, 228, 104, 0.15);
+  --admin-glow-purple: 0 0 20px rgba(139, 92, 246, 0.1);
+}
+
+/* Admin base styles */
+.admin-theme {
+  background: var(--admin-bg);
+  color: var(--admin-text-primary);
+}
+
+/* Admin Card Component */
+.admin-card {
+  background: var(--admin-bg-card);
+  border: 1px solid var(--admin-border);
+  border-radius: 16px;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+}
+
+.admin-card:hover {
+  background: var(--admin-bg-card-hover);
+  border-color: var(--admin-border-accent);
+  box-shadow: var(--admin-glow-accent);
+  transform: translateY(-2px);
+}
+
+/* Admin Stat Card */
+.admin-stat-card {
+  background: linear-gradient(145deg, var(--admin-bg-card) 0%, var(--admin-surface) 100%);
+  border: 1px solid var(--admin-border);
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.admin-stat-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, var(--admin-accent-subtle) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.admin-stat-card:hover::after {
+  opacity: 1;
+}
+
+.admin-stat-card:hover {
+  border-color: var(--admin-border-accent);
+  transform: translateY(-2px);
+}
+
+/* Admin Icon Container */
+.admin-icon-container {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-icon-container.accent {
+  background: var(--admin-accent-glow);
+}
+
+.admin-icon-container.accent::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(149, 228, 104, 0.2), transparent);
+}
+
+.admin-icon-container.purple {
+  background: var(--admin-purple-dim);
+}
+
+.admin-icon-container.success {
+  background: var(--admin-success-bg);
+}
+
+.admin-icon-container.warning {
+  background: var(--admin-warning-bg);
+}
+
+.admin-icon-container.error {
+  background: var(--admin-error-bg);
+}
+
+.admin-icon-container.info {
+  background: var(--admin-info-bg);
+}
+
+.admin-icon-container.neutral {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Admin Sidebar */
+.admin-sidebar {
+  background: linear-gradient(180deg, var(--admin-bg-elevated) 0%, var(--admin-bg) 100%);
+  border-right: 1px solid var(--admin-border);
+}
+
+.admin-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--admin-text-secondary);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.admin-sidebar-item:hover {
+  color: var(--admin-text-primary);
+  background: var(--admin-surface);
+}
+
+.admin-sidebar-item.active {
+  color: var(--admin-bg);
+  background: var(--admin-accent);
+  box-shadow: var(--admin-glow-accent);
+}
+
+.admin-sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 24px;
+  background: var(--admin-accent);
+  border-radius: 0 4px 4px 0;
+}
+
+/* Admin Table */
+.admin-table {
+  width: 100%;
+}
+
+.admin-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--admin-text-muted);
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-table td {
+  padding: 16px;
+  border-bottom: 1px solid var(--admin-border-subtle);
+}
+
+.admin-table tr:hover td {
+  background: var(--admin-surface);
+}
+
+/* Admin Badge */
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.admin-badge.success {
+  background: var(--admin-success-bg);
+  color: var(--admin-success);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.admin-badge.warning {
+  background: var(--admin-warning-bg);
+  color: var(--admin-warning);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.admin-badge.error {
+  background: var(--admin-error-bg);
+  color: var(--admin-error);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.admin-badge.info {
+  background: var(--admin-info-bg);
+  color: var(--admin-info);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.admin-badge.neutral {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--admin-text-secondary);
+  border: 1px solid var(--admin-border);
+}
+
+/* Admin Button */
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.admin-btn.primary {
+  background: var(--admin-accent);
+  color: var(--admin-bg);
+}
+
+.admin-btn.primary:hover {
+  background: var(--admin-accent-hover);
+  box-shadow: var(--admin-glow-accent);
+  transform: translateY(-1px);
+}
+
+.admin-btn.secondary {
+  background: var(--admin-surface);
+  color: var(--admin-text-primary);
+  border: 1px solid var(--admin-border);
+}
+
+.admin-btn.secondary:hover {
+  background: var(--admin-surface-hover);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.admin-btn.ghost {
+  background: transparent;
+  color: var(--admin-text-secondary);
+}
+
+.admin-btn.ghost:hover {
+  background: var(--admin-surface);
+  color: var(--admin-text-primary);
+}
+
+/* Admin Input */
+.admin-input {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--admin-text-primary);
+  transition: all 0.2s ease;
+}
+
+.admin-input::placeholder {
+  color: var(--admin-text-muted);
+}
+
+.admin-input:focus {
+  outline: none;
+  border-color: var(--admin-accent);
+  box-shadow: 0 0 0 3px var(--admin-accent-subtle);
+}
+
+/* Admin Avatar */
+.admin-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--admin-purple-dim), var(--admin-accent-subtle));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: var(--admin-text-primary);
+  border: 1px solid var(--admin-border);
+}
+
+/* Admin Glow Effects */
+.admin-glow-green {
+  box-shadow: 0 0 30px var(--admin-accent-glow);
+}
+
+.admin-glow-purple {
+  box-shadow: 0 0 30px var(--admin-purple-glow);
+}
+
+/* Admin Gradient Text */
+.admin-gradient-text {
+  background: linear-gradient(135deg, var(--admin-accent), var(--admin-accent-hover));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Admin Glass Effect */
+.admin-glass {
+  background: rgba(15, 15, 15, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--admin-border);
+}
+
+/* Admin Skeleton Loading */
+@keyframes admin-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.admin-skeleton {
+  background: linear-gradient(90deg, var(--admin-surface) 25%, var(--admin-surface-hover) 50%, var(--admin-surface) 75%);
+  background-size: 200% 100%;
+  animation: admin-shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* Admin Header Section */
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--admin-border);
+  margin-bottom: 24px;
+}
+
+.admin-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--admin-text-primary);
+}
+
+.admin-header p {
+  font-size: 14px;
+  color: var(--admin-text-muted);
+  margin-top: 4px;
+}
+
+/* Pulse animation for live indicators */
+@keyframes admin-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.admin-pulse {
+  animation: admin-pulse 2s ease-in-out infinite;
+}
