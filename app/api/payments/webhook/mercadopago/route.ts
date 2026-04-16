@@ -626,6 +626,9 @@ export async function POST(request: NextRequest) {
                   }
 
                   // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS (igual downsell)
+                  console.log(`[UPSELL DEBUG] Verificando upsell - enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
+                  console.log(`[UPSELL DEBUG] upsellConfig:`, JSON.stringify(upsellConfig))
+                  
                   if (upsellConfig?.enabled && upsellSequences.length > 0) {
                     console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
                     
@@ -651,15 +654,16 @@ export async function POST(request: NextRequest) {
                           bot_id: bot.id,
                           flow_id: flowId,
                           telegram_user_id: String(chatId),
-                          telegram_chat_id: chatId,
+                          telegram_chat_id: String(chatId),
                           message_type: "upsell",
+                          sequence_id: upsellSeq.id || `seq-${i}`,
+                          sequence_index: i,
                           scheduled_for: scheduledFor,
                           status: "pending",
                           metadata: {
                             message: upsellSeq.message || "",
                             medias: upsellSeq.medias || [],
                             plans: upsellSeq.plans || [],
-                            sequence_index: i,
                             botToken: bot.token,
                             deliveryType: upsellSeq.deliveryType || "global",
                             deliverableId: upsellSeq.deliverableId,
