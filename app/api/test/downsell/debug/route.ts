@@ -120,24 +120,48 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 3. Buscar mensagens agendadas recentes
+    // 3. Buscar TODAS mensagens agendadas recentes (incluindo upsell)
     const { data: scheduledMessages } = await db
       .from("scheduled_messages")
       .select("*")
-      .eq("message_type", "downsell")
       .order("created_at", { ascending: false })
-      .limit(10)
+      .limit(20)
     
-    const mensagensAgendadas = (scheduledMessages || []).map(m => ({
-      id: m.id,
-      status: m.status,
-      scheduled_for: m.scheduled_for,
-      telegram_chat_id: m.telegram_chat_id,
-      metadata_plans: (m.metadata as Record<string, unknown>)?.plans || [],
-      metadata_message: ((m.metadata as Record<string, unknown>)?.message as string || "").substring(0, 50),
-      metadata_medias: (m.metadata as Record<string, unknown>)?.medias || [],
-      has_botToken: !!(m.metadata as Record<string, unknown>)?.botToken
-    }))
+    const now = new Date()
+    const mensagensAgendadas = (scheduledMessages || []).map(m => {
+      const scheduledFor = new Date(m.scheduled_for)
+      const jaPassou = scheduledFor <= now
+      return {
+        id: m.id,
+        message_type: m.message_type,
+        status: m.status,
+        scheduled_for: m.scheduled_for,
+        ja_passou: jaPassou,
+        tempo_restante: jaPassou ? "JA PASSOU" : `${Math.round((scheduledFor.getTime() - now.getTime()) / 60000)} minutos`,
+        telegram_chat_id: m.telegram_chat_id,
+        flow_id: m.flow_id,
+        metadata_plans: (m.metadata as Record<string, unknown>)?.plans || [],
+        metadata_message: ((m.metadata as Record<string, unknown>)?.message as string || "").substring(0, 50),
+        metadata_medias: (m.metadata as Record<string, unknown>)?.medias || [],
+        has_botToken: !!(m.metadata as Record<string, unknown>)?.botToken,
+        sequence_index: (m.metadata as Record<string, unknown>)?.sequence_index,
+        created_at: m.created_at,
+        error_message: m.error_message
+      }
+    })
+    
+    // Contagem por status
+    const statusCount = {
+      pending: (scheduledMessages || []).filter(m => m.status === "pending").length,
+      sent: (scheduledMessages || []).filter(m => m.status === "sent").length,
+      cancelled: (scheduledMessages || []).filter(m => m.status === "cancelled").length,
+      failed: (scheduledMessages || []).filter(m => m.status === "failed").length
+    }
+    
+    // Mensagens pendentes que JA DEVERIAM ter sido enviadas
+    const pendentesAtrasadas = (scheduledMessages || []).filter(m => {
+      return m.status === "pending" && new Date(m.scheduled_for) <= now
+    }).length
 
     // 4. Se passou chat, enviar mensagem de teste
     let testeMensagem = null
@@ -171,15 +195,22 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       debug: "DOWNSELL_SYSTEM",
+      data_atual: now.toISOString(),
       total_bots: bots.length,
       total_fluxos: flows.length,
       fluxos_com_downsell: analise.length,
       analise,
-      mensagens_agendadas_recentes: mensagensAgendadas,
+      mensagens_agendadas: {
+        status_count: statusCount,
+        pendentes_atrasadas: pendentesAtrasadas,
+        alerta: pendentesAtrasadas > 0 ? "CRON NAO ESTA RODANDO! Existem mensagens que ja deveriam ter sido enviadas." : "OK",
+        lista: mensagensAgendadas
+      },
       teste_mensagem: testeMensagem,
       instrucao: chatId 
         ? "Clique no botao que foi enviado no Telegram e veja se o PIX e gerado"
-        : "Adicione ?chat=SEU_CHAT_ID para enviar mensagem de teste"
+        : "Adicione ?chat=SEU_CHAT_ID para enviar mensagem de teste",
+      dica_cron: "Chame GET /api/cron/process-scheduled-messages para processar as mensagens pendentes"
     })
 
   } catch (err) {

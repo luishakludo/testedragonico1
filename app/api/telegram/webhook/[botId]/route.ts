@@ -1567,21 +1567,38 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
       // ========== FIM ORDER BUMP CALLBACKS ==========
 
       // ========== DOWNSELL CALLBACKS ==========
-      // Callback format: ds_plan_{flowId}_{sequenceIndex}_{planId}_{priceInCents}
-      if (callbackData.startsWith("ds_plan_")) {
+      // Callback format: ds_{shortMsgId}_{planIndex}_{priceInCents}
+      // Limite de 64 chars do Telegram
+      if (callbackData.startsWith("ds_") && !callbackData.startsWith("ds_plan_")) {
         console.log("[v0] Downsell Callback recebido:", callbackData)
         
         await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
         
-        // Parse callback: ds_plan_{flowId}_{sequenceIndex}_{planId}_{priceInCents}
-        const parts = callbackData.replace("ds_plan_", "").split("_")
-        const flowId = parts[0] || ""
-        const sequenceIndex = parseInt(parts[1]) || 0
-        const planId = parts[2] || ""
-        const priceInCents = parseInt(parts[3]) || 0
+        // Parse callback: ds_{shortMsgId}_{planIndex}_{priceInCents}
+        const parts = callbackData.replace("ds_", "").split("_")
+        const shortMsgId = parts[0] || ""
+        const planIndex = parseInt(parts[1]) || 0
+        const priceInCents = parseInt(parts[2]) || 0
         const price = priceInCents / 100
         
-        console.log(`[v0] Downsell: flow=${flowId}, seq=${sequenceIndex}, plan=${planId}, price=${price}`)
+        console.log(`[v0] Downsell: shortMsgId=${shortMsgId}, planIndex=${planIndex}, price=${price}`)
+        
+        // Buscar a mensagem original pelo shortMsgId (ultimos 8 chars do id)
+        const { data: scheduledMsg } = await supabase
+          .from("scheduled_messages")
+          .select("*")
+          .like("id", `%${shortMsgId}`)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single()
+        
+        const flowId = scheduledMsg?.flow_id || ""
+        const msgMetadata = scheduledMsg?.metadata as Record<string, unknown> | null
+        const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number }>) || []
+        const selectedPlan = plans[planIndex]
+        const planName = selectedPlan?.buttonText || "Oferta Especial"
+        
+        console.log(`[v0] Downsell: flowId=${flowId}, planName=${planName}`)
         
         // Buscar gateway de pagamento
         const { data: gateway } = await supabase
@@ -1603,26 +1620,6 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           .select("user_id")
           .eq("id", botUuid)
           .single()
-        
-        const { data: flowData } = await supabase
-          .from("flows")
-          .select("config")
-          .eq("id", flowId)
-          .single()
-        
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const flowConfig = flowData?.config as Record<string, any> | null
-        const downsellSequences = flowConfig?.downsell?.sequences || []
-        const currentSeq = downsellSequences[sequenceIndex]
-        
-        // Buscar nome do plano
-        let planName = "Oferta Especial"
-        if (currentSeq?.plans) {
-          const foundPlan = currentSeq.plans.find((p: { id: string; buttonText: string }) => p.id === planId)
-          if (foundPlan) {
-            planName = foundPlan.buttonText
-          }
-        }
         
         // Gerar PIX
         try {
