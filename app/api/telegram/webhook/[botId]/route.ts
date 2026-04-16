@@ -1600,121 +1600,126 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         
         console.log(`[v0] Downsell: flowId=${flowId}, planName=${planName}`)
         
-        // Buscar gateway de pagamento
-        const { data: gateway } = await supabase
-          .from("user_gateways")
-          .select("*")
-          .eq("bot_id", botUuid)
-          .eq("is_active", true)
-          .limit(1)
-          .single()
-        
-        if (!gateway?.access_token) {
-          await sendTelegramMessage(botToken, chatId, "Erro: Gateway de pagamento nao configurado.")
-          return
-        }
-        
-        // Buscar user_id do bot owner e config do fluxo
+        // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
           .from("bots")
           .select("user_id")
           .eq("id", botUuid)
           .single()
         
-        // Gerar PIX
+        if (!botOwner?.user_id) {
+          await sendTelegramMessage(botToken, chatId, "Erro: Bot nao encontrado.")
+          return
+        }
+        
+        // Buscar gateway pelo user_id (igual ao plano normal)
+        const { data: gateway, error: gwError } = await supabase
+          .from("user_gateways")
+          .select("*")
+          .eq("user_id", botOwner.user_id)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+        
+        console.log("[v0] Downsell Gateway lookup - user_id:", botOwner.user_id, "found:", !!gateway, "has_token:", !!gateway?.access_token, "error:", gwError?.message)
+        
+        if (!gateway?.access_token) {
+          await sendTelegramMessage(botToken, chatId, "Gateway de pagamento nao configurado. Entre em contato com o suporte.")
+          return
+        }
+        
+        // Enviar mensagem de processando
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          `Voce selecionou: *${planName}*\n\nValor: R$ ${price.toFixed(2).replace(".", ",")}\n\nGerando pagamento PIX...`,
+          undefined
+        )
+        
+        // Gerar PIX usando a funcao padrao (igual ao plano normal)
         try {
-          const pixResponse = await fetch("https://api.mercadopago.com/v1/payments", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${gateway.access_token}`,
-              "X-Idempotency-Key": `downsell_${botUuid}_${telegramUserId}_${sequenceIndex}_${Date.now()}`,
-            },
-            body: JSON.stringify({
-              transaction_amount: price,
-              description: planName,
-              payment_method_id: "pix",
-              payer: {
-                email: `user${telegramUserId}@telegram.bot`,
-                first_name: (from?.first_name as string) || "Cliente",
-              },
-              notification_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://dragonteste.onrender.com"}/api/payments/webhook/mercadopago`,
-            }),
+          const pixResult = await createPixPayment({
+            accessToken: gateway.access_token,
+            amount: price,
+            description: `Pagamento - ${planName}`,
+            payerEmail: "luismarquesdevp@gmail.com",
           })
           
-          const pixData = await pixResponse.json()
-          console.log("[v0] Downsell PIX Response:", JSON.stringify(pixData))
-          
-          if (pixData.id && pixData.point_of_interaction?.transaction_data?.qr_code) {
-            const pixCopiaECola = pixData.point_of_interaction.transaction_data.qr_code
-            const qrCodeBase64 = pixData.point_of_interaction.transaction_data.qr_code_base64
-            
-            // Salvar pagamento do downsell
-            const { error: dsPaymentError } = await supabase.from("payments").insert({
-              user_id: botOwner?.user_id,
-              bot_id: botUuid,
-              flow_id: flowId,
-              telegram_user_id: String(telegramUserId),
-              telegram_username: userUsername || null,
-              telegram_first_name: userFirstName || null,
-              telegram_last_name: userLastName || null,
-              amount: price,
-              status: "pending",
-              payment_method: "pix",
-              gateway: "mercadopago",
-              external_payment_id: String(pixData.id),
-              description: `Pagamento - ${planName}`,
-              product_name: planName,
-              product_type: "downsell",
-              pix_code: pixCopiaECola,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            
-            if (dsPaymentError) {
-              console.error("[v0] Error saving downsell payment:", dsPaymentError)
-            } else {
-              console.log("[v0] Downsell payment saved successfully")
-            }
-            
-            // Cancelar demais downsells agendados para este usuario neste fluxo
-            await supabase
-              .from("scheduled_messages")
-              .update({ status: "cancelled" })
-              .eq("bot_id", botUuid)
-              .eq("telegram_user_id", String(telegramUserId))
-              .eq("flow_id", flowId)
-              .eq("message_type", "downsell")
-              .eq("status", "pending")
-            
-            // Enviar QR Code
-            if (qrCodeBase64) {
-              await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  chat_id: chatId,
-                  photo: `data:image/png;base64,${qrCodeBase64}`,
-                  caption: `<b>PIX - ${planName}</b>\n\nValor: R$ ${price.toFixed(2).replace(".", ",")}\n\nCopie o codigo abaixo:`,
-                  parse_mode: "HTML",
-                }),
-              })
-            }
-            
-            // Enviar codigo PIX copia e cola
+          if (!pixResult.success) {
             await sendTelegramMessage(
               botToken,
               chatId,
-              `<code>${pixCopiaECola}</code>\n\nToque no codigo acima para copiar`,
-              { inline_keyboard: [[{ text: "Ja paguei", callback_data: `check_payment_${pixData.id}` }]] }
+              `Erro ao gerar PIX: ${pixResult.error || "Tente novamente"}`,
+              undefined
             )
-          } else {
-            console.error("[v0] Erro ao gerar PIX downsell:", pixData)
-            await sendTelegramMessage(botToken, chatId, "Erro ao gerar pagamento. Tente novamente.")
+            return
           }
+          
+          console.log("[v0] Downsell PIX gerado com sucesso:", pixResult.paymentId)
+          
+          // Salvar pagamento do downsell
+          const { error: dsPaymentError } = await supabase.from("payments").insert({
+            user_id: botOwner.user_id,
+            bot_id: botUuid,
+            flow_id: flowId,
+            telegram_user_id: String(telegramUserId),
+            telegram_username: userUsername || null,
+            telegram_first_name: userFirstName || null,
+            telegram_last_name: userLastName || null,
+            amount: price,
+            status: "pending",
+            payment_method: "pix",
+            gateway: gateway.gateway_name || "mercadopago",
+            external_payment_id: String(pixResult.paymentId),
+            description: `Pagamento - ${planName}`,
+            product_name: planName,
+            product_type: "downsell",
+            qr_code: pixResult.qrCode,
+            qr_code_url: pixResult.qrCodeUrl,
+            copy_paste: pixResult.copyPaste,
+            pix_code: pixResult.copyPaste || pixResult.qrCode,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          
+          if (dsPaymentError) {
+            console.error("[v0] Error saving downsell payment:", dsPaymentError)
+          } else {
+            console.log("[v0] Downsell payment saved successfully")
+          }
+          
+          // Cancelar demais downsells agendados para este usuario neste fluxo
+          await supabase
+            .from("scheduled_messages")
+            .update({ status: "cancelled" })
+            .eq("bot_id", botUuid)
+            .eq("telegram_user_id", String(telegramUserId))
+            .eq("flow_id", flowId)
+            .eq("message_type", "downsell")
+            .eq("status", "pending")
+          
+          // Buscar config de mensagens de pagamento do flow
+          const flowDs = await getActiveFlowForBot(supabase, botUuid)
+          const flowConfigDs = (flowDs?.config as Record<string, unknown>) || {}
+          const paymentMessagesDs = (flowConfigDs.paymentMessages as PaymentMessagesConfig) || {}
+          
+          // Enviar mensagens de PIX de forma centralizada (igual ao plano normal)
+          await sendPixPaymentMessages({
+            botToken,
+            chatId,
+            pixCode: pixResult.copyPaste || pixResult.qrCode || "",
+            qrCodeUrl: pixResult.qrCodeUrl,
+            amount: price,
+            productName: planName,
+            paymentId: String(pixResult.paymentId),
+            config: paymentMessagesDs,
+            userName: userFirstName || "Cliente"
+          })
+          
         } catch (pixError) {
-          console.error("[v0] Erro ao gerar PIX para Downsell:", pixError)
-          await sendTelegramMessage(botToken, chatId, "Erro ao gerar pagamento. Tente novamente.")
+          const errorMsg = pixError instanceof Error ? pixError.message : String(pixError)
+          console.error("[v0] Erro ao gerar PIX para Downsell:", errorMsg)
+          await sendTelegramMessage(botToken, chatId, `Erro ao processar pagamento: ${errorMsg}`, undefined)
         }
         
         return
