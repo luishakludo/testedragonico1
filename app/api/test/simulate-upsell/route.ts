@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { getSupabaseAdmin } from "@/lib/supabase"
 import { NextResponse } from "next/server"
 
 // Funcao para calcular delay em ms
@@ -23,7 +23,7 @@ export async function GET() {
   }
 
   try {
-    const supabase = await createClient()
+    const supabase = getSupabaseAdmin()
     
     log("=== SIMULACAO DE PAGAMENTO APROVADO COM UPSELL ===")
     log("")
