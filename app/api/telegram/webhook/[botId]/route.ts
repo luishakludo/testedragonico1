@@ -1751,69 +1751,65 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
       // ========== FIM DOWNSELL CALLBACKS ==========
 
       // ========== UPSELL CALLBACKS ==========
-      // Suporta: up_accept_, up_decline_, up_plan_ (novo formato com multiplos planos)
-      if (callbackData.startsWith("up_accept_") || callbackData.startsWith("up_decline_") || callbackData.startsWith("up_plan_")) {
+      // Novo formato: up_{msgId}_{planIndex}_{priceInCents} (igual downsell)
+      if (callbackData.startsWith("up_")) {
         console.log("[v0] Upsell Callback recebido:", callbackData)
         
-        const isAccept = callbackData.startsWith("up_accept_")
-        const isPlan = callbackData.startsWith("up_plan_")
-        const isDecline = callbackData.startsWith("up_decline_")
+        // Parsear callback: up_{msgId}_{planIndex}_{priceInCents}
+        const upsellParts = callbackData.replace("up_", "").split("_")
+        const shortMsgId = upsellParts[0] || ""
+        const planIndex = parseInt(upsellParts[1]) || 0
+        const priceInCents = parseInt(upsellParts[2]) || 0
+        const upsellPrice = priceInCents / 100
         
-        // Buscar estado atual do usuario
-        const { data: userState } = await supabase
-          .from("user_flow_state")
-          .select("metadata, flow_id")
+        console.log(`[v0] Upsell callback parsed: msgId=${shortMsgId}, planIndex=${planIndex}, price=${upsellPrice}`)
+        
+        // Buscar a mensagem agendada para obter os dados completos
+        const { data: scheduledMsg } = await supabase
+          .from("scheduled_messages")
+          .select("*")
           .eq("bot_id", botUuid)
           .eq("telegram_user_id", String(telegramUserId))
-          .eq("status", "waiting_upsell")
-          .order("updated_at", { ascending: false })
+          .eq("message_type", "upsell")
+          .ilike("id", `%${shortMsgId}`)
+          .order("created_at", { ascending: false })
           .limit(1)
           .single()
         
-        if (!userState) {
-          console.log("[v0] Estado de upsell nao encontrado")
+        if (!scheduledMsg) {
+          console.log("[v0] Mensagem de upsell nao encontrada")
           await answerCallback(botToken, callbackQueryId, "Sessao expirada")
           return
         }
-
+        
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const metadata = userState.metadata as Record<string, any> | null
-        const currentUpsellIndex = metadata?.upsell_index || 0
-        let upsellPrice = metadata?.upsell_price || 0
-        let upsellName = metadata?.upsell_name || "Upsell"
-        let selectedPlanId = ""
-
-        // Se for callback de plano especifico (up_plan_{upsellIndex}_{planId}_{priceInCents})
-        if (isPlan) {
-          const planParts = callbackData.replace("up_plan_", "").split("_")
-          // planParts = [upsellIndex, planId, priceInCents]
-          selectedPlanId = planParts[1] || ""
-          const priceInCents = parseInt(planParts[2]) || 0
-          upsellPrice = priceInCents / 100
-          
-          // Buscar nome do plano no metadata
-          const plans = metadata?.plans || []
-          const selectedPlan = plans.find((p: { id: string; name: string }) => p.id === selectedPlanId)
-          if (selectedPlan) {
-            upsellName = selectedPlan.name
-          }
-          console.log(`[v0] Plano selecionado: ${selectedPlanId}, preco: R$ ${upsellPrice}`)
+        const msgMetadata = scheduledMsg.metadata as Record<string, any> | null
+        const plans = msgMetadata?.plans || []
+        const selectedPlan = plans[planIndex]
+        const flowId = scheduledMsg.flow_id
+        
+        if (!selectedPlan) {
+          console.log("[v0] Plano nao encontrado no indice:", planIndex)
+          await answerCallback(botToken, callbackQueryId, "Plano nao encontrado")
+          return
         }
+        
+        const upsellName = selectedPlan.buttonText || `Plano ${planIndex + 1}`
+        console.log(`[v0] Plano selecionado: ${selectedPlan.id}, nome: ${upsellName}, preco: R$ ${upsellPrice}`)
 
         // Buscar config do fluxo
         const { data: flowData } = await supabase
           .from("flows")
           .select("config")
-          .eq("id", userState.flow_id)
+          .eq("id", flowId)
           .single()
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const flowConfig = flowData?.config as Record<string, any> | null
-        const upsellSequences = flowConfig?.upsell?.sequences || []
+        const upsellConfig = flowConfig?.upsell
 
-        if (isAccept || isPlan) {
-          // Usuario aceitou o upsell (ou selecionou um plano) - gerar pagamento
-          console.log(`[v0] Usuario ${telegramUserId} aceitou upsell ${currentUpsellIndex} - R$ ${upsellPrice} (plano: ${selectedPlanId || "default"})`)
+        // Usuario selecionou um plano de upsell - gerar pagamento
+        console.log(`[v0] Usuario ${telegramUserId} aceitou upsell - R$ ${upsellPrice} (plano: ${selectedPlan.id})`)
           
           await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
 
@@ -1845,7 +1841,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${gateway.access_token}`,
-                "X-Idempotency-Key": `upsell_${botUuid}_${telegramUserId}_${currentUpsellIndex}_${Date.now()}`,
+                "X-Idempotency-Key": `upsell_${botUuid}_${telegramUserId}_${shortMsgId}_${planIndex}_${Date.now()}`,
               },
               body: JSON.stringify({
                 transaction_amount: upsellPrice,
@@ -1939,142 +1935,6 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             console.error("[v0] Erro ao processar upsell:", error)
             await sendTelegramMessage(botToken, chatId, "Erro ao processar. Tente novamente.")
           }
-        } else if (isDecline) {
-          // Usuario recusou o upsell
-          console.log(`[v0] Usuario ${telegramUserId} recusou upsell ${currentUpsellIndex}`)
-          
-          await answerCallback(botToken, callbackQueryId, "Entendido!")
-
-          const nextIndex = currentUpsellIndex + 1
-
-          if (nextIndex < upsellSequences.length) {
-            // Tem mais upsell - verificar timing e enviar proximo
-            const nextUpsell = upsellSequences[nextIndex]
-            
-            // Pegar os planos do proximo upsell
-            const nextPlans = nextUpsell.plans || []
-            const firstNextPlan = nextPlans[0]
-            
-            // Atualizar estado com proximo upsell
-            await supabase
-              .from("user_flow_state")
-              .update({
-                status: "waiting_upsell",
-                metadata: {
-                  upsell_index: nextIndex,
-                  upsell_name: nextUpsell.name,
-                  upsell_price: firstNextPlan?.price || nextUpsell.price,
-                  upsell_sequence_id: nextUpsell.id,
-                  plans: nextPlans.map((p: { id: string; name: string; price: number }) => ({ id: p.id, name: p.name, price: p.price })),
-                },
-                updated_at: new Date().toISOString(),
-              })
-              .eq("bot_id", botUuid)
-              .eq("telegram_user_id", String(telegramUserId))
-
-            // Enviar proximo upsell
-            if (nextUpsell.sendTiming === "immediate") {
-              // Enviar midias
-              if (nextUpsell.medias && nextUpsell.medias.length > 0) {
-                for (const mediaUrl of nextUpsell.medias) {
-                  if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
-                    await sendTelegramVideo(botToken, chatId, mediaUrl, "")
-                  } else {
-                    await sendTelegramPhoto(botToken, chatId, mediaUrl, "")
-                  }
-                  await new Promise(r => setTimeout(r, 500))
-                }
-              }
-
-              // Montar botoes - suporte a multiplos planos
-              const inlineKeyboard: { inline_keyboard: { text: string; callback_data: string }[][] } = {
-                inline_keyboard: []
-              }
-
-              if (nextPlans.length > 0) {
-                // Se tem planos, mostrar cada plano como botao
-                const planButtons: { text: string; callback_data: string }[] = []
-                for (const plan of nextPlans) {
-                  const priceInCents = Math.round((plan.price || 0) * 100)
-                  const buttonText = plan.buttonText || plan.name || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`
-                  planButtons.push({
-                    text: buttonText,
-                    callback_data: `up_plan_${nextIndex}_${plan.id}_${priceInCents}`
-                  })
-                }
-                // Colocar botoes lado a lado (max 2 por linha)
-                for (let i = 0; i < planButtons.length; i += 2) {
-                  const row = planButtons.slice(i, i + 2)
-                  inlineKeyboard.inline_keyboard.push(row)
-                }
-              } else {
-                // Fallback: botao unico de aceitar
-                inlineKeyboard.inline_keyboard.push([
-                  { text: nextUpsell.acceptButtonText || "Quero essa oferta!", callback_data: `up_accept_${nextUpsell.price}_${nextIndex}` }
-                ])
-              }
-
-              // Botao de recusar
-              if (!nextUpsell.hideRejectButton) {
-                const rejectButton = { 
-                  text: nextUpsell.rejectButtonText || "Nao tenho interesse", 
-                  callback_data: `up_decline_${nextIndex}` 
-                }
-                const lastRow = inlineKeyboard.inline_keyboard[inlineKeyboard.inline_keyboard.length - 1]
-                if (nextPlans.length > 0 && lastRow && lastRow.length === 1) {
-                  lastRow.push(rejectButton)
-                } else {
-                  inlineKeyboard.inline_keyboard.push([rejectButton])
-                }
-              }
-
-              const message = nextUpsell.message || `Oferta especial: ${nextUpsell.name}\n\nValor: R$ ${(nextUpsell.price || 0).toFixed(2).replace(".", ",")}`
-              await sendTelegramMessage(botToken, chatId, message, inlineKeyboard)
-            }
-          } else {
-            // Acabou os upsells - enviar entrega
-            console.log(`[v0] Todos os upsells processados, enviando entrega`)
-            
-            // Atualizar estado
-            await supabase
-              .from("user_flow_state")
-              .update({
-                status: "completed",
-                updated_at: new Date().toISOString(),
-              })
-              .eq("bot_id", botUuid)
-              .eq("telegram_user_id", String(telegramUserId))
-
-            // Enviar entrega
-            const delivery = flowConfig?.delivery
-            if (delivery) {
-              if (delivery.medias && delivery.medias.length > 0) {
-                for (const mediaUrl of delivery.medias) {
-                  if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
-                    await sendTelegramVideo(botToken, chatId, mediaUrl, "")
-                  } else {
-                    await sendTelegramPhoto(botToken, chatId, mediaUrl, "")
-                  }
-                  await new Promise(r => setTimeout(r, 500))
-                }
-              }
-
-              if (delivery.link) {
-                const buttonText = delivery.linkText || "Acessar conteudo"
-                const keyboard = {
-                  inline_keyboard: [
-                    [{ text: buttonText, url: delivery.link }]
-                  ]
-                }
-                await sendTelegramMessage(botToken, chatId, "Seu acesso foi liberado! Clique no botao abaixo:", keyboard)
-              } else {
-                await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
-              }
-            } else {
-              await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
-            }
-          }
-        }
 
         return
       }

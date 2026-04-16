@@ -129,59 +129,27 @@ async function sendUpsellOffer(
     }
   }
 
-  // Montar botoes - suporte a multiplos planos
+  // Montar botoes - mesma estrutura do downsell (apenas planos)
   const plans = upsell.plans || []
   const inlineKeyboard: { inline_keyboard: { text: string; callback_data: string }[][] } = {
     inline_keyboard: []
   }
 
   if (plans.length > 0) {
-    // Se tem planos configurados, mostrar cada plano como um botao
+    // Mostrar cada plano como um botao (um por linha, igual downsell)
     // Formato: up_plan_{upsellIndex}_{planId}_{priceInCents}
-    const planButtons: { text: string; callback_data: string }[] = []
-    
     for (const plan of plans) {
       const priceInCents = Math.round((plan.price || 0) * 100)
-      const buttonText = plan.buttonText || plan.name || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`
-      planButtons.push({
+      const buttonText = plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`
+      inlineKeyboard.inline_keyboard.push([{
         text: buttonText,
         callback_data: `up_plan_${upsellIndex}_${plan.id}_${priceInCents}`
-      })
-    }
-
-    // Colocar botoes de planos lado a lado (max 2 por linha)
-    for (let i = 0; i < planButtons.length; i += 2) {
-      const row = planButtons.slice(i, i + 2)
-      inlineKeyboard.inline_keyboard.push(row)
-    }
-  } else {
-    // Fallback: botao unico de aceitar (compatibilidade com formato antigo)
-    inlineKeyboard.inline_keyboard.push([
-      { text: upsell.acceptButtonText || "Quero essa oferta!", callback_data: `up_accept_${upsell.price}_${upsellIndex}` }
-    ])
-  }
-
-  // Adicionar botao de recusar na mesma linha (se nao estiver escondido)
-  if (!upsell.hideRejectButton) {
-    const rejectButton = { 
-      text: upsell.rejectButtonText || "Nao tenho interesse", 
-      callback_data: `up_decline_${upsellIndex}` 
-    }
-    
-    // Se tem planos e a ultima linha tem espaco, adicionar na mesma linha
-    // Senao, criar nova linha
-    const lastRow = inlineKeyboard.inline_keyboard[inlineKeyboard.inline_keyboard.length - 1]
-    if (plans.length > 0 && lastRow && lastRow.length === 1) {
-      // Adicionar ao lado do ultimo botao de plano
-      lastRow.push(rejectButton)
-    } else {
-      // Criar nova linha para o botao de recusar
-      inlineKeyboard.inline_keyboard.push([rejectButton])
+      }])
     }
   }
 
   // Enviar mensagem
-  const message = upsell.message || `Oferta especial: ${upsell.name || "Produto exclusivo"}\n\nValor: R$ ${(upsell.price || 0).toFixed(2).replace(".", ",")}`
+  const message = upsell.message || "Oferta especial para voce!"
   await sendTelegramMessage(botToken, chatId, message, inlineKeyboard)
 
   // Atualizar estado - salvar info do primeiro plano se existir
@@ -195,10 +163,9 @@ async function sendUpsellOffer(
       status: "waiting_upsell",
       metadata: {
         upsell_index: upsellIndex,
-        upsell_name: upsell.name,
         upsell_price: firstPlan?.price || upsell.price,
         upsell_sequence_id: upsell.id,
-        plans: plans.map((p: { id: string; name: string; price: number }) => ({ id: p.id, name: p.name, price: p.price })),
+        plans: plans.map((p: { id: string; buttonText: string; price: number }) => ({ id: p.id, buttonText: p.buttonText, price: p.price })),
       },
       updated_at: new Date().toISOString()
     }, { onConflict: "bot_id,telegram_user_id" })
@@ -684,7 +651,7 @@ export async function POST(request: NextRequest) {
                       
                       const scheduledFor = new Date(Date.now() + cumulativeDelayMs).toISOString()
                       
-                      // Inserir na tabela scheduled_messages
+                      // Inserir na tabela scheduled_messages (mesma estrutura do downsell)
                       const { error: insertError } = await supabase
                         .from("scheduled_messages")
                         .insert({
@@ -701,10 +668,7 @@ export async function POST(request: NextRequest) {
                             plans: upsellSeq.plans || [],
                             sequence_index: i,
                             botToken: bot.token,
-                            acceptButtonText: upsellSeq.acceptButtonText,
-                            rejectButtonText: upsellSeq.rejectButtonText,
-                            hideRejectButton: upsellSeq.hideRejectButton,
-                            deliveryType: upsellSeq.deliveryType,
+                            deliveryType: upsellSeq.deliveryType || "global",
                             deliverableId: upsellSeq.deliverableId,
                           },
                           created_at: new Date().toISOString(),

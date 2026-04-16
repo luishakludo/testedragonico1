@@ -230,32 +230,28 @@ export async function GET(request: NextRequest) {
           }
         }
         
-        // Montar botoes dos planos - logica diferente para DOWNSELL vs UPSELL
-        const planButtons: Array<Array<{ text: string; callback_data: string }>> = []
-        const sequenceIndex = (metadata as Record<string, unknown>)?.sequence_index as number || 0
-        const hideRejectButton = (metadata as Record<string, unknown>)?.hideRejectButton as boolean || false
-        const rejectButtonText = (metadata as Record<string, unknown>)?.rejectButtonText as string || "Nao tenho interesse"
-        
-        if (plans && plans.length > 0) {
-          if (messageType === "upsell") {
-            // UPSELL: usar callback up_plan_{sequenceIndex}_{planId}_{priceInCents}
-            for (const plan of plans) {
-              const priceInCents = Math.round((plan.price || 0) * 100)
-              planButtons.push([{
-                text: plan.buttonText || plan.name || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
-                callback_data: `up_plan_${sequenceIndex}_${plan.id}_${priceInCents}`
-              }])
-              console.log(`[CRON] Upsell button: ${plan.buttonText} - callback: up_plan_${sequenceIndex}_${plan.id}_${priceInCents}`)
-            }
-            
-            // Adicionar botao de recusar (se nao estiver escondido)
-            if (!hideRejectButton) {
-              planButtons.push([{
-                text: rejectButtonText,
-                callback_data: `up_decline_${sequenceIndex}`
-              }])
-            }
-          } else {
+  // Montar botoes dos planos - mesma estrutura para DOWNSELL e UPSELL
+  const planButtons: Array<Array<{ text: string; callback_data: string }>> = []
+  const sequenceIndex = (metadata as Record<string, unknown>)?.sequence_index as number || 0
+  
+  if (plans && plans.length > 0) {
+  if (messageType === "upsell") {
+  // UPSELL: usar callback up_{msgId}_{planIndex}_{priceInCents} (igual downsell)
+  // Limite do Telegram: 64 caracteres
+  for (let planIdx = 0; planIdx < plans.length; planIdx++) {
+  const plan = plans[planIdx]
+  const priceInCents = Math.round((plan.price || 0) * 100)
+  // Usar apenas os ultimos 8 chars do msg.id para encurtar
+  const shortMsgId = String(msg.id).slice(-8)
+  const callbackData = `up_${shortMsgId}_${planIdx}_${priceInCents}`
+  
+  planButtons.push([{
+  text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
+  callback_data: callbackData
+  }])
+  console.log(`[CRON] Upsell button: ${plan.buttonText} - callback: ${callbackData} (${callbackData.length} chars)`)
+  }
+  } else {
             // DOWNSELL: usar callback curto ds_{msgId}_{planIndex}_{priceInCents}
             // Limite do Telegram: 64 caracteres
             for (let planIdx = 0; planIdx < plans.length; planIdx++) {
