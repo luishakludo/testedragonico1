@@ -85,7 +85,47 @@ export async function GET() {
 
     log("")
     log(`2. Usando fluxo: ${flowToTest.name} (${flowToTest.id})`)
-    log(`   Bot ID: ${flowToTest.bot_id}`)
+    log(`   Bot ID do fluxo: ${flowToTest.bot_id || "NULL"}`)
+    
+    // Se o fluxo nao tem bot_id, buscar na tabela flow_bots
+    let botId = flowToTest.bot_id
+    if (!botId) {
+      log("   Bot ID nulo no fluxo, buscando na tabela flow_bots...")
+      const { data: flowBot } = await supabase
+        .from("flow_bots")
+        .select("bot_id")
+        .eq("flow_id", flowToTest.id)
+        .limit(1)
+        .single()
+      
+      if (flowBot?.bot_id) {
+        botId = flowBot.bot_id
+        log(`   Encontrado bot via flow_bots: ${botId}`)
+      } else {
+        // Buscar qualquer bot ativo
+        log("   Nenhum bot em flow_bots, buscando qualquer bot ativo...")
+        const { data: anyBot } = await supabase
+          .from("bots")
+          .select("id, name")
+          .limit(1)
+          .single()
+        
+        if (anyBot?.id) {
+          botId = anyBot.id
+          log(`   Usando bot: ${anyBot.name} (${anyBot.id})`)
+        } else {
+          log("   ERRO: Nenhum bot encontrado no sistema!")
+          return NextResponse.json({
+            success: false,
+            logs,
+            problema: "Nenhum bot encontrado para testar",
+            sugestao: "Crie um bot primeiro"
+          })
+        }
+      }
+    }
+    
+    log(`   Bot ID final: ${botId}`)
     log(`   Upsell habilitado: ${upsellConfig?.enabled}`)
     log(`   Sequencias de upsell: ${upsellSequences.length}`)
 
@@ -107,7 +147,7 @@ export async function GET() {
     const { data: testUser } = await supabase
       .from("bot_users")
       .select("telegram_user_id, first_name, bot_id")
-      .eq("bot_id", flowToTest.bot_id)
+      .eq("bot_id", botId)
       .limit(1)
       .single()
 
@@ -118,7 +158,7 @@ export async function GET() {
     }
 
     const testChatId = testUser?.telegram_user_id || "123456789"
-    const testBotId = flowToTest.bot_id
+    const testBotId = botId
 
     // 5. Simular o agendamento do upsell (igual ao webhook faz)
     log("")
