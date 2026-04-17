@@ -38,14 +38,61 @@ import { NoBotSelected } from "@/components/no-bot-selected"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { ChatDialog } from "@/components/chat/chat-dialog"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays, subMonths } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import type { DateRange } from "react-day-picker"
 
 const dateRanges = [
   { label: "Hoje", value: "today" },
+  { label: "Ontem", value: "yesterday" },
   { label: "Ultimos 7 dias", value: "7days" },
   { label: "Ultimos 30 dias", value: "30days" },
+  { label: "Ultimos 3 meses", value: "3months" },
   { label: "Este mes", value: "month" },
   { label: "Este ano", value: "year" },
 ]
+
+// Funcao para obter o range de datas baseado no preset
+function getPresetDateRange(preset: string): DateRange {
+  const now = new Date()
+  switch (preset) {
+    case "today":
+      return { from: new Date(now.setHours(0, 0, 0, 0)), to: new Date() }
+    case "yesterday": {
+      const yesterday = subDays(new Date(), 1)
+      yesterday.setHours(0, 0, 0, 0)
+      const yesterdayEnd = subDays(new Date(), 1)
+      yesterdayEnd.setHours(23, 59, 59, 999)
+      return { from: yesterday, to: yesterdayEnd }
+    }
+    case "7days":
+      return { from: subDays(new Date(), 7), to: new Date() }
+    case "30days":
+      return { from: subDays(new Date(), 30), to: new Date() }
+    case "3months":
+      return { from: subMonths(new Date(), 3), to: new Date() }
+    case "month":
+      return { from: startOfMonth(new Date()), to: new Date() }
+    case "year":
+      return { from: startOfYear(new Date()), to: new Date() }
+    default:
+      return { from: subDays(new Date(), 7), to: new Date() }
+  }
+}
+
+// Funcao para formatar o label do range de datas
+function formatDateRangeLabel(range: DateRange | undefined, preset: string): string {
+  if (!range?.from) return "Selecionar periodo"
+  
+  const presetLabel = dateRanges.find(d => d.value === preset)?.label
+  if (presetLabel && preset !== "custom") return presetLabel
+  
+  if (range.to) {
+    return `${format(range.from, "dd/MM/yyyy")} - ${format(range.to, "dd/MM/yyyy")}`
+  }
+  return format(range.from, "dd/MM/yyyy")
+}
 
 const filterOptions = [
   { label: "Todos", value: "all" },
@@ -119,6 +166,10 @@ export default function DashboardPage() {
   const { theme, setTheme } = useTheme()
   const [selectedDateRange, setSelectedDateRange] = useState("7days")
   const [selectedFilter, setSelectedFilter] = useState("all")
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(getPresetDateRange("7days"))
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [editingYear, setEditingYear] = useState(false)
+  const [yearInputValue, setYearInputValue] = useState(new Date().getFullYear().toString())
 
   // Usar o mês atual para os intervalos
   const { weeks: currentMonthWeeks, firstWeek } = getCurrentMonthWeekRanges()
@@ -127,6 +178,24 @@ export default function DashboardPage() {
   const [tablePeriod, setTablePeriod] = useState("month")
   const [chatOpen, setChatOpen] = useState(false)
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null)
+  
+  // Obter userId do usuario logado para filtrar dados corretamente
+  const userId = session?.user?.id || session?.userId
+
+  // Handler para selecionar preset de data
+  const handlePresetSelect = (preset: string) => {
+    setSelectedDateRange(preset)
+    setDateRange(getPresetDateRange(preset))
+    setIsDatePickerOpen(false)
+  }
+
+  // Handler para selecionar range customizado no calendario
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    setDateRange(range)
+    if (range?.from && range?.to) {
+      setSelectedDateRange("custom")
+    }
+  }
 
   // Buscar conversas recentes
   const { data: conversationsData, isLoading: loadingConversations } = useSWR<{
@@ -138,7 +207,14 @@ export default function DashboardPage() {
     { refreshInterval: 30000 } // Atualizar a cada 30 segundos
   )
 
-  // Buscar dados de faturamento (payments)
+  // Construir URL de payments com filtro de periodo
+  const paymentsUrl = userId
+    ? selectedDateRange === "custom" && dateRange?.from && dateRange?.to
+      ? `/api/payments/list?userId=${userId}&startDate=${dateRange.from.toISOString()}&endDate=${dateRange.to.toISOString()}&limit=1&offset=0`
+      : `/api/payments/list?userId=${userId}&period=${selectedDateRange}&limit=1&offset=0`
+    : null
+
+  // Buscar dados de faturamento (payments) - usando userId e filtro de periodo
   const { data: paymentsData } = useSWR<{
     stats: {
       totalApproved: number
@@ -146,7 +222,7 @@ export default function DashboardPage() {
       approvedUniqueUsers: number
     }
   }>(
-    selectedBot ? `/api/payments/list?bot_id=${selectedBot.id}&page=1&per_page=1` : null,
+    paymentsUrl,
     fetcher,
     { refreshInterval: 30000 }
   )
@@ -238,29 +314,72 @@ export default function DashboardPage() {
             Painel Analítico
           </h1>
           <div className="flex items-center gap-3">
-            <Popover>
+            <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
               <PopoverTrigger asChild>
-                <button className="flex items-center gap-2 bg-card px-4 py-2 rounded-xl shadow-sm border border-border text-sm font-medium text-foreground hover:bg-muted">
+                <button className="flex items-center gap-2 bg-card px-4 py-2.5 rounded-xl shadow-sm border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors">
                   <Calendar size={16} className="text-muted-foreground" />
-                  {dateRanges.find(d => d.value === selectedDateRange)?.label || "Selecionar Data"}
+                  <span>{formatDateRangeLabel(dateRange, selectedDateRange)}</span>
                   <ChevronDown size={14} className="text-muted-foreground" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-48 p-2" align="end">
-                <div className="flex flex-col gap-1">
-                  {dateRanges.map((range) => (
-                    <button
-                      key={range.value}
-                      onClick={() => setSelectedDateRange(range.value)}
-                      className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${selectedDateRange === range.value
-                          ? "bg-accent/30 text-accent-foreground font-medium"
-                          : "hover:bg-muted text-foreground"
-                        }`}
-                    >
-                      {range.label}
-                      {selectedDateRange === range.value && <Check size={14} />}
-                    </button>
-                  ))}
+              <PopoverContent className="w-auto p-0" align="end">
+                <div className="flex">
+                  {/* Sidebar de presets */}
+                  <div className="w-40 border-r border-border p-3 flex flex-col gap-1">
+                    {dateRanges.map((range) => (
+                      <button
+                        key={range.value}
+                        onClick={() => handlePresetSelect(range.value)}
+                        className={`text-left px-3 py-2 rounded-lg text-sm transition-colors ${selectedDateRange === range.value
+                            ? "bg-foreground text-background font-medium"
+                            : "hover:bg-muted text-foreground"
+                          }`}
+                      >
+                        {range.label}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Calendarios lado a lado */}
+                  <div className="p-4">
+                    <div className="flex gap-4">
+                      <CalendarComponent
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={handleDateRangeSelect}
+                        numberOfMonths={2}
+                        locale={ptBR}
+                        className="rounded-lg"
+                      />
+                    </div>
+                    
+                    {/* Rodape com range selecionado e botoes */}
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+                      <div className="text-sm text-muted-foreground">
+                        {dateRange?.from && dateRange?.to && (
+                          <span>
+                            {format(dateRange.from, "dd 'de' MMMM", { locale: ptBR })} - {format(dateRange.to, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsDatePickerOpen(false)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-accent text-accent-foreground hover:bg-accent/90"
+                          onClick={() => setIsDatePickerOpen(false)}
+                        >
+                          Aplicar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </PopoverContent>
             </Popover>
@@ -459,10 +578,10 @@ export default function DashboardPage() {
 
               {/* Cards em Fileira */}
               <div className="flex-1 flex items-end gap-3 mt-1 z-10">
-                {/* Card Ganhos */}
+                {/* Card Ganhos - mostra usuarios que pagaram (conversoes) */}
                 <div className="flex-1 h-[33%] bg-accent rounded-2xl p-3 relative overflow-hidden">
                   <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.3) 5px, rgba(255,255,255,0.3) 10px)" }}></div>
-                  <div className="relative z-10 bg-white/90 dark:bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Ganhos 0</div>
+                  <div className="relative z-10 bg-white/90 dark:bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Ganhos {paymentsData?.stats?.approved ?? 0}</div>
                 </div>
                 {/* Card Perdas */}
                 <div className="flex-1 h-[33%] bg-secondary rounded-2xl p-3 shadow-lg">
