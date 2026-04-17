@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
     const botId = searchParams.get("bot_id")
     const telegramUserId = searchParams.get("telegram_user_id")
 
+    console.log("[v0] chat/messages - bot_id:", botId, "telegram_user_id:", telegramUserId)
+    
     if (!botId || !telegramUserId) {
       return NextResponse.json({ 
         error: "bot_id and telegram_user_id are required" 
@@ -24,6 +26,8 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: true })
       .limit(100)
 
+    console.log("[v0] chat/messages - encontrou", messages?.length || 0, "mensagens no banco")
+    
     if (error) {
       console.error("[chat/messages] Error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
