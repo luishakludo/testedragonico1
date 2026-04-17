@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase"
 
 export async function POST(request: NextRequest) {
   try {
-    const { botId, chatId, message } = await request.json()
+    const { botId, chatId, message, telegramUserId } = await request.json()
 
     if (!botId || !chatId || !message) {
       return NextResponse.json({ success: false, error: "Dados incompletos" }, { status: 400 })
@@ -47,11 +47,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Salvar mensagem no banco usando admin
+    // Usar telegramUserId se fornecido, senao usar chatId
+    const userIdToSave = telegramUserId || chatId
     const { error: saveError } = await supabaseAdmin
       .from("bot_messages")
       .insert({
         bot_id: botId,
-        telegram_user_id: String(chatId),
+        telegram_user_id: String(userIdToSave),
         telegram_chat_id: String(chatId),
         direction: "outgoing",
         message_type: "text",

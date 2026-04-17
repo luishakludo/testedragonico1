@@ -29,9 +29,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Filtrar mensagens de /start para nao poluir o chat
+    const filteredMessages = (messages || []).filter(msg => {
+      const content = msg.content?.trim()?.toLowerCase() || ""
+      return content !== "/start" && !content.startsWith("/start ")
+    })
+
     return NextResponse.json({ 
-      messages: messages || [],
-      count: messages?.length || 0
+      messages: filteredMessages,
+      count: filteredMessages.length
     })
   } catch (err) {
     console.error("[chat/messages] Error:", err)

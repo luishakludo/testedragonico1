@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, Search, MessageSquare, RefreshCw, X } from "lucide-react"
+import { Send, Search, MessageSquare, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Conversation {
@@ -212,6 +212,7 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
         body: JSON.stringify({
           botId: botIdToUse,
           chatId: selectedConversation.telegram_chat_id,
+          telegramUserId: selectedConversation.telegram_user_id,
           message: newMessage.trim(),
         }),
       })
@@ -383,9 +384,7 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
                       </p>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-                    <X className="h-4 w-4" />
-                  </Button>
+
                 </div>
 
                 {/* Mensagens - estilo WhatsApp */}
