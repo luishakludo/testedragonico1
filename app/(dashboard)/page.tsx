@@ -128,9 +128,6 @@ export default function DashboardPage() {
   const [chatOpen, setChatOpen] = useState(false)
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null)
 
-  // Obter userId do usuario logado - IMPORTANTE: usar para filtrar dados por usuario
-  const userId = session?.user?.id || session?.userId
-
   // Buscar conversas recentes
   const { data: conversationsData, isLoading: loadingConversations } = useSWR<{
     conversations: Conversation[]
@@ -141,7 +138,7 @@ export default function DashboardPage() {
     { refreshInterval: 30000 } // Atualizar a cada 30 segundos
   )
 
-  // Buscar dados de faturamento (payments) filtrado pelo usuario logado
+  // Buscar dados de faturamento (payments)
   const { data: paymentsData } = useSWR<{
     stats: {
       totalApproved: number
@@ -149,7 +146,7 @@ export default function DashboardPage() {
       approvedUniqueUsers: number
     }
   }>(
-    selectedBot && userId ? `/api/payments/list?botId=${selectedBot.id}&userId=${userId}&limit=1&offset=0` : null,
+    selectedBot ? `/api/payments/list?bot_id=${selectedBot.id}&page=1&per_page=1` : null,
     fetcher,
     { refreshInterval: 30000 }
   )

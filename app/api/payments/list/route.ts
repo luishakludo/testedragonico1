@@ -7,29 +7,19 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const botId = searchParams.get("botId")
+    const botId = searchParams.get("botId") || searchParams.get("bot_id")
     const userId = searchParams.get("userId")
     const status = searchParams.get("status")
-    const limit = parseInt(searchParams.get("limit") || "50")
+    const limit = parseInt(searchParams.get("limit") || searchParams.get("per_page") || "50")
     const offset = parseInt(searchParams.get("offset") || "0")
+    const page = parseInt(searchParams.get("page") || "1")
+    
+    // Calcular offset baseado em page se fornecido
+    const finalOffset = searchParams.get("page") ? (page - 1) * limit : offset
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-    // Se tiver userId, buscar os bots desse usuario
-    let userBotIds: string[] = []
-    if (userId) {
-      // Buscar bots do usuario
-      const { data: userBots, error: botsError } = await supabase
-        .from("bots")
-        .select("id")
-        .eq("user_id", userId)
-      
-      userBotIds = userBots?.map(b => b.id) || []
-      
-      console.log("[v0] Payments list - userId:", userId, "userBots:", userBotIds.length, "error:", botsError)
-    }
-
-    // Build query - buscar pagamentos dos bots do usuario OU com user_id direto
+    // Build query
     let query = supabase
       .from("payments")
       .select(`
@@ -40,37 +30,11 @@ export async function GET(request: NextRequest) {
         )
       `, { count: "exact" })
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
+      .range(finalOffset, finalOffset + limit - 1)
 
-    // IMPORTANTE: Quando temos userId E botId, precisamos garantir que:
-    // 1. O bot pertence ao usuario (já verificado pelos userBotIds)
-    // 2. Os pagamentos são APENAS do bot específico E do usuario
-    if (userId && botId) {
-      // Verificar se o botId pertence aos bots do usuario
-      if (userBotIds.includes(botId)) {
-        // Bot pertence ao usuario: filtrar por esse bot E (bot_id OU user_id direto)
-        const orFilter = `bot_id.eq.${botId},and(user_id.eq.${userId},bot_id.eq.${botId})`
-        console.log("[v0] Payments list - userId + botId filter, botId:", botId)
-        query = query.eq("bot_id", botId)
-      } else {
-        // Bot não pertence ao usuario: retornar vazio
-        console.log("[v0] Payments list - botId not owned by user, returning empty")
-        query = query.eq("bot_id", "00000000-0000-0000-0000-000000000000") // ID impossível
-      }
-    } else if (userId) {
-      // Apenas userId: buscar por bot_id dos bots do usuario OU user_id direto
-      if (userBotIds.length > 0) {
-        const botIdsString = userBotIds.join(",")
-        const orFilter = `bot_id.in.(${botIdsString}),user_id.eq.${userId}`
-        console.log("[v0] Payments list - userId only, OR filter:", orFilter)
-        query = query.or(orFilter)
-      } else {
-        query = query.eq("user_id", userId)
-      }
-    } else if (botId) {
-      // Apenas botId (sem userId): retornar vazio por segurança
-      console.log("[v0] Payments list - botId without userId, returning empty for security")
-      query = query.eq("bot_id", "00000000-0000-0000-0000-000000000000")
+    // Filtrar por bot_id se fornecido
+    if (botId) {
+      query = query.eq("bot_id", botId)
     }
 
     if (status && status !== "todos") {
@@ -78,13 +42,6 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: payments, error, count } = await query
-
-    console.log("[v0] Payments query result - count:", count, "payments:", payments?.length, "error:", error)
-    
-    // Debug: mostrar os product_types encontrados
-    const productTypes = payments?.map(p => p.product_type).filter(Boolean)
-    const uniqueTypes = [...new Set(productTypes)]
-    console.log("[v0] Product types found:", uniqueTypes, "order_bump count:", payments?.filter(p => p.product_type?.includes("order_bump")).length)
 
     if (error) {
       console.error("[v0] Error fetching payments:", error)
@@ -94,33 +51,18 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Calculate stats - MESMO filtro da query principal para consistencia
+    // Calculate stats - filtrar pelo mesmo bot_id
     let statsQuery = supabase
       .from("payments")
       .select("status, amount, telegram_user_id, payer_email, id")
 
-    // Aplicar EXATAMENTE a mesma logica de filtragem da query principal
-    if (userId && botId) {
-      if (userBotIds.includes(botId)) {
-        statsQuery = statsQuery.eq("bot_id", botId)
-      } else {
-        statsQuery = statsQuery.eq("bot_id", "00000000-0000-0000-0000-000000000000")
-      }
-    } else if (userId) {
-      if (userBotIds.length > 0) {
-        const botIdsString = userBotIds.join(",")
-        const statsOrFilter = `bot_id.in.(${botIdsString}),user_id.eq.${userId}`
-        statsQuery = statsQuery.or(statsOrFilter)
-      } else {
-        statsQuery = statsQuery.eq("user_id", userId)
-      }
-    } else if (botId) {
-      statsQuery = statsQuery.eq("bot_id", "00000000-0000-0000-0000-000000000000")
+    if (botId) {
+      statsQuery = statsQuery.eq("bot_id", botId)
     }
 
     const { data: allPayments } = await statsQuery
 
-    // Contar usuarios unicos com pagamentos aprovados (pelo telegram_user_id ou payer_email)
+    // Contar usuarios unicos com pagamentos aprovados
     const approvedPayments = allPayments?.filter(p => p.status === "approved") || []
     const uniqueApprovedUsers = new Set(
       approvedPayments.map(p => p.telegram_user_id || p.payer_email || p.id)
@@ -145,7 +87,7 @@ export async function GET(request: NextRequest) {
       stats,
       total: count || 0,
       limit,
-      offset,
+      offset: finalOffset,
     })
   } catch (error) {
     console.error("ERROR in payments list:", error)
