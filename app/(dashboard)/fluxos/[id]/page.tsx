@@ -4129,8 +4129,67 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-neutral-500">Descricao</Label>
-                        <Textarea value={orderBumpUpsell.description} onChange={(e) => { setOrderBumpUpsell({...orderBumpUpsell, description: e.target.value}); setHasChanges(true) }} placeholder="Descricao do order bump..." rows={3} className="bg-white border-neutral-200" />
+                        <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
+                        <Textarea value={orderBumpUpsell.description} onChange={(e) => { setOrderBumpUpsell({...orderBumpUpsell, description: e.target.value}); setHasChanges(true) }} placeholder="Descricao do order bump..." rows={3} className="bg-white border-neutral-200" maxLength={4000} />
+                        <p className="text-xs text-neutral-500 text-right">{orderBumpUpsell.description?.length || 0}/4000 caracteres</p>
+                      </div>
+
+                      {/* Botoes */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-neutral-500">Botao Aceitar</Label>
+                          <div className="flex items-center gap-2 rounded-lg bg-secondary/50 p-3 border border-neutral-200">
+                            <Check className="h-4 w-4 text-emerald-500" />
+                            <Input
+                              value={orderBumpUpsell.acceptText}
+                              onChange={(e) => {
+                                setOrderBumpUpsell({...orderBumpUpsell, acceptText: e.target.value})
+                                setHasChanges(true)
+                              }}
+                              className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-neutral-500">Botao Recusar</Label>
+                          <div className="flex items-center gap-2 rounded-lg bg-secondary/50 p-3 border border-neutral-200">
+                            <X className="h-4 w-4 text-destructive" />
+                            <Input
+                              value={orderBumpUpsell.rejectText}
+                              onChange={(e) => {
+                                setOrderBumpUpsell({...orderBumpUpsell, rejectText: e.target.value})
+                                setHasChanges(true)
+                              }}
+                              className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Entrega */}
+                      <div className="space-y-2">
+                        <Label className="text-neutral-500">Entrega do Order Bump</Label>
+                        <Select
+                          value={orderBumpUpsell.deliveryType}
+                          onValueChange={(value: OrderBumpItem["deliveryType"]) => {
+                            setOrderBumpUpsell({...orderBumpUpsell, deliveryType: value})
+                            setHasChanges(true)
+                          }}
+                        >
+                          <SelectTrigger className="bg-white border-neutral-200">
+                            <div className="flex items-center gap-2">
+                              <Check className="h-4 w-4 text-emerald-500" />
+                              <SelectValue />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
+                            <SelectItem value="channel">Canal especifico</SelectItem>
+                            <SelectItem value="link">Link Externo</SelectItem>
+                            <SelectItem value="message">Apenas Mensagem</SelectItem>
+                            <SelectItem value="video">Chamada de Video (+R$ 0,50)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       
                       {/* Midias do Order Bump Upsell */}
@@ -4205,8 +4264,67 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-neutral-500">Descricao</Label>
-                        <Textarea value={orderBumpDownsell.description} onChange={(e) => { setOrderBumpDownsell({...orderBumpDownsell, description: e.target.value}); setHasChanges(true) }} placeholder="Descricao do order bump..." rows={3} className="bg-white border-neutral-200" />
+                        <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
+                        <Textarea value={orderBumpDownsell.description} onChange={(e) => { setOrderBumpDownsell({...orderBumpDownsell, description: e.target.value}); setHasChanges(true) }} placeholder="Descricao do order bump..." rows={3} className="bg-white border-neutral-200" maxLength={4000} />
+                        <p className="text-xs text-neutral-500 text-right">{orderBumpDownsell.description?.length || 0}/4000 caracteres</p>
+                      </div>
+
+                      {/* Botoes */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-neutral-500">Botao Aceitar</Label>
+                          <div className="flex items-center gap-2 rounded-lg bg-secondary/50 p-3 border border-neutral-200">
+                            <Check className="h-4 w-4 text-emerald-500" />
+                            <Input
+                              value={orderBumpDownsell.acceptText}
+                              onChange={(e) => {
+                                setOrderBumpDownsell({...orderBumpDownsell, acceptText: e.target.value})
+                                setHasChanges(true)
+                              }}
+                              className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-neutral-500">Botao Recusar</Label>
+                          <div className="flex items-center gap-2 rounded-lg bg-secondary/50 p-3 border border-neutral-200">
+                            <X className="h-4 w-4 text-destructive" />
+                            <Input
+                              value={orderBumpDownsell.rejectText}
+                              onChange={(e) => {
+                                setOrderBumpDownsell({...orderBumpDownsell, rejectText: e.target.value})
+                                setHasChanges(true)
+                              }}
+                              className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Entrega */}
+                      <div className="space-y-2">
+                        <Label className="text-neutral-500">Entrega do Order Bump</Label>
+                        <Select
+                          value={orderBumpDownsell.deliveryType}
+                          onValueChange={(value: OrderBumpItem["deliveryType"]) => {
+                            setOrderBumpDownsell({...orderBumpDownsell, deliveryType: value})
+                            setHasChanges(true)
+                          }}
+                        >
+                          <SelectTrigger className="bg-white border-neutral-200">
+                            <div className="flex items-center gap-2">
+                              <Check className="h-4 w-4 text-emerald-500" />
+                              <SelectValue />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
+                            <SelectItem value="channel">Canal especifico</SelectItem>
+                            <SelectItem value="link">Link Externo</SelectItem>
+                            <SelectItem value="message">Apenas Mensagem</SelectItem>
+                            <SelectItem value="video">Chamada de Video (+R$ 0,50)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       
                       {/* Midias do Order Bump Downsell */}
