@@ -495,6 +495,14 @@ export default function DashboardPage() {
           <div className="row-span-2 col-start-2 row-start-1">
             <div className="bg-foreground dark:bg-card rounded-[24px] p-5 flex flex-col shadow-2xl relative overflow-hidden border border-background/5 dark:border-border h-full">
 
+              {/* Overlay "EM BREVE" com blur */}
+              <div className="absolute inset-0 z-50 flex items-center justify-center rounded-[24px] backdrop-blur-sm bg-black/40">
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-xl font-black text-white tracking-[0.2em] uppercase drop-shadow-lg">EM BREVE</span>
+                  <span className="text-xs text-white/70 font-medium">Dragon AI estara disponivel em breve</span>
+                </div>
+              </div>
+
               {/* Efeitos de fundo (Glow) */}
               <div className="absolute top-0 right-0 w-20 h-20 bg-accent opacity-10 blur-[40px] rounded-full"></div>
               <div className="absolute bottom-0 left-0 w-20 h-20 bg-blue-500 opacity-5 blur-[40px] rounded-full"></div>
