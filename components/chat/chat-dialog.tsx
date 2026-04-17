@@ -1,17 +1,14 @@
 "use client"
 
-// Chat Dialog Component - v3 - REBUILD FORÇADO
-import { useState, useEffect, useRef } from "react"
+// Chat Dialog Component - v5 - Using API
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, X, Search, MessageSquare, User, Bot, RefreshCw } from "lucide-react"
+import { Send, Search, MessageSquare, RefreshCw, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-// Cliente Supabase importado diretamente
-import { supabase } from "@/lib/supabase"
 
 interface Conversation {
   telegram_user_id: string
@@ -52,14 +49,97 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
   const [searchQuery, setSearchQuery] = useState("")
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [currentBotId, setCurrentBotId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const prevInitialUserIdRef = useRef<string | null>(null)
+
+  // Buscar conversas usando a API existente
+  const fetchConversations = useCallback(async () => {
+    setLoading(true)
+    try {
+      // Se tiver botId, usar ele. Senao, buscar o primeiro bot do usuario
+      let targetBotId = botId
+
+      if (!targetBotId) {
+        // Buscar bots do usuario via API
+        const botsRes = await fetch("/api/bots")
+        if (botsRes.ok) {
+          const botsData = await botsRes.json()
+          if (botsData.bots && botsData.bots.length > 0) {
+            targetBotId = botsData.bots[0].id
+          }
+        }
+      }
+
+      if (!targetBotId) {
+        console.log("[v0] Nenhum bot encontrado")
+        setLoading(false)
+        return
+      }
+
+      setCurrentBotId(targetBotId)
+
+      // Usar a API de conversations existente
+      const res = await fetch(`/api/conversations?bot_id=${targetBotId}&period=year`)
+      
+      if (!res.ok) {
+        console.error("[v0] Erro na API conversations:", res.status)
+        setLoading(false)
+        return
+      }
+
+      const data = await res.json()
+      console.log("[v0] Conversas recebidas:", data.conversations?.length)
+
+      if (data.conversations && data.conversations.length > 0) {
+        const convList: Conversation[] = data.conversations.map((c: { 
+          nome: string
+          telegramUserId: string
+          telegramChatId: string
+          telegram: string
+          ultimaAtividade: string
+          iniciadoEm: string
+        }) => ({
+          telegram_user_id: c.telegramUserId,
+          telegram_chat_id: c.telegramChatId,
+          first_name: c.nome?.split(" ")[0] || "Usuario",
+          last_name: c.nome?.split(" ").slice(1).join(" ") || undefined,
+          username: c.telegram?.replace("@", "").replace("ID: ", "") || undefined,
+          last_message: `Ultima atividade`,
+          last_message_at: c.ultimaAtividade || c.iniciadoEm,
+          bot_id: targetBotId,
+          bot_username: undefined,
+          unread_count: 0,
+        }))
+
+        setConversations(convList)
+
+        // Se tiver initialUserId, selecionar automaticamente
+        if (initialUserId && initialUserId !== prevInitialUserIdRef.current) {
+          prevInitialUserIdRef.current = initialUserId
+          const conv = convList.find((c: Conversation) => 
+            c.telegram_user_id === initialUserId || c.username === initialUserId
+          )
+          if (conv) {
+            setSelectedConversation(conv)
+          }
+        }
+      } else {
+        setConversations([])
+      }
+    } catch (error) {
+      console.error("[v0] Erro ao buscar conversas:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [botId, initialUserId])
 
   // Buscar conversas quando abrir
   useEffect(() => {
     if (open) {
       fetchConversations()
     }
-  }, [open, botId])
+  }, [open, fetchConversations])
 
   // Buscar mensagens quando selecionar conversa
   useEffect(() => {
@@ -72,7 +152,6 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
   useEffect(() => {
     if (!open) return
     const interval = setInterval(() => {
-      fetchConversations()
       if (selectedConversation) {
         fetchMessages()
       }
@@ -80,117 +159,38 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
     return () => clearInterval(interval)
   }, [open, selectedConversation])
 
-  // Buscar conversas usando bot_users (igual a API de conversations)
-  const fetchConversations = async () => {
-    console.log("[v0] fetchConversations iniciado")
-    setLoading(true)
-    try {
-      const { data: userData } = await supabase.auth.getUser()
-      console.log("[v0] userData:", userData?.user?.id)
-      if (!userData.user) {
-        console.log("[v0] Usuario nao autenticado")
-        setLoading(false)
-        return
-      }
-
-      // Buscar bots do usuario
-      const { data: bots, error: botsError } = await supabase
-        .from("bots")
-        .select("id, username, token")
-        .eq("user_id", userData.user.id)
-
-      console.log("[v0] bots encontrados:", bots?.length, "erro:", botsError)
-      if (!bots || bots.length === 0) {
-        console.log("[v0] Nenhum bot encontrado")
-        setLoading(false)
-        return
-      }
-
-      const botIds = bots.map(b => b.id)
-      const convList: Conversation[] = []
-
-      // Buscar usuarios de TODOS os bots do usuario (usando bot_users como fonte principal)
-      for (const bot of bots) {
-        const { data: botUsers, error: usersError } = await supabase
-          .from("bot_users")
-          .select("*")
-          .eq("bot_id", bot.id)
-          .order("last_activity", { ascending: false })
-          .limit(50)
-
-        console.log("[v0] bot_users para bot", bot.username, ":", botUsers?.length, "erro:", usersError)
-
-        if (botUsers) {
-          for (const user of botUsers) {
-            convList.push({
-              telegram_user_id: String(user.telegram_user_id),
-              telegram_chat_id: String(user.chat_id || user.telegram_user_id),
-              first_name: user.first_name || "Usuario",
-              last_name: user.last_name,
-              username: user.username,
-              last_message: user.last_activity ? `Ativo: ${new Date(user.last_activity).toLocaleDateString("pt-BR")}` : undefined,
-              last_message_at: user.last_activity,
-              bot_id: bot.id,
-              bot_username: bot.username,
-              unread_count: 0,
-            })
-          }
-        }
-      }
-
-      console.log("[v0] Total de conversas encontradas:", convList.length)
-      setConversations(convList)
-
-      // Se tiver initialUserId, selecionar automaticamente
-      console.log("[v0] initialUserId:", initialUserId)
-      if (initialUserId) {
-        const conv = convList.find(c => 
-          c.telegram_user_id === initialUserId || c.username === initialUserId
-        )
-        if (conv) {
-          setSelectedConversation(conv)
-        }
-      }
-    } catch (error) {
-      console.error("[v0] Erro ao buscar conversas:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Buscar mensagens da conversa selecionada
+  // Buscar mensagens da conversa selecionada via API
   const fetchMessages = async () => {
     if (!selectedConversation) return
 
     try {
-      const { data, error } = await supabase
-        .from("bot_messages")
-        .select("*")
-        .eq("bot_id", selectedConversation.bot_id)
-        .eq("telegram_user_id", selectedConversation.telegram_user_id)
-        .order("created_at", { ascending: true })
-
-      if (!error && data && data.length > 0) {
-        setMessages(data)
-      } else {
-        // Se nao houver mensagens, mostrar mensagem inicial
-        setMessages([{
-          id: "welcome",
-          bot_id: selectedConversation.bot_id,
-          telegram_user_id: selectedConversation.telegram_user_id,
-          telegram_chat_id: selectedConversation.telegram_chat_id,
-          direction: "outgoing",
-          message_type: "text",
-          content: "Nenhuma mensagem registrada ainda. Envie uma mensagem para iniciar a conversa.",
-          created_at: new Date().toISOString(),
-        }])
+      const botIdToUse = selectedConversation.bot_id || currentBotId
+      const res = await fetch(`/api/chat/messages?bot_id=${botIdToUse}&telegram_user_id=${selectedConversation.telegram_user_id}`)
+      
+      if (res.ok) {
+        const data = await res.json()
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages)
+        } else {
+          // Se nao houver mensagens, mostrar mensagem inicial
+          setMessages([{
+            id: "welcome",
+            bot_id: botIdToUse || "",
+            telegram_user_id: selectedConversation.telegram_user_id,
+            telegram_chat_id: selectedConversation.telegram_chat_id,
+            direction: "outgoing",
+            message_type: "text",
+            content: "Nenhuma mensagem registrada ainda. Envie uma mensagem para iniciar a conversa.",
+            created_at: new Date().toISOString(),
+          }])
+        }
       }
       
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
       }, 100)
     } catch (error) {
-      console.error("Erro ao buscar mensagens:", error)
+      console.error("[v0] Erro ao buscar mensagens:", error)
     }
   }
 
@@ -198,13 +198,19 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation || sending) return
 
+    const botIdToUse = selectedConversation.bot_id || currentBotId
+    if (!botIdToUse) {
+      alert("Bot nao encontrado")
+      return
+    }
+
     setSending(true)
     try {
       const response = await fetch("/api/telegram/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          botId: selectedConversation.bot_id,
+          botId: botIdToUse,
           chatId: selectedConversation.telegram_chat_id,
           message: newMessage.trim(),
         }),
@@ -213,16 +219,17 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
       const result = await response.json()
 
       if (result.success) {
+        const msgContent = newMessage.trim()
         setNewMessage("")
         // Adicionar mensagem localmente
         const newMsg: Message = {
           id: `local-${Date.now()}`,
-          bot_id: selectedConversation.bot_id,
+          bot_id: botIdToUse,
           telegram_user_id: selectedConversation.telegram_user_id,
           telegram_chat_id: selectedConversation.telegram_chat_id,
           direction: "outgoing",
           message_type: "text",
-          content: newMessage.trim(),
+          content: msgContent,
           created_at: new Date().toISOString(),
         }
         setMessages(prev => [...prev, newMsg])
@@ -252,8 +259,8 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[80vh] p-0 gap-0 overflow-hidden">
-        <div className="flex h-full">
+      <DialogContent className="max-w-5xl h-[80vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <div className="flex flex-1 min-h-0">
           {/* Lista de conversas */}
           <div className="w-[380px] border-r border-border flex flex-col bg-muted/30">
             {/* Header */}
@@ -293,69 +300,87 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
                   <p>Nenhuma conversa encontrada</p>
                 </div>
               ) : (
-                <div className="divide-y divide-border">
-                  {filteredConversations.map((conv) => (
-                    <button
-                      key={`${conv.bot_id}_${conv.telegram_user_id}`}
-                      onClick={() => setSelectedConversation(conv)}
-                      className={cn(
-                        "w-full p-4 text-left hover:bg-muted/50 transition-colors",
-                        selectedConversation?.telegram_user_id === conv.telegram_user_id &&
-                        selectedConversation?.bot_id === conv.bot_id &&
-                        "bg-accent/10"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="bg-accent/20">
-                            <User className="h-5 w-5" />
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <p className="font-medium truncate">
-                              {conv.first_name} {conv.last_name || ""}
-                            </p>
-                            {conv.unread_count && conv.unread_count > 0 && (
-                              <span className="bg-accent text-accent-foreground text-xs px-2 py-0.5 rounded-full">
-                                {conv.unread_count}
+                <div className="divide-y divide-border/50">
+                  {filteredConversations.map((conv) => {
+                    // Formatar horario da ultima mensagem
+                    const lastMsgDate = conv.last_message_at ? new Date(conv.last_message_at) : null
+                    const now = new Date()
+                    let timeLabel = ""
+                    if (lastMsgDate) {
+                      const diffDays = Math.floor((now.getTime() - lastMsgDate.getTime()) / (1000 * 60 * 60 * 24))
+                      if (diffDays === 0) {
+                        timeLabel = lastMsgDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                      } else if (diffDays === 1) {
+                        timeLabel = "Ontem"
+                      } else if (diffDays < 7) {
+                        timeLabel = lastMsgDate.toLocaleDateString("pt-BR", { weekday: "short" })
+                      } else {
+                        timeLabel = lastMsgDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={`${conv.bot_id}_${conv.telegram_user_id}`}
+                        onClick={() => setSelectedConversation(conv)}
+                        className={cn(
+                          "w-full p-3 text-left hover:bg-muted/50 transition-colors",
+                          selectedConversation?.telegram_user_id === conv.telegram_user_id &&
+                          selectedConversation?.bot_id === conv.bot_id &&
+                          "bg-accent/10 border-l-2 border-l-accent"
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Avatar className="h-12 w-12 flex-shrink-0">
+                            <AvatarFallback className="bg-gradient-to-br from-accent/30 to-accent/10 text-accent-foreground font-semibold">
+                              {conv.first_name?.charAt(0).toUpperCase() || "U"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-semibold text-foreground truncate">
+                                {conv.first_name} {conv.last_name || ""}
+                              </p>
+                              <span className="text-[11px] text-muted-foreground flex-shrink-0">
+                                {timeLabel}
                               </span>
+                            </div>
+                            {conv.username && (
+                              <p className="text-xs text-accent truncate">@{conv.username}</p>
                             )}
+                            <p className="text-sm text-muted-foreground truncate mt-0.5">
+                              {conv.last_message || "Sem mensagens"}
+                            </p>
                           </div>
-                          {conv.username && (
-                            <p className="text-xs text-muted-foreground">@{conv.username}</p>
-                          )}
-                          <p className="text-sm text-muted-foreground truncate mt-0.5">
-                            {conv.last_message || "Sem mensagens"}
-                          </p>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </ScrollArea>
           </div>
 
           {/* Area de mensagens */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0 bg-background">
             {selectedConversation ? (
               <>
                 {/* Header do chat */}
-                <div className="p-4 border-b border-border flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-card flex-shrink-0">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-accent/20">
-                        <User className="h-5 w-5" />
+                      <AvatarFallback className="bg-gradient-to-br from-accent/30 to-accent/10 text-accent-foreground font-semibold">
+                        {selectedConversation.first_name?.charAt(0).toUpperCase() || "U"}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="font-medium">
+                      <p className="font-semibold text-foreground">
                         {selectedConversation.first_name} {selectedConversation.last_name || ""}
                       </p>
-                      {selectedConversation.username && (
-                        <p className="text-xs text-muted-foreground">@{selectedConversation.username}</p>
-                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {selectedConversation.username ? `@${selectedConversation.username}` : `Telegram`}
+                        {selectedConversation.bot_username && ` via @${selectedConversation.bot_username}`}
+                      </p>
                     </div>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
@@ -363,56 +388,47 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
                   </Button>
                 </div>
 
-                {/* Mensagens */}
-                <ScrollArea className="flex-1 p-4">
-                  <div className="space-y-4">
+                {/* Mensagens - estilo WhatsApp */}
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-muted/20">
+                  <div className="space-y-3 max-w-3xl mx-auto pb-4">
                     {messages.map((msg) => (
                       <div
                         key={msg.id}
                         className={cn(
-                          "flex gap-2",
+                          "flex",
                           msg.direction === "outgoing" ? "justify-end" : "justify-start"
                         )}
                       >
-                        {msg.direction === "incoming" && (
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback className="bg-muted">
-                              <User className="h-4 w-4" />
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
                         <div
                           className={cn(
-                            "max-w-[70%] rounded-2xl px-4 py-2",
+                            "max-w-[75%] rounded-xl px-3 py-2 shadow-sm relative",
                             msg.direction === "outgoing"
-                              ? "bg-accent text-accent-foreground"
-                              : "bg-muted"
+                              ? "bg-accent text-accent-foreground rounded-br-sm"
+                              : "bg-card border border-border rounded-bl-sm"
                           )}
                         >
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                          <p className="text-[10px] opacity-60 mt-1">
-                            {new Date(msg.created_at).toLocaleTimeString("pt-BR", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
+                          <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                          <div className={cn(
+                            "flex items-center justify-end gap-1 mt-1",
+                            msg.direction === "outgoing" ? "text-accent-foreground/60" : "text-muted-foreground"
+                          )}>
+                            <span className="text-[10px]">
+                              {new Date(msg.created_at).toLocaleTimeString("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
                         </div>
-                        {msg.direction === "outgoing" && (
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback className="bg-accent/20">
-                              <Bot className="h-4 w-4" />
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
                       </div>
                     ))}
                     <div ref={messagesEndRef} />
                   </div>
-                </ScrollArea>
+                </div>
 
-                {/* Input de mensagem */}
-                <div className="p-4 border-t border-border">
-                  <div className="flex gap-2">
+                {/* Input de mensagem - estilo WhatsApp */}
+                <div className="p-3 border-t border-border bg-card flex-shrink-0">
+                  <div className="flex gap-2 items-center max-w-3xl mx-auto">
                     <Input
                       placeholder="Digite sua mensagem..."
                       value={newMessage}
@@ -424,18 +440,26 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
                         }
                       }}
                       disabled={sending}
+                      className="flex-1 rounded-full bg-muted/50 border-0 focus-visible:ring-1"
                     />
-                    <Button onClick={handleSendMessage} disabled={sending || !newMessage.trim()}>
+                    <Button 
+                      onClick={handleSendMessage} 
+                      disabled={sending || !newMessage.trim()}
+                      size="icon"
+                      className="rounded-full h-10 w-10 bg-accent hover:bg-accent/90"
+                    >
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-                <MessageSquare className="h-16 w-16 mb-4 opacity-50" />
-                <h3 className="text-lg font-medium">Selecione uma conversa</h3>
-                <p className="text-sm">Escolha uma conversa na lista para ver o historico de mensagens</p>
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/10">
+                <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-4">
+                  <MessageSquare className="h-10 w-10 opacity-50" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">Selecione uma conversa</h3>
+                <p className="text-sm mt-1">Escolha um contato para ver o historico de mensagens</p>
               </div>
             )}
           </div>

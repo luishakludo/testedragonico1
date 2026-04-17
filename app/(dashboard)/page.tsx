@@ -22,7 +22,7 @@ import {
   Plus,
   Send,
   Mic,
-  MoreVertical,
+
   List,
   X,
   Check,
@@ -122,43 +122,7 @@ const fetcher = (url: string) => fetch(url).then(res => res.json())
   ultimaAtividade: string
 }
 
-// Função para gerar os intervalos de semanas do mês atual
-function getCurrentMonthWeekRanges() {
-  const now = new Date()
-  const currentMonth = now.getMonth()
-  const currentYear = now.getFullYear()
 
-  // Nomes dos meses em português
-  const monthNames = [
-    "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-    "Jul", "Ago", "Set", "Out", "Nov", "Dez"
-  ]
-  const fullMonthNames = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-  ]
-
-  const monthAbbr = monthNames[currentMonth]
-  const fullMonthName = fullMonthNames[currentMonth]
-
-  // Último dia do mês
-  const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate()
-
-  // Gerar semanas
-  const weeks: string[] = []
-  let startDay = 1
-
-  while (startDay <= lastDay) {
-    const endDay = Math.min(startDay + 6, lastDay)
-    weeks.push(`${String(startDay).padStart(2, '0')}-${String(endDay).padStart(2, '0')} ${monthAbbr}`)
-    startDay = endDay + 1
-  }
-
-  // Adicionar opção "Todo [Mês]"
-  weeks.push(`Todo ${fullMonthName}`)
-
-  return { weeks, firstWeek: weeks[0] }
-}
 
 export default function DashboardPage() {
   const { selectedBot, bots, setSelectedBot } = useBots()
@@ -171,10 +135,7 @@ export default function DashboardPage() {
   const [editingYear, setEditingYear] = useState(false)
   const [yearInputValue, setYearInputValue] = useState(new Date().getFullYear().toString())
 
-  // Usar o mês atual para os intervalos
-  const { weeks: currentMonthWeeks, firstWeek } = getCurrentMonthWeekRanges()
-  const [salesDateRange, setSalesDateRange] = useState(firstWeek)
-  const [dealDateRange, setDealDateRange] = useState(firstWeek)
+
   const [tablePeriod, setTablePeriod] = useState("month")
   const [chatOpen, setChatOpen] = useState(false)
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null)
@@ -471,29 +432,6 @@ export default function DashboardPage() {
                   <span className="w-2 h-2 rounded-full bg-accent"></span>
                   <h3 className="font-semibold text-foreground text-sm">Análise de Vendas</h3>
                 </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button className="text-[10px] font-medium text-muted-foreground flex items-center hover:text-foreground transition-colors">
-                      {salesDateRange} <ChevronDown size={12} className="ml-1" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-36 p-2" align="end">
-                    <div className="flex flex-col gap-1">
-                      {currentMonthWeeks.map((range) => (
-                        <button
-                          key={range}
-                          onClick={() => setSalesDateRange(range)}
-                          className={`px-3 py-1.5 rounded text-xs text-left transition-colors ${salesDateRange === range
-                              ? "bg-accent/30 text-accent-foreground font-medium"
-                              : "hover:bg-muted text-muted-foreground"
-                            }`}
-                        >
-                          {range}
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
               </div>
 
               <div className="flex-1 flex items-center gap-4">
@@ -551,29 +489,6 @@ export default function DashboardPage() {
                   <BarChart2 size={14} className="text-accent" />
                   <h3 className="font-semibold text-foreground text-sm">Análise de Negócios</h3>
                 </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button className="text-[10px] font-medium text-muted-foreground flex items-center hover:text-foreground transition-colors">
-                      {dealDateRange} <ChevronDown size={12} className="ml-1" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-36 p-2" align="end">
-                    <div className="flex flex-col gap-1">
-                      {currentMonthWeeks.map((range) => (
-                        <button
-                          key={range}
-                          onClick={() => setDealDateRange(range)}
-                          className={`px-3 py-1.5 rounded text-xs text-left transition-colors ${dealDateRange === range
-                              ? "bg-accent text-accent-foreground font-medium"
-                              : "hover:bg-muted text-foreground"
-                            }`}
-                        >
-                          {range}
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
               </div>
 
               {/* Cards em Fileira */}
@@ -714,9 +629,7 @@ export default function DashboardPage() {
                   </div>
                 </PopoverContent>
               </Popover>
-              <button className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-                <MoreVertical size={14} className="text-muted-foreground" />
-              </button>
+
             </div>
           </div>
 

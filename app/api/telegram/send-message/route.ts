@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { getSupabaseAdmin } from "@/lib/supabase"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
+
+const SUPABASE_URL = "https://izvulojnfvgsbmhyvqtn.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dnVsb2puZnZnc2JtaHl2cXRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTk0NTMsImV4cCI6MjA4ODgzNTQ1M30.Djnn3tsrxSGLBR-Bm1dWOpQe0NHCSOWJFZkbbTOk2oM"
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,14 +14,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Dados incompletos" }, { status: 400 })
     }
 
-    // Verificar autenticacao
+    // Verificar autenticacao usando createServerClient
+    const cookieStore = await cookies()
+    const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+      },
+    })
+    const supabaseAdmin = getSupabaseAdmin()
+    
     const { data: userData } = await supabase.auth.getUser()
     if (!userData.user) {
       return NextResponse.json({ success: false, error: "Nao autorizado" }, { status: 401 })
     }
 
-    // Buscar o bot
-    const { data: bot, error: botError } = await supabase
+    // Buscar o bot usando admin para evitar RLS
+    const { data: bot, error: botError } = await supabaseAdmin
       .from("bots")
       .select("id, token, username, user_id")
       .eq("id", botId)
@@ -51,8 +66,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Salvar mensagem no banco
-    const { error: saveError } = await supabase
+    // Salvar mensagem no banco usando admin
+    const { error: saveError } = await supabaseAdmin
       .from("bot_messages")
       .insert({
         bot_id: botId,
