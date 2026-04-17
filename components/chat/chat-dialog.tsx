@@ -259,8 +259,8 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[80vh] p-0 gap-0 overflow-hidden">
-        <div className="flex h-full">
+      <DialogContent className="max-w-5xl h-[80vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <div className="flex flex-1 min-h-0">
           {/* Lista de conversas */}
           <div className="w-[380px] border-r border-border flex flex-col bg-muted/30">
             {/* Header */}
@@ -362,11 +362,11 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
           </div>
 
           {/* Area de mensagens */}
-          <div className="flex-1 flex flex-col bg-background">
+          <div className="flex-1 flex flex-col min-h-0 bg-background">
             {selectedConversation ? (
               <>
                 {/* Header do chat */}
-                <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-card">
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-card flex-shrink-0">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="bg-gradient-to-br from-accent/30 to-accent/10 text-accent-foreground font-semibold">
@@ -389,8 +389,8 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
                 </div>
 
                 {/* Mensagens - estilo WhatsApp */}
-                <ScrollArea className="flex-1 p-4 bg-muted/20">
-                  <div className="space-y-3 max-w-3xl mx-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-muted/20">
+                  <div className="space-y-3 max-w-3xl mx-auto pb-4">
                     {messages.map((msg) => (
                       <div
                         key={msg.id}
@@ -424,10 +424,10 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
                     ))}
                     <div ref={messagesEndRef} />
                   </div>
-                </ScrollArea>
+                </div>
 
                 {/* Input de mensagem - estilo WhatsApp */}
-                <div className="p-3 border-t border-border bg-card">
+                <div className="p-3 border-t border-border bg-card flex-shrink-0">
                   <div className="flex gap-2 items-center max-w-3xl mx-auto">
                     <Input
                       placeholder="Digite sua mensagem..."

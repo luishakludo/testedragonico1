@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
+import { getSupabase, getSupabaseAdmin } from "@/lib/supabase"
+import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,14 +10,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Dados incompletos" }, { status: 400 })
     }
 
-    // Verificar autenticacao
+    // Verificar autenticacao usando cookies
+    const cookieStore = await cookies()
+    const supabase = getSupabase(cookieStore)
+    const supabaseAdmin = getSupabaseAdmin()
+    
     const { data: userData } = await supabase.auth.getUser()
     if (!userData.user) {
       return NextResponse.json({ success: false, error: "Nao autorizado" }, { status: 401 })
     }
 
-    // Buscar o bot
-    const { data: bot, error: botError } = await supabase
+    // Buscar o bot usando admin para evitar RLS
+    const { data: bot, error: botError } = await supabaseAdmin
       .from("bots")
       .select("id, token, username, user_id")
       .eq("id", botId)
@@ -51,8 +56,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Salvar mensagem no banco
-    const { error: saveError } = await supabase
+    // Salvar mensagem no banco usando admin
+    const { error: saveError } = await supabaseAdmin
       .from("bot_messages")
       .insert({
         bot_id: botId,
