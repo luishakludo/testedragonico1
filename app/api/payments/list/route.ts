@@ -7,19 +7,29 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const botId = searchParams.get("botId") || searchParams.get("bot_id")
+    const botId = searchParams.get("botId")
     const userId = searchParams.get("userId")
     const status = searchParams.get("status")
-    const limit = parseInt(searchParams.get("limit") || searchParams.get("per_page") || "50")
+    const limit = parseInt(searchParams.get("limit") || "50")
     const offset = parseInt(searchParams.get("offset") || "0")
-    const page = parseInt(searchParams.get("page") || "1")
-    
-    // Calcular offset baseado em page se fornecido
-    const finalOffset = searchParams.get("page") ? (page - 1) * limit : offset
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-    // Build query
+    // Se tiver userId, buscar os bots desse usuario
+    let userBotIds: string[] = []
+    if (userId) {
+      // Buscar bots do usuario
+      const { data: userBots, error: botsError } = await supabase
+        .from("bots")
+        .select("id")
+        .eq("user_id", userId)
+      
+      userBotIds = userBots?.map(b => b.id) || []
+      
+      console.log("[v0] Payments list - userId:", userId, "userBots:", userBotIds.length, "error:", botsError)
+    }
+
+    // Build query - buscar pagamentos dos bots do usuario OU com user_id direto
     let query = supabase
       .from("payments")
       .select(`
@@ -30,9 +40,22 @@ export async function GET(request: NextRequest) {
         )
       `, { count: "exact" })
       .order("created_at", { ascending: false })
-      .range(finalOffset, finalOffset + limit - 1)
+      .range(offset, offset + limit - 1)
 
-    // Filtrar por bot_id se fornecido
+    // Filtrar por bot_id dos bots do usuario OU user_id direto (checkout)
+    if (userId) {
+      if (userBotIds.length > 0) {
+        // Tem bots: buscar por bot_id OU user_id
+        const botIdsString = userBotIds.join(",")
+        const orFilter = `bot_id.in.(${botIdsString}),user_id.eq.${userId}`
+        console.log("[v0] Payments list - OR filter:", orFilter)
+        query = query.or(orFilter)
+      } else {
+        // Sem bots: buscar apenas por user_id
+        query = query.eq("user_id", userId)
+      }
+    }
+
     if (botId) {
       query = query.eq("bot_id", botId)
     }
@@ -43,6 +66,13 @@ export async function GET(request: NextRequest) {
 
     const { data: payments, error, count } = await query
 
+    console.log("[v0] Payments query result - count:", count, "payments:", payments?.length, "error:", error)
+    
+    // Debug: mostrar os product_types encontrados
+    const productTypes = payments?.map(p => p.product_type).filter(Boolean)
+    const uniqueTypes = [...new Set(productTypes)]
+    console.log("[v0] Product types found:", uniqueTypes, "order_bump count:", payments?.filter(p => p.product_type?.includes("order_bump")).length)
+
     if (error) {
       console.error("[v0] Error fetching payments:", error)
       return NextResponse.json(
@@ -51,10 +81,20 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Calculate stats - filtrar pelo mesmo bot_id
+    // Calculate stats - mesmo filtro da query principal
     let statsQuery = supabase
       .from("payments")
-      .select("status, amount, telegram_user_id, payer_email, id")
+      .select("status, amount")
+
+    if (userId) {
+      if (userBotIds.length > 0) {
+        const botIdsString = userBotIds.join(",")
+        const statsOrFilter = `bot_id.in.(${botIdsString}),user_id.eq.${userId}`
+        statsQuery = statsQuery.or(statsOrFilter)
+      } else {
+        statsQuery = statsQuery.eq("user_id", userId)
+      }
+    }
 
     if (botId) {
       statsQuery = statsQuery.eq("bot_id", botId)
@@ -62,7 +102,7 @@ export async function GET(request: NextRequest) {
 
     const { data: allPayments } = await statsQuery
 
-    // Contar usuarios unicos com pagamentos aprovados
+    // Contar usuarios unicos com pagamentos aprovados (pelo telegram_user_id ou payer_email)
     const approvedPayments = allPayments?.filter(p => p.status === "approved") || []
     const uniqueApprovedUsers = new Set(
       approvedPayments.map(p => p.telegram_user_id || p.payer_email || p.id)
@@ -87,7 +127,7 @@ export async function GET(request: NextRequest) {
       stats,
       total: count || 0,
       limit,
-      offset: finalOffset,
+      offset,
     })
   } catch (error) {
     console.error("ERROR in payments list:", error)
