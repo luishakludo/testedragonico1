@@ -8,7 +8,7 @@ import {
   Sun,
   Settings,
   Calendar,
-  Filter,
+
   Home,
   BarChart2,
   TrendingUp,
@@ -129,7 +129,7 @@ export default function DashboardPage() {
   const { session } = useAuth()
   const { theme, setTheme } = useTheme()
   const [selectedDateRange, setSelectedDateRange] = useState("7days")
-  const [selectedFilter, setSelectedFilter] = useState("all")
+  
   const [dateRange, setDateRange] = useState<DateRange | undefined>(getPresetDateRange("7days"))
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [editingYear, setEditingYear] = useState(false)
@@ -352,33 +352,7 @@ export default function DashboardPage() {
               </PopoverContent>
             </Popover>
 
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className={`w-10 h-10 rounded-xl shadow-sm border flex items-center justify-center hover:bg-muted ${selectedFilter !== "all"
-                    ? "bg-accent/30 border-accent text-accent-foreground"
-                    : "bg-card border-border text-muted-foreground"
-                  }`}>
-                  <Filter size={16} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-40 p-2" align="end">
-                <div className="flex flex-col gap-1">
-                  {filterOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setSelectedFilter(option.value)}
-                      className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${selectedFilter === option.value
-                          ? "bg-accent/30 text-accent-foreground font-medium"
-                          : "hover:bg-muted text-foreground"
-                        }`}
-                    >
-                      {option.label}
-                      {selectedFilter === option.value && <Check size={14} />}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+            
           </div>
         </div>
 
