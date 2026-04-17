@@ -151,19 +151,28 @@ export function SupportChat() {
   // Botao flutuante com logo Dragon
   if (!isOpen) {
     return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#bfff00] hover:bg-[#d4ff4d] flex items-center justify-center shadow-lg shadow-[#bfff00]/20 transition-all duration-200 hover:scale-105 hover:shadow-[#bfff00]/30"
-        aria-label="Abrir chat de suporte"
-      >
-        <Image
-          src="/images/dragon-logo.png"
-          alt=""
-          width={26}
-          height={26}
-          className="object-contain"
-        />
-      </button>
+      <div className="fixed bottom-6 right-6 z-50 group">
+        {/* Tooltip */}
+        <div className="absolute bottom-full right-0 mb-3 px-4 py-2.5 rounded-xl bg-[#111] border border-[#bfff00]/30 shadow-xl shadow-black/20 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 pointer-events-none whitespace-nowrap">
+          <span className="text-white text-sm font-medium">Como podemos ajudar?</span>
+          {/* Seta do tooltip */}
+          <div className="absolute -bottom-1.5 right-5 w-3 h-3 bg-[#111] border-r border-b border-[#bfff00]/30 rotate-45" />
+        </div>
+        
+        <button
+          onClick={() => setIsOpen(true)}
+          className="w-14 h-14 rounded-full bg-[#bfff00] hover:bg-[#d4ff4d] flex items-center justify-center shadow-lg shadow-[#bfff00]/20 transition-all duration-200 hover:scale-105 hover:shadow-[#bfff00]/30"
+          aria-label="Abrir chat de suporte"
+        >
+          <Image
+            src="/images/dragon-logo.png"
+            alt=""
+            width={26}
+            height={26}
+            className="object-contain"
+          />
+        </button>
+      </div>
     )
   }
 
