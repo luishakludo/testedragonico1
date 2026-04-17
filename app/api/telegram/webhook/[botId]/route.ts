@@ -1751,191 +1751,181 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
       // ========== FIM DOWNSELL CALLBACKS ==========
 
       // ========== UPSELL CALLBACKS ==========
-      // Novo formato: up_{msgId}_{planIndex}_{priceInCents} (igual downsell)
+      // Formato: up_{msgId}_{planIndex}_{priceInCents} (igual downsell)
       if (callbackData.startsWith("up_")) {
         console.log("[v0] Upsell Callback recebido:", callbackData)
         
-        // Parsear callback: up_{msgId}_{planIndex}_{priceInCents}
-        const upsellParts = callbackData.replace("up_", "").split("_")
-        const shortMsgId = upsellParts[0] || ""
-        const planIndex = parseInt(upsellParts[1]) || 0
-        const priceInCents = parseInt(upsellParts[2]) || 0
-        const upsellPrice = priceInCents / 100
+        await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
         
-        console.log(`[v0] Upsell callback parsed: msgId=${shortMsgId}, planIndex=${planIndex}, price=${upsellPrice}`)
+        // Parse callback: up_{shortMsgId}_{planIndex}_{priceInCents}
+        const parts = callbackData.replace("up_", "").split("_")
+        const shortMsgId = parts[0] || ""
+        const planIndex = parseInt(parts[1]) || 0
+        const priceInCents = parseInt(parts[2]) || 0
+        const price = priceInCents / 100
         
-        // Buscar a mensagem agendada para obter os dados completos
+        console.log(`[v0] Upsell: shortMsgId=${shortMsgId}, planIndex=${planIndex}, price=${price}`)
+        
+        // Buscar a mensagem original pelo shortMsgId (igual downsell)
         const { data: scheduledMsg } = await supabase
           .from("scheduled_messages")
           .select("*")
-          .eq("bot_id", botUuid)
-          .eq("telegram_user_id", String(telegramUserId))
-          .eq("message_type", "upsell")
-          .ilike("id", `%${shortMsgId}`)
+          .like("id", `%${shortMsgId}`)
           .order("created_at", { ascending: false })
           .limit(1)
           .single()
         
-        if (!scheduledMsg) {
-          console.log("[v0] Mensagem de upsell nao encontrada")
-          await answerCallback(botToken, callbackQueryId, "Sessao expirada")
-          return
-        }
-        
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const msgMetadata = scheduledMsg.metadata as Record<string, any> | null
-        const plans = msgMetadata?.plans || []
-        const selectedPlan = plans[planIndex]
-        const flowId = scheduledMsg.flow_id
-        
-        if (!selectedPlan) {
-          console.log("[v0] Plano nao encontrado no indice:", planIndex)
-          await answerCallback(botToken, callbackQueryId, "Plano nao encontrado")
-          return
-        }
-        
-        const upsellName = selectedPlan.buttonText || `Plano ${planIndex + 1}`
-        console.log(`[v0] Plano selecionado: ${selectedPlan.id}, nome: ${upsellName}, preco: R$ ${upsellPrice}`)
-
-        // Buscar config do fluxo
-        const { data: flowData } = await supabase
-          .from("flows")
-          .select("config")
-          .eq("id", flowId)
-          .single()
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const flowConfig = flowData?.config as Record<string, any> | null
-        const upsellConfig = flowConfig?.upsell
-
-        // Usuario selecionou um plano de upsell - gerar pagamento
-        console.log(`[v0] Usuario ${telegramUserId} aceitou upsell - R$ ${upsellPrice} (plano: ${selectedPlan.id})`)
-          
-          await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
-
-          // Buscar gateway de pagamento e user_id
-          const { data: gateway } = await supabase
-            .from("user_gateways")
-            .select("*")
+        // Se nao encontrou a mensagem agendada, buscar o flow_id diretamente do bot (igual downsell)
+        let flowId = scheduledMsg?.flow_id || ""
+        if (!flowId) {
+          const { data: botFlow } = await supabase
+            .from("flows")
+            .select("id")
             .eq("bot_id", botUuid)
-            .eq("is_active", true)
             .limit(1)
             .single()
-
-          if (!gateway?.access_token) {
-            await sendTelegramMessage(botToken, chatId, "Erro: Gateway de pagamento nao configurado. Entre em contato com o suporte.")
+          
+          if (botFlow?.id) {
+            flowId = botFlow.id
+          } else {
+            const { data: flowBot } = await supabase
+              .from("flow_bots")
+              .select("flow_id")
+              .eq("bot_id", botUuid)
+              .limit(1)
+              .single()
+            
+            if (flowBot?.flow_id) {
+              flowId = flowBot.flow_id
+            }
+          }
+        }
+        
+        const msgMetadata = scheduledMsg?.metadata as Record<string, unknown> | null
+        const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number }>) || []
+        const selectedPlan = plans[planIndex]
+        const planName = selectedPlan?.buttonText || "Oferta Especial"
+        
+        // Buscar user_id do bot owner primeiro (igual ao downsell)
+        const { data: botOwner } = await supabase
+          .from("bots")
+          .select("user_id")
+          .eq("id", botUuid)
+          .single()
+        
+        if (!botOwner?.user_id) {
+          await sendTelegramMessage(botToken, chatId, "Erro: Bot nao encontrado.")
+          return
+        }
+        
+        // Buscar gateway pelo user_id (igual ao downsell - NAO pelo bot_id!)
+        const { data: gateway, error: gwError } = await supabase
+          .from("user_gateways")
+          .select("*")
+          .eq("user_id", botOwner.user_id)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+        
+        console.log("[v0] Upsell Gateway lookup - user_id:", botOwner.user_id, "found:", !!gateway, "has_token:", !!gateway?.access_token, "error:", gwError?.message)
+        
+        if (!gateway?.access_token) {
+          await sendTelegramMessage(botToken, chatId, "Gateway de pagamento nao configurado. Entre em contato com o suporte.")
+          return
+        }
+        
+        // Enviar mensagem de processando
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          `Voce selecionou: *${planName}*\n\nValor: R$ ${price.toFixed(2).replace(".", ",")}\n\nGerando pagamento PIX...`,
+          undefined
+        )
+        
+        // Gerar PIX usando a funcao padrao (igual ao downsell)
+        try {
+          const pixResult = await createPixPayment({
+            accessToken: gateway.access_token,
+            amount: price,
+            description: `Pagamento - ${planName}`,
+            payerEmail: "luismarquesdevp@gmail.com",
+          })
+          
+          if (!pixResult.success) {
+            await sendTelegramMessage(
+              botToken,
+              chatId,
+              `Erro ao gerar PIX: ${pixResult.error || "Tente novamente"}`,
+              undefined
+            )
             return
           }
-
-          // Buscar user_id do bot owner
-          const { data: botOwner } = await supabase
-            .from("bots")
-            .select("user_id")
-            .eq("id", botUuid)
-            .single()
-
-          // Gerar PIX para o upsell
-          try {
-            const pixResponse = await fetch("https://api.mercadopago.com/v1/payments", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${gateway.access_token}`,
-                "X-Idempotency-Key": `upsell_${botUuid}_${telegramUserId}_${shortMsgId}_${planIndex}_${Date.now()}`,
-              },
-              body: JSON.stringify({
-                transaction_amount: upsellPrice,
-                description: upsellName,
-                payment_method_id: "pix",
-                payer: {
-                  email: `user${telegramUserId}@telegram.bot`,
-                  first_name: (from?.first_name as string) || "Cliente",
-                },
-                notification_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://dragonteste.onrender.com"}/api/payments/webhook/mercadopago`,
-              }),
-            })
-
-            const pixData = await pixResponse.json()
-            console.log("[v0] Upsell PIX Response:", JSON.stringify(pixData))
-
-            if (pixData.id && pixData.point_of_interaction?.transaction_data?.qr_code) {
-              const pixCopiaECola = pixData.point_of_interaction.transaction_data.qr_code
-              const qrCodeBase64 = pixData.point_of_interaction.transaction_data.qr_code_base64
-              
-              // Salvar pagamento do upsell
-              console.log("[v0] Saving upsell payment - user_id:", botOwner?.user_id, "bot_id:", botUuid, "amount:", upsellPrice)
-              const { error: upsellPaymentError } = await supabase.from("payments").insert({
-                user_id: botOwner?.user_id,
-                bot_id: botUuid,
-                telegram_user_id: String(telegramUserId),
-                telegram_username: userUsername || null,
-                telegram_first_name: userFirstName || null,
-                telegram_last_name: userLastName || null,
-                amount: upsellPrice,
-                status: "pending",
-                payment_method: "pix",
-                gateway: "mercadopago",
-                external_payment_id: String(pixData.id),
-                description: `Pagamento - ${upsellName}`,
-                product_name: upsellName,
-                product_type: "upsell",
-                pix_code: pixCopiaECola,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              if (upsellPaymentError) {
-                console.error("[v0] Error saving upsell payment:", upsellPaymentError)
-              } else {
-                console.log("[v0] Upsell payment saved successfully")
-              }
-
-              // Atualizar estado
-              await supabase
-                .from("user_flow_state")
-                .update({
-                  status: "waiting_upsell_payment",
-                  metadata: {
-                    ...metadata,
-                    upsell_payment_id: pixData.id,
-                    selected_plan_id: selectedPlanId || null,
-                    upsell_amount: upsellPrice,
-                  },
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("bot_id", botUuid)
-                .eq("telegram_user_id", String(telegramUserId))
-
-              // Buscar config de mensagens de pagamento do flow
-              const flowUpsell = await getActiveFlowForBot(supabase, botUuid)
-              const flowConfigUpsell = (flowUpsell?.config as Record<string, unknown>) || {}
-              const paymentMessagesUpsell = (flowConfigUpsell.paymentMessages as PaymentMessagesConfig) || {}
-              
-              // Determinar URL do QR Code
-              const qrCodeUrlUpsell = qrCodeBase64 
-                ? `data:image/png;base64,${qrCodeBase64}`
-                : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCopiaECola)}`
-              
-              // Enviar mensagens de PIX de forma centralizada
-              await sendPixPaymentMessages({
-                botToken,
-                chatId,
-                pixCode: pixCopiaECola,
-                qrCodeUrl: qrCodeUrlUpsell,
-                amount: upsellPrice,
-                productName: upsellName,
-                paymentId: String(pixData.id),
-                config: paymentMessagesUpsell,
-                userName: userFirstName || "Cliente"
-              })
-            } else {
-              console.error("[v0] Erro ao gerar PIX do upsell:", pixData)
-              await sendTelegramMessage(botToken, chatId, "Erro ao gerar pagamento. Tente novamente.")
-            }
-          } catch (error) {
-            console.error("[v0] Erro ao processar upsell:", error)
-            await sendTelegramMessage(botToken, chatId, "Erro ao processar. Tente novamente.")
+          
+          // Salvar pagamento do upsell (igual ao downsell)
+          console.log("[v0] Saving upsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: upsell", "telegram_user_id:", telegramUserId)
+          const { data: savedUpPayment, error: upPaymentError } = await supabase.from("payments").insert({
+            user_id: botOwner.user_id,
+            bot_id: botUuid,
+            telegram_user_id: String(telegramUserId),
+            telegram_username: userUsername || null,
+            telegram_first_name: userFirstName || null,
+            telegram_last_name: userLastName || null,
+            amount: price,
+            status: "pending",
+            payment_method: "pix",
+            gateway: gateway.gateway_name || "mercadopago",
+            external_payment_id: String(pixResult.paymentId),
+            description: `Pagamento - ${planName}`,
+            product_name: planName,
+            product_type: "upsell",
+            qr_code: pixResult.qrCode,
+            qr_code_url: pixResult.qrCodeUrl,
+            copy_paste: pixResult.copyPaste,
+            pix_code: pixResult.copyPaste || pixResult.qrCode,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).select().single()
+          
+          if (upPaymentError) {
+            console.error("[v0] Error saving upsell payment:", upPaymentError.message)
+          } else {
+            console.log("[v0] Upsell payment saved successfully - id:", savedUpPayment?.id)
           }
-
+          
+          // Cancelar demais upsells agendados para este usuario neste fluxo
+          await supabase
+            .from("scheduled_messages")
+            .update({ status: "cancelled" })
+            .eq("bot_id", botUuid)
+            .eq("telegram_user_id", String(telegramUserId))
+            .eq("flow_id", flowId)
+            .eq("message_type", "upsell")
+            .eq("status", "pending")
+          
+          // Buscar config de mensagens de pagamento do flow
+          const flowUp = await getActiveFlowForBot(supabase, botUuid)
+          const flowConfigUp = (flowUp?.config as Record<string, unknown>) || {}
+          const paymentMessagesUp = (flowConfigUp.paymentMessages as PaymentMessagesConfig) || {}
+          
+          // Enviar mensagens de PIX de forma centralizada (igual ao downsell)
+          await sendPixPaymentMessages({
+            botToken,
+            chatId,
+            pixCode: pixResult.copyPaste || pixResult.qrCode || "",
+            qrCodeUrl: pixResult.qrCodeUrl,
+            amount: price,
+            productName: planName,
+            paymentId: String(pixResult.paymentId),
+            config: paymentMessagesUp,
+            userName: userFirstName || "Cliente"
+          })
+          
+        } catch (pixError) {
+          const errorMsg = pixError instanceof Error ? pixError.message : String(pixError)
+          console.error("[v0] Erro ao gerar PIX para Upsell:", errorMsg)
+          await sendTelegramMessage(botToken, chatId, `Erro ao processar pagamento: ${errorMsg}`, undefined)
+        }
+        
         return
       }
       // ========== FIM UPSELL CALLBACKS ==========
