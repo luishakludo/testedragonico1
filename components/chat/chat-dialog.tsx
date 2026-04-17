@@ -199,6 +199,7 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
     if (!newMessage.trim() || !selectedConversation || sending) return
 
     const botIdToUse = selectedConversation.bot_id || currentBotId
+    console.log("[v0] handleSendMessage - botIdToUse:", botIdToUse, "selectedConversation.bot_id:", selectedConversation.bot_id, "currentBotId:", currentBotId)
     if (!botIdToUse) {
       alert("Bot nao encontrado")
       return
@@ -206,6 +207,7 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
 
     setSending(true)
     try {
+      console.log("[v0] Enviando para API:", { botId: botIdToUse, chatId: selectedConversation.telegram_chat_id })
       const response = await fetch("/api/telegram/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
