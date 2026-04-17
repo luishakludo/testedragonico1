@@ -33,7 +33,6 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useTheme } from "next-themes"
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts"
 import { useBots } from "@/lib/bot-context"
 import { useAuth } from "@/lib/auth-context"
 import { NoBotSelected } from "@/components/no-bot-selected"
@@ -408,7 +407,7 @@ export default function DashboardPage() {
 
           {/* Container para Análise de Vendas e Análise de Negócios lado a lado */}
           <div className="flex flex-row gap-6">
-            {/* Sales Analysis Card - Pie/Donut Chart */}
+            {/* Sales Analysis Card */}
             <div className="flex-1 bg-card rounded-[24px] p-5 shadow-sm border border-border flex flex-col">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2">
@@ -418,65 +417,41 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex-1 flex items-center gap-4">
-                {/* Donut Chart com Recharts */}
-                <div className="relative w-28 h-28 flex-shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: "Leads", value: conversationsData?.total || 1, color: "#22c55e" },
-                          { name: "Conversões", value: paymentsData?.stats?.approved || 1, color: "#166534" },
-                          { name: "Pendentes", value: Math.max((conversationsData?.total || 0) - (paymentsData?.stats?.approved || 0), 1), color: "#374151" },
-                        ]}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={28}
-                        outerRadius={42}
-                        paddingAngle={3}
-                        dataKey="value"
-                        stroke="rgba(255,255,255,0.2)"
-                        strokeWidth={2}
-                      >
-                        {[
-                          { name: "Leads", value: conversationsData?.total || 1, color: "#22c55e" },
-                          { name: "Conversões", value: paymentsData?.stats?.approved || 1, color: "#166534" },
-                          { name: "Pendentes", value: Math.max((conversationsData?.total || 0) - (paymentsData?.stats?.approved || 0), 1), color: "#374151" },
-                        ].map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: "hsl(var(--card))", 
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          fontSize: "11px"
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-[10px] font-bold text-foreground">R${faturamento.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                    <span className="text-[7px] text-muted-foreground">Total</span>
+                {/* Donut Chart Simulation */}
+                <div className="relative w-24 h-24 flex-shrink-0">
+                  <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                    <circle cx="50" cy="50" r="40" fill="transparent" className="stroke-muted" strokeWidth="12" strokeDasharray="4 4" />
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="url(#gradient)" strokeWidth="14" strokeDasharray="0 251" strokeDashoffset="0" className="drop-shadow-sm" strokeLinecap="round" />
+                    <circle cx="50" cy="50" r="40" fill="transparent" className="stroke-accent" strokeWidth="14" strokeDasharray="0 251" strokeDashoffset="-180" strokeLinecap="round" />
+                    <defs>
+                      <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#8b5cf6" />
+                        <stop offset="100%" stopColor="#3b82f6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-xs font-bold text-foreground">R${faturamento.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-[8px] text-muted-foreground">Receita Total</span>
                   </div>
                 </div>
 
                 {/* Legend */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-sm bg-[#22c55e] border border-white/20"></span>
+                    <span className="w-2 h-2 rounded-sm bg-blue-600"></span>
                     <span className="text-xs font-bold text-foreground">{conversationsData?.total || 0}</span>
                     <span className="text-xs text-muted-foreground">Leads</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-sm bg-[#166534] border border-white/20"></span>
-                    <span className="text-xs font-bold text-foreground">{paymentsData?.stats?.approved || 0}</span>
-                    <span className="text-xs text-muted-foreground">Conversões</span>
+                    <span className="w-2 h-2 rounded-sm bg-muted"></span>
+                    <span className="text-xs font-bold text-foreground">{faturamento.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs text-muted-foreground">Receita</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-sm bg-[#374151] border border-white/20"></span>
-                    <span className="text-xs font-bold text-foreground">{Math.max((conversationsData?.total || 0) - (paymentsData?.stats?.approved || 0), 0)}</span>
-                    <span className="text-xs text-muted-foreground">Pendentes</span>
+                    <span className="w-2 h-2 rounded-sm bg-accent"></span>
+                    <span className="text-xs font-bold text-foreground">0</span>
+                    <span className="text-xs text-muted-foreground">Crescimento</span>
                   </div>
                 </div>
               </div>
@@ -487,7 +462,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Deal Analysis Card - Original Design with Stripes */}
+            {/* Deal Analysis Card */}
             <div className="flex-1 bg-accent/20 dark:bg-accent/10 rounded-[24px] p-5 shadow-sm border border-accent/30 dark:border-accent/20 flex flex-col relative overflow-hidden min-h-[220px]">
               {/* Background Stripes */}
               <div className="absolute inset-0 opacity-30 dark:opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 8px, hsl(100 71% 65% / 0.3) 8px, hsl(100 71% 65% / 0.3) 16px)" }}></div>
@@ -500,7 +475,7 @@ export default function DashboardPage() {
 
               {/* Cards em Fileira */}
               <div className="flex-1 flex items-end gap-3 mt-1 z-10">
-                {/* Card Ganhos */}
+                {/* Card Ganhos - mostra usuarios que pagaram (conversoes) */}
                 <div className="flex-1 h-[33%] bg-accent rounded-2xl p-3 relative overflow-hidden">
                   <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.3) 5px, rgba(255,255,255,0.3) 10px)" }}></div>
                   <div className="relative z-10 bg-white/90 dark:bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Ganhos {paymentsData?.stats?.approved ?? 0}</div>
