@@ -1,17 +1,14 @@
 "use client"
 
-// Chat Dialog Component - v4 - WhatsApp Style
+// Chat Dialog Component - v5 - Using API
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, Search, MessageSquare, User, Bot, RefreshCw, X } from "lucide-react"
+import { Send, Search, MessageSquare, RefreshCw, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-// Cliente Supabase importado diretamente
-import { supabase } from "@/lib/supabase"
 
 interface Conversation {
   telegram_user_id: string
@@ -52,93 +49,83 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
   const [searchQuery, setSearchQuery] = useState("")
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [currentBotId, setCurrentBotId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const prevInitialUserIdRef = useRef<string | null>(null)
 
-  // Buscar conversas usando bot_users
+  // Buscar conversas usando a API existente
   const fetchConversations = useCallback(async () => {
     setLoading(true)
     try {
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) {
-        setLoading(false)
-        return
-      }
+      // Se tiver botId, usar ele. Senao, buscar o primeiro bot do usuario
+      let targetBotId = botId
 
-      // Se tiver botId especifico, buscar so desse bot
-      let botsQuery = supabase
-        .from("bots")
-        .select("id, username, token")
-        .eq("user_id", userData.user.id)
-      
-      if (botId) {
-        botsQuery = botsQuery.eq("id", botId)
-      }
-
-      const { data: bots } = await botsQuery
-
-      if (!bots || bots.length === 0) {
-        setLoading(false)
-        return
-      }
-
-      const convList: Conversation[] = []
-
-      // Buscar usuarios de TODOS os bots
-      for (const bot of bots) {
-        const { data: botUsers } = await supabase
-          .from("bot_users")
-          .select("*")
-          .eq("bot_id", bot.id)
-          .order("last_activity", { ascending: false })
-          .limit(100)
-
-        if (botUsers) {
-          // Buscar ultima mensagem de cada usuario
-          for (const user of botUsers) {
-            const { data: lastMsg } = await supabase
-              .from("bot_messages")
-              .select("content, created_at")
-              .eq("bot_id", bot.id)
-              .eq("telegram_user_id", String(user.telegram_user_id))
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .single()
-
-            convList.push({
-              telegram_user_id: String(user.telegram_user_id),
-              telegram_chat_id: String(user.chat_id || user.telegram_user_id),
-              first_name: user.first_name || "Usuario",
-              last_name: user.last_name,
-              username: user.username,
-              last_message: lastMsg?.content || `Iniciou em ${new Date(user.created_at).toLocaleDateString("pt-BR")}`,
-              last_message_at: lastMsg?.created_at || user.last_activity || user.created_at,
-              bot_id: bot.id,
-              bot_username: bot.username,
-              unread_count: 0,
-            })
+      if (!targetBotId) {
+        // Buscar bots do usuario via API
+        const botsRes = await fetch("/api/bots")
+        if (botsRes.ok) {
+          const botsData = await botsRes.json()
+          if (botsData.bots && botsData.bots.length > 0) {
+            targetBotId = botsData.bots[0].id
           }
         }
       }
 
-      // Ordenar por ultima mensagem
-      convList.sort((a, b) => {
-        const dateA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
-        const dateB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
-        return dateB - dateA
-      })
+      if (!targetBotId) {
+        console.log("[v0] Nenhum bot encontrado")
+        setLoading(false)
+        return
+      }
 
-      setConversations(convList)
+      setCurrentBotId(targetBotId)
 
-      // Se tiver initialUserId e mudou, selecionar automaticamente
-      if (initialUserId && initialUserId !== prevInitialUserIdRef.current) {
-        prevInitialUserIdRef.current = initialUserId
-        const conv = convList.find(c => 
-          c.telegram_user_id === initialUserId || c.username === initialUserId
-        )
-        if (conv) {
-          setSelectedConversation(conv)
+      // Usar a API de conversations existente
+      const res = await fetch(`/api/conversations?bot_id=${targetBotId}&period=year`)
+      
+      if (!res.ok) {
+        console.error("[v0] Erro na API conversations:", res.status)
+        setLoading(false)
+        return
+      }
+
+      const data = await res.json()
+      console.log("[v0] Conversas recebidas:", data.conversations?.length)
+
+      if (data.conversations && data.conversations.length > 0) {
+        const convList: Conversation[] = data.conversations.map((c: { 
+          nome: string
+          telegramUserId: string
+          telegramChatId: string
+          telegram: string
+          ultimaAtividade: string
+          iniciadoEm: string
+        }) => ({
+          telegram_user_id: c.telegramUserId,
+          telegram_chat_id: c.telegramChatId,
+          first_name: c.nome?.split(" ")[0] || "Usuario",
+          last_name: c.nome?.split(" ").slice(1).join(" ") || undefined,
+          username: c.telegram?.replace("@", "").replace("ID: ", "") || undefined,
+          last_message: `Ultima atividade`,
+          last_message_at: c.ultimaAtividade || c.iniciadoEm,
+          bot_id: targetBotId,
+          bot_username: undefined,
+          unread_count: 0,
+        }))
+
+        setConversations(convList)
+
+        // Se tiver initialUserId, selecionar automaticamente
+        if (initialUserId && initialUserId !== prevInitialUserIdRef.current) {
+          prevInitialUserIdRef.current = initialUserId
+          const conv = convList.find((c: Conversation) => 
+            c.telegram_user_id === initialUserId || c.username === initialUserId
+          )
+          if (conv) {
+            setSelectedConversation(conv)
+          }
         }
+      } else {
+        setConversations([])
       }
     } catch (error) {
       console.error("[v0] Erro ao buscar conversas:", error)
@@ -172,39 +159,38 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
     return () => clearInterval(interval)
   }, [open, selectedConversation])
 
-  // Buscar mensagens da conversa selecionada
+  // Buscar mensagens da conversa selecionada via API
   const fetchMessages = async () => {
     if (!selectedConversation) return
 
     try {
-      const { data, error } = await supabase
-        .from("bot_messages")
-        .select("*")
-        .eq("bot_id", selectedConversation.bot_id)
-        .eq("telegram_user_id", selectedConversation.telegram_user_id)
-        .order("created_at", { ascending: true })
-
-      if (!error && data && data.length > 0) {
-        setMessages(data)
-      } else {
-        // Se nao houver mensagens, mostrar mensagem inicial
-        setMessages([{
-          id: "welcome",
-          bot_id: selectedConversation.bot_id,
-          telegram_user_id: selectedConversation.telegram_user_id,
-          telegram_chat_id: selectedConversation.telegram_chat_id,
-          direction: "outgoing",
-          message_type: "text",
-          content: "Nenhuma mensagem registrada ainda. Envie uma mensagem para iniciar a conversa.",
-          created_at: new Date().toISOString(),
-        }])
+      const botIdToUse = selectedConversation.bot_id || currentBotId
+      const res = await fetch(`/api/chat/messages?bot_id=${botIdToUse}&telegram_user_id=${selectedConversation.telegram_user_id}`)
+      
+      if (res.ok) {
+        const data = await res.json()
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages)
+        } else {
+          // Se nao houver mensagens, mostrar mensagem inicial
+          setMessages([{
+            id: "welcome",
+            bot_id: botIdToUse || "",
+            telegram_user_id: selectedConversation.telegram_user_id,
+            telegram_chat_id: selectedConversation.telegram_chat_id,
+            direction: "outgoing",
+            message_type: "text",
+            content: "Nenhuma mensagem registrada ainda. Envie uma mensagem para iniciar a conversa.",
+            created_at: new Date().toISOString(),
+          }])
+        }
       }
       
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
       }, 100)
     } catch (error) {
-      console.error("Erro ao buscar mensagens:", error)
+      console.error("[v0] Erro ao buscar mensagens:", error)
     }
   }
 
@@ -212,13 +198,19 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation || sending) return
 
+    const botIdToUse = selectedConversation.bot_id || currentBotId
+    if (!botIdToUse) {
+      alert("Bot nao encontrado")
+      return
+    }
+
     setSending(true)
     try {
       const response = await fetch("/api/telegram/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          botId: selectedConversation.bot_id,
+          botId: botIdToUse,
           chatId: selectedConversation.telegram_chat_id,
           message: newMessage.trim(),
         }),
@@ -227,16 +219,17 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
       const result = await response.json()
 
       if (result.success) {
+        const msgContent = newMessage.trim()
         setNewMessage("")
         // Adicionar mensagem localmente
         const newMsg: Message = {
           id: `local-${Date.now()}`,
-          bot_id: selectedConversation.bot_id,
+          bot_id: botIdToUse,
           telegram_user_id: selectedConversation.telegram_user_id,
           telegram_chat_id: selectedConversation.telegram_chat_id,
           direction: "outgoing",
           message_type: "text",
-          content: newMessage.trim(),
+          content: msgContent,
           created_at: new Date().toISOString(),
         }
         setMessages(prev => [...prev, newMsg])
