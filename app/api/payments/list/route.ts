@@ -42,22 +42,35 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
 
-    // Filtrar por bot_id dos bots do usuario OU user_id direto (checkout)
-    if (userId) {
+    // IMPORTANTE: Quando temos userId E botId, precisamos garantir que:
+    // 1. O bot pertence ao usuario (já verificado pelos userBotIds)
+    // 2. Os pagamentos são APENAS do bot específico E do usuario
+    if (userId && botId) {
+      // Verificar se o botId pertence aos bots do usuario
+      if (userBotIds.includes(botId)) {
+        // Bot pertence ao usuario: filtrar por esse bot E (bot_id OU user_id direto)
+        const orFilter = `bot_id.eq.${botId},and(user_id.eq.${userId},bot_id.eq.${botId})`
+        console.log("[v0] Payments list - userId + botId filter, botId:", botId)
+        query = query.eq("bot_id", botId)
+      } else {
+        // Bot não pertence ao usuario: retornar vazio
+        console.log("[v0] Payments list - botId not owned by user, returning empty")
+        query = query.eq("bot_id", "00000000-0000-0000-0000-000000000000") // ID impossível
+      }
+    } else if (userId) {
+      // Apenas userId: buscar por bot_id dos bots do usuario OU user_id direto
       if (userBotIds.length > 0) {
-        // Tem bots: buscar por bot_id OU user_id
         const botIdsString = userBotIds.join(",")
         const orFilter = `bot_id.in.(${botIdsString}),user_id.eq.${userId}`
-        console.log("[v0] Payments list - OR filter:", orFilter)
+        console.log("[v0] Payments list - userId only, OR filter:", orFilter)
         query = query.or(orFilter)
       } else {
-        // Sem bots: buscar apenas por user_id
         query = query.eq("user_id", userId)
       }
-    }
-
-    if (botId) {
-      query = query.eq("bot_id", botId)
+    } else if (botId) {
+      // Apenas botId (sem userId): retornar vazio por segurança
+      console.log("[v0] Payments list - botId without userId, returning empty for security")
+      query = query.eq("bot_id", "00000000-0000-0000-0000-000000000000")
     }
 
     if (status && status !== "todos") {
@@ -81,12 +94,19 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Calculate stats - mesmo filtro da query principal
+    // Calculate stats - MESMO filtro da query principal para consistencia
     let statsQuery = supabase
       .from("payments")
-      .select("status, amount")
+      .select("status, amount, telegram_user_id, payer_email, id")
 
-    if (userId) {
+    // Aplicar EXATAMENTE a mesma logica de filtragem da query principal
+    if (userId && botId) {
+      if (userBotIds.includes(botId)) {
+        statsQuery = statsQuery.eq("bot_id", botId)
+      } else {
+        statsQuery = statsQuery.eq("bot_id", "00000000-0000-0000-0000-000000000000")
+      }
+    } else if (userId) {
       if (userBotIds.length > 0) {
         const botIdsString = userBotIds.join(",")
         const statsOrFilter = `bot_id.in.(${botIdsString}),user_id.eq.${userId}`
@@ -94,10 +114,8 @@ export async function GET(request: NextRequest) {
       } else {
         statsQuery = statsQuery.eq("user_id", userId)
       }
-    }
-
-    if (botId) {
-      statsQuery = statsQuery.eq("bot_id", botId)
+    } else if (botId) {
+      statsQuery = statsQuery.eq("bot_id", "00000000-0000-0000-0000-000000000000")
     }
 
     const { data: allPayments } = await statsQuery
