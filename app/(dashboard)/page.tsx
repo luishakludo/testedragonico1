@@ -462,10 +462,10 @@ export default function DashboardPage() {
 
               {/* Cards em Fileira */}
               <div className="flex-1 flex items-end gap-3 mt-1 z-10">
-                {/* Card Ganhos */}
+                {/* Card Ganhos - mostra usuarios que pagaram (conversoes) */}
                 <div className="flex-1 h-[33%] bg-accent rounded-2xl p-3 relative overflow-hidden">
                   <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.3) 5px, rgba(255,255,255,0.3) 10px)" }}></div>
-                  <div className="relative z-10 bg-white/90 dark:bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Ganhos 0</div>
+                  <div className="relative z-10 bg-white/90 dark:bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Ganhos {paymentsData?.stats?.approved ?? 0}</div>
                 </div>
                 {/* Card Perdas */}
                 <div className="flex-1 h-[33%] bg-secondary rounded-2xl p-3 shadow-lg">
