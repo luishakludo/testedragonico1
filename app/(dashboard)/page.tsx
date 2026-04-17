@@ -149,7 +149,7 @@ export default function DashboardPage() {
       approvedUniqueUsers: number
     }
   }>(
-    selectedBot && userId ? `/api/payments/list?bot_id=${selectedBot.id}&userId=${userId}&limit=1&offset=0` : null,
+    selectedBot && userId ? `/api/payments/list?botId=${selectedBot.id}&userId=${userId}&limit=1&offset=0` : null,
     fetcher,
     { refreshInterval: 30000 }
   )
