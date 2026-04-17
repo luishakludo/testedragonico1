@@ -4,16 +4,75 @@ import { createClient } from "@supabase/supabase-js"
 const SUPABASE_URL = "https://izvulojnfvgsbmhyvqtn.supabase.co"
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dnVsb2puZnZnc2JtaHl2cXRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTk0NTMsImV4cCI6MjA4ODgzNTQ1M30.Djnn3tsrxSGLBR-Bm1dWOpQe0NHCSOWJFZkbbTOk2oM"
 
+// Funcao para calcular datas baseado no periodo
+function getDateRange(period: string): { startDate: string; endDate: string } | null {
+  const now = new Date()
+  const endDate = now.toISOString()
+  
+  switch (period) {
+    case "today": {
+      const start = new Date(now)
+      start.setHours(0, 0, 0, 0)
+      return { startDate: start.toISOString(), endDate }
+    }
+    case "yesterday": {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 1)
+      start.setHours(0, 0, 0, 0)
+      const end = new Date(now)
+      end.setDate(end.getDate() - 1)
+      end.setHours(23, 59, 59, 999)
+      return { startDate: start.toISOString(), endDate: end.toISOString() }
+    }
+    case "7days": {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 7)
+      return { startDate: start.toISOString(), endDate }
+    }
+    case "30days": {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 30)
+      return { startDate: start.toISOString(), endDate }
+    }
+    case "3months": {
+      const start = new Date(now)
+      start.setMonth(start.getMonth() - 3)
+      return { startDate: start.toISOString(), endDate }
+    }
+    case "month": {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { startDate: start.toISOString(), endDate }
+    }
+    case "year": {
+      const start = new Date(now.getFullYear(), 0, 1)
+      return { startDate: start.toISOString(), endDate }
+    }
+    default:
+      return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const botId = searchParams.get("botId")
     const userId = searchParams.get("userId")
     const status = searchParams.get("status")
+    const period = searchParams.get("period") // Novo: filtro por periodo
+    const startDate = searchParams.get("startDate") // Novo: data inicial customizada
+    const endDateParam = searchParams.get("endDate") // Novo: data final customizada
     const limit = parseInt(searchParams.get("limit") || "50")
     const offset = parseInt(searchParams.get("offset") || "0")
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    
+    // Calcular range de datas
+    let dateFilter: { startDate: string; endDate: string } | null = null
+    if (period) {
+      dateFilter = getDateRange(period)
+    } else if (startDate && endDateParam) {
+      dateFilter = { startDate, endDate: endDateParam }
+    }
 
     // Se tiver userId, buscar os bots desse usuario
     let userBotIds: string[] = []
@@ -64,6 +123,11 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status)
     }
 
+    // Aplicar filtro de datas se existir
+    if (dateFilter) {
+      query = query.gte("created_at", dateFilter.startDate).lte("created_at", dateFilter.endDate)
+    }
+
     const { data: payments, error, count } = await query
 
     console.log("[v0] Payments query result - count:", count, "payments:", payments?.length, "error:", error)
@@ -98,6 +162,11 @@ export async function GET(request: NextRequest) {
 
     if (botId) {
       statsQuery = statsQuery.eq("bot_id", botId)
+    }
+
+    // Aplicar mesmo filtro de datas nos stats
+    if (dateFilter) {
+      statsQuery = statsQuery.gte("created_at", dateFilter.startDate).lte("created_at", dateFilter.endDate)
     }
 
     const { data: allPayments } = await statsQuery
