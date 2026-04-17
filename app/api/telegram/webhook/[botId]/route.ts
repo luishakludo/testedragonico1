@@ -1776,40 +1776,95 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           .limit(1)
           .single()
         
-        if (!scheduledMsg) {
-          console.log("[v0] Mensagem de upsell nao encontrada")
-          await answerCallback(botToken, callbackQueryId, "Sessao expirada")
-          return
-        }
-        
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const msgMetadata = scheduledMsg.metadata as Record<string, any> | null
-        const plans = msgMetadata?.plans || []
-        const selectedPlan = plans[planIndex]
-        const flowId = scheduledMsg.flow_id
+        let plans: any[] = []
+        let flowId: string | null = null
+        let upsellName = `Plano ${planIndex + 1}`
         
-        if (!selectedPlan) {
-          console.log("[v0] Plano nao encontrado no indice:", planIndex)
-          await answerCallback(botToken, callbackQueryId, "Plano nao encontrado")
+        if (scheduledMsg) {
+          // Usar dados da mensagem agendada
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const msgMetadata = scheduledMsg.metadata as Record<string, any> | null
+          plans = msgMetadata?.plans || []
+          flowId = scheduledMsg.flow_id
+          const selectedPlanFromMsg = plans[planIndex]
+          if (selectedPlanFromMsg) {
+            upsellName = selectedPlanFromMsg.buttonText || selectedPlanFromMsg.name || `Plano ${planIndex + 1}`
+          }
+          console.log("[v0] Upsell - Usando dados da scheduled_message, flowId:", flowId)
+        } else {
+          // FALLBACK: Se nao encontrou scheduled_message, buscar do flow diretamente (igual plan_ callback)
+          console.log("[v0] Upsell - scheduled_message NAO encontrada, buscando do flow diretamente...")
+          
+          // Buscar flow ativo para este bot
+          const flowForUpsell = await getActiveFlowForBot(supabase, botUuid)
+          
+          if (flowForUpsell) {
+            flowId = flowForUpsell.id
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const flowConfigUpsell = flowForUpsell.config as Record<string, any> | null
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const upsellConfigFromFlow = flowConfigUpsell?.upsell as { sequences?: Array<{ plans?: any[] }> } | undefined
+            
+            // Buscar planos de todas as sequences de upsell
+            const allUpsellPlans: any[] = []
+            if (upsellConfigFromFlow?.sequences) {
+              for (const seq of upsellConfigFromFlow.sequences) {
+                if (seq.plans) {
+                  allUpsellPlans.push(...seq.plans)
+                }
+              }
+            }
+            plans = allUpsellPlans
+            
+            const selectedPlanFromFlow = plans[planIndex]
+            if (selectedPlanFromFlow) {
+              upsellName = selectedPlanFromFlow.buttonText || selectedPlanFromFlow.name || `Plano ${planIndex + 1}`
+            }
+            console.log("[v0] Upsell - Buscou do flow, encontrou", plans.length, "planos, flowId:", flowId)
+          }
+        }
+        
+        // Se ainda nao tem planos, usar preco do callback diretamente
+        if (plans.length === 0 || !plans[planIndex]) {
+          console.log("[v0] Upsell - Usando preco direto do callback:", upsellPrice)
+          // Criar plano virtual com os dados do callback
+          plans = [{ id: `upsell_${planIndex}`, price: upsellPrice, buttonText: `Upsell R$ ${upsellPrice.toFixed(2)}` }]
+          upsellName = `Oferta Especial`
+        }
+        
+        const selectedPlan = plans[planIndex] || plans[0]
+        
+        if (!selectedPlan && upsellPrice <= 0) {
+          console.log("[v0] Plano nao encontrado e preco invalido")
+          await answerCallback(botToken, callbackQueryId, "Oferta nao disponivel")
           return
         }
         
-        const upsellName = selectedPlan.buttonText || `Plano ${planIndex + 1}`
-        console.log(`[v0] Plano selecionado: ${selectedPlan.id}, nome: ${upsellName}, preco: R$ ${upsellPrice}`)
+        // Se nao tem flowId ainda, buscar o flow ativo
+        if (!flowId) {
+          const flowActive = await getActiveFlowForBot(supabase, botUuid)
+          flowId = flowActive?.id || null
+        }
+
+        console.log(`[v0] Plano selecionado: ${selectedPlan?.id || 'N/A'}, nome: ${upsellName}, preco: R$ ${upsellPrice}`)
 
         // Buscar config do fluxo
-        const { data: flowData } = await supabase
-          .from("flows")
-          .select("config")
-          .eq("id", flowId)
-          .single()
-
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const flowConfig = flowData?.config as Record<string, any> | null
+        let flowConfig: Record<string, any> | null = null
+        if (flowId) {
+          const { data: flowData } = await supabase
+            .from("flows")
+            .select("config")
+            .eq("id", flowId)
+            .single()
+          flowConfig = flowData?.config as Record<string, any> | null
+        }
+        
         const upsellConfig = flowConfig?.upsell
 
         // Usuario selecionou um plano de upsell - gerar pagamento
-        console.log(`[v0] Usuario ${telegramUserId} aceitou upsell - R$ ${upsellPrice} (plano: ${selectedPlan.id})`)
+        console.log(`[v0] Usuario ${telegramUserId} aceitou upsell - R$ ${upsellPrice} (plano: ${selectedPlan?.id || 'virtual'})`)
           
           await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
 
@@ -1892,18 +1947,21 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               // Atualizar estado
               await supabase
                 .from("user_flow_state")
-                .update({
+                .upsert({
+                  bot_id: botUuid,
+                  telegram_user_id: String(telegramUserId),
+                  flow_id: flowId,
                   status: "waiting_upsell_payment",
                   metadata: {
-                    ...metadata,
                     upsell_payment_id: pixData.id,
-                    selected_plan_id: selectedPlanId || null,
+                    selected_plan_id: selectedPlan?.id || null,
                     upsell_amount: upsellPrice,
+                    upsell_name: upsellName,
                   },
                   updated_at: new Date().toISOString(),
+                }, {
+                  onConflict: "bot_id,telegram_user_id"
                 })
-                .eq("bot_id", botUuid)
-                .eq("telegram_user_id", String(telegramUserId))
 
               // Buscar config de mensagens de pagamento do flow
               const flowUpsell = await getActiveFlowForBot(supabase, botUuid)
