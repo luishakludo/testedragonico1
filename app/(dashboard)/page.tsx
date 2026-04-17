@@ -28,6 +28,7 @@ import {
   Check,
   Bot,
   MessageSquare,
+  Lock,
   User,
 } from "lucide-react"
 import Link from "next/link"
@@ -495,6 +496,17 @@ export default function DashboardPage() {
           <div className="row-span-2 col-start-2 row-start-1">
             <div className="bg-foreground dark:bg-card rounded-[24px] p-5 flex flex-col shadow-2xl relative overflow-hidden border border-background/5 dark:border-border h-full">
 
+              {/* Overlay "EM BREVE" com blur - Locked state */}
+              <div className="absolute inset-0 z-50 flex items-center justify-center rounded-[24px] backdrop-blur-md bg-black/50">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
+                    <Lock size={20} className="text-white/80" />
+                  </div>
+                  <span className="text-xl font-black text-white tracking-[0.2em] uppercase drop-shadow-lg">EM BREVE</span>
+                  <span className="text-xs text-white/60 font-medium">Recurso em desenvolvimento</span>
+                </div>
+              </div>
+
               {/* Efeitos de fundo (Glow) */}
               <div className="absolute top-0 right-0 w-20 h-20 bg-accent opacity-10 blur-[40px] rounded-full"></div>
               <div className="absolute bottom-0 left-0 w-20 h-20 bg-blue-500 opacity-5 blur-[40px] rounded-full"></div>
@@ -514,7 +526,7 @@ export default function DashboardPage() {
               <div className="flex-1 flex flex-col items-center justify-center relative z-10 py-2">
                 <div className="relative w-24 h-24 mb-4 group">
                   {/* Esfera Principal com Gradiente Complexo */}
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-accent via-green-500 to-green-900 shadow-[0_0_30px_rgba(163,230,53,0.3)] animate-pulse transition-transform duration-700 group-hover:scale-105"></div>
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-accent via-green-500 to-green-900 shadow-[0_0_30px_rgba(163,230,53,0.3)] animate-[pulse_4s_ease-in-out_infinite] transition-transform duration-700 group-hover:scale-105"></div>
 
                   {/* Camada de Brilho e Reflexo (Efeito Vidro) */}
                   <div className="absolute inset-0 rounded-full shadow-[inset_-10px_-10px_20px_rgba(0,0,0,0.6),inset_10px_10px_20px_rgba(255,255,255,0.3)]"></div>
