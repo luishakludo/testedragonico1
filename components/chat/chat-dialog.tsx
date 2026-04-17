@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, Search, MessageSquare, RefreshCw, X } from "lucide-react"
+import { Send, Search, MessageSquare, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Conversation {
@@ -148,14 +148,12 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
     }
   }, [selectedConversation])
 
-  // Auto-refresh a cada 10 segundos
+  // Auto-refresh a cada 3 segundos para mensagens mais responsivas
   useEffect(() => {
-    if (!open) return
+    if (!open || !selectedConversation) return
     const interval = setInterval(() => {
-      if (selectedConversation) {
-        fetchMessages()
-      }
-    }, 10000)
+      fetchMessages()
+    }, 3000)
     return () => clearInterval(interval)
   }, [open, selectedConversation])
 
@@ -165,10 +163,12 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
 
     try {
       const botIdToUse = selectedConversation.bot_id || currentBotId
+      console.log("[v0] fetchMessages - botId:", botIdToUse, "telegram_user_id:", selectedConversation.telegram_user_id)
       const res = await fetch(`/api/chat/messages?bot_id=${botIdToUse}&telegram_user_id=${selectedConversation.telegram_user_id}`)
       
       if (res.ok) {
         const data = await res.json()
+        console.log("[v0] fetchMessages - recebeu", data.count, "mensagens")
         if (data.messages && data.messages.length > 0) {
           setMessages(data.messages)
         } else {
@@ -212,6 +212,7 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
         body: JSON.stringify({
           botId: botIdToUse,
           chatId: selectedConversation.telegram_chat_id,
+          telegramUserId: selectedConversation.telegram_user_id,
           message: newMessage.trim(),
         }),
       })
@@ -219,23 +220,10 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
       const result = await response.json()
 
       if (result.success) {
-        const msgContent = newMessage.trim()
         setNewMessage("")
-        // Adicionar mensagem localmente
-        const newMsg: Message = {
-          id: `local-${Date.now()}`,
-          bot_id: botIdToUse,
-          telegram_user_id: selectedConversation.telegram_user_id,
-          telegram_chat_id: selectedConversation.telegram_chat_id,
-          direction: "outgoing",
-          message_type: "text",
-          content: msgContent,
-          created_at: new Date().toISOString(),
-        }
-        setMessages(prev => [...prev, newMsg])
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-        }, 100)
+        // Recarregar mensagens do banco para garantir persistencia
+        // Isso evita que mensagens locais desaparecam ao trocar de aba
+        await fetchMessages()
       } else {
         alert("Erro ao enviar mensagem: " + result.error)
       }
@@ -383,9 +371,7 @@ export function ChatDialog({ open, onOpenChange, botId, initialUserId }: ChatDia
                       </p>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-                    <X className="h-4 w-4" />
-                  </Button>
+
                 </div>
 
                 {/* Mensagens - estilo WhatsApp */}
