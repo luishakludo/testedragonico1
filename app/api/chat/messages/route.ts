@@ -17,16 +17,19 @@ export async function GET(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Buscar mensagens do usuario
-    const { data: messages, error } = await supabase
+    // Buscar as 100 mensagens mais recentes em ordem decrescente
+    const { data: messagesDesc, error } = await supabase
       .from("bot_messages")
       .select("*")
       .eq("bot_id", botId)
       .eq("telegram_user_id", telegramUserId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(100)
 
-    console.log("[v0] chat/messages - encontrou", messages?.length || 0, "mensagens no banco")
+    // Inverter para ordem crescente (mais antigas primeiro) para exibicao no chat
+    const messages = messagesDesc ? [...messagesDesc].reverse() : []
+
+    console.log("[v0] chat/messages - encontrou", messages?.length || 0, "mensagens")
     
     if (error) {
       console.error("[chat/messages] Error:", error)
