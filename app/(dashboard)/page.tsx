@@ -487,60 +487,32 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Deal Analysis Card - Bar Chart */}
-            <div className="flex-1 bg-card rounded-[24px] p-5 shadow-sm border border-border flex flex-col min-h-[220px]">
-              <div className="flex justify-between items-center mb-3">
+            {/* Deal Analysis Card - Original Design with Stripes */}
+            <div className="flex-1 bg-accent/20 dark:bg-accent/10 rounded-[24px] p-5 shadow-sm border border-accent/30 dark:border-accent/20 flex flex-col relative overflow-hidden min-h-[220px]">
+              {/* Background Stripes */}
+              <div className="absolute inset-0 opacity-30 dark:opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 8px, hsl(100 71% 65% / 0.3) 8px, hsl(100 71% 65% / 0.3) 16px)" }}></div>
+              <div className="flex justify-between items-center mb-3 relative z-10">
                 <div className="flex items-center gap-2">
                   <BarChart2 size={14} className="text-accent" />
                   <h3 className="font-semibold text-foreground text-sm">Análise de Negócios</h3>
                 </div>
               </div>
 
-              {/* Bar Chart com Recharts */}
-              <div className="flex-1 min-h-[140px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={[
-                      { name: "Leads", value: conversationsData?.total || 0 },
-                      { name: "Conversões", value: paymentsData?.stats?.approved || 0 },
-                      { name: "Receita", value: Math.round(faturamento / 100) },
-                      { name: "Crescimento", value: Math.round((paymentsData?.stats?.approved || 0) * 1.2) },
-                    ]}
-                    margin={{ top: 20, right: 10, left: -10, bottom: 5 }}
-                  >
-                    <XAxis 
-                      dataKey="name" 
-                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
-                      axisLine={{ stroke: "hsl(var(--border))" }}
-                      tickLine={false}
-                    />
-                    <YAxis 
-                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: "hsl(var(--card))", 
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                        fontSize: "11px"
-                      }}
-                      cursor={{ fill: "hsl(var(--accent) / 0.1)" }}
-                    />
-                    <Bar 
-                      dataKey="value" 
-                      fill="#22c55e"
-                      radius={[6, 6, 0, 0]}
-                      label={{ 
-                        position: "top", 
-                        fontSize: 9, 
-                        fill: "hsl(var(--foreground))",
-                        fontWeight: 600
-                      }}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+              {/* Cards em Fileira */}
+              <div className="flex-1 flex items-end gap-3 mt-1 z-10">
+                {/* Card Ganhos */}
+                <div className="flex-1 h-[33%] bg-accent rounded-2xl p-3 relative overflow-hidden">
+                  <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.3) 5px, rgba(255,255,255,0.3) 10px)" }}></div>
+                  <div className="relative z-10 bg-white/90 dark:bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Ganhos {paymentsData?.stats?.approved ?? 0}</div>
+                </div>
+                {/* Card Perdas */}
+                <div className="flex-1 h-[33%] bg-secondary rounded-2xl p-3 shadow-lg">
+                  <div className="bg-card/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Perdas 0</div>
+                </div>
+                {/* Card Crescimento */}
+                <div className="flex-1 h-[33%] bg-accent rounded-2xl p-3">
+                  <div className="bg-white/90 dark:bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-bold text-foreground inline-block">Avanço 0</div>
+                </div>
               </div>
             </div>
           </div>
