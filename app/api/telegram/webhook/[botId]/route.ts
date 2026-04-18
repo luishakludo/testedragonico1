@@ -1566,13 +1566,143 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
       }
       // ========== FIM ORDER BUMP CALLBACKS ==========
 
+      // ========== ORDER BUMP DO DOWNSELL CALLBACKS ==========
+      // dsob_accept_{mainPriceCents}_{obPriceCents} ou dsob_reject_{mainPriceCents}_0
+      if (callbackData.startsWith("dsob_")) {
+        console.log("[v0] Order Bump Downsell Callback recebido:", callbackData)
+        
+        await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
+        
+        const isAccept = callbackData.startsWith("dsob_accept_")
+        const obParts = callbackData.replace("dsob_accept_", "").replace("dsob_reject_", "").split("_")
+        const mainPriceCents = parseInt(obParts[0]) || 0
+        const obPriceCents = parseInt(obParts[1]) || 0
+        const mainPrice = mainPriceCents / 100
+        const obPrice = obPriceCents / 100
+        const totalPrice = isAccept ? mainPrice + obPrice : mainPrice
+        
+        console.log(`[v0] Order Bump Downsell - accept: ${isAccept}, mainPrice: ${mainPrice}, obPrice: ${obPrice}, total: ${totalPrice}`)
+        
+        // Buscar estado para pegar os nomes
+        const { data: userState } = await supabase
+          .from("user_flow_state")
+          .select("*")
+          .eq("bot_id", botUuid)
+          .eq("telegram_user_id", String(telegramUserId))
+          .single()
+        
+        const stateMetadata = userState?.metadata as Record<string, unknown> | null
+        const mainPlanName = (stateMetadata?.main_plan_name as string) || "Oferta Especial"
+        const obName = (stateMetadata?.order_bump_name as string) || "Adicional"
+        const productName = isAccept ? `${mainPlanName} + ${obName}` : mainPlanName
+        
+        // Buscar user_id do bot owner
+        const { data: botOwnerDsOb } = await supabase
+          .from("bots")
+          .select("user_id")
+          .eq("id", botUuid)
+          .single()
+        
+        if (!botOwnerDsOb?.user_id) {
+          await sendTelegramMessage(botToken, chatId, "Erro: Bot nao encontrado.")
+          return
+        }
+        
+        // Buscar gateway pelo user_id
+        const { data: gatewayDsOb } = await supabase
+          .from("user_gateways")
+          .select("*")
+          .eq("user_id", botOwnerDsOb.user_id)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+        
+        if (!gatewayDsOb?.access_token) {
+          await sendTelegramMessage(botToken, chatId, "Gateway de pagamento nao configurado. Entre em contato com o suporte.")
+          return
+        }
+        
+        // Enviar mensagem de processando
+        const msgText = isAccept 
+          ? `Otima escolha! Voce adicionou *${obName}*\n\nValor total: R$ ${totalPrice.toFixed(2).replace(".", ",")}\n\nGerando pagamento PIX...`
+          : `Voce selecionou: *${mainPlanName}*\n\nValor: R$ ${totalPrice.toFixed(2).replace(".", ",")}\n\nGerando pagamento PIX...`
+        
+        await sendTelegramMessage(botToken, chatId, msgText, undefined)
+        
+        // Gerar PIX
+        try {
+          const pixResultDsOb = await createPixPayment({
+            accessToken: gatewayDsOb.access_token,
+            amount: totalPrice,
+            description: `Pagamento - ${productName}`,
+            payerEmail: "luismarquesdevp@gmail.com",
+          })
+          
+          if (!pixResultDsOb.success) {
+            await sendTelegramMessage(botToken, chatId, `Erro ao gerar PIX: ${pixResultDsOb.error || "Tente novamente"}`, undefined)
+            return
+          }
+          
+          // Salvar pagamento
+          const productType = isAccept ? "downsell_with_bump" : "downsell"
+          console.log("[v0] Saving downsell+OB payment - user_id:", botOwnerDsOb.user_id, "amount:", totalPrice, "product_type:", productType)
+          
+          await supabase.from("payments").insert({
+            user_id: botOwnerDsOb.user_id,
+            bot_id: botUuid,
+            telegram_user_id: String(telegramUserId),
+            telegram_username: userUsername || null,
+            telegram_first_name: userFirstName || null,
+            telegram_last_name: userLastName || null,
+            amount: totalPrice,
+            status: "pending",
+            payment_method: "pix",
+            gateway: gatewayDsOb.gateway_name || "mercadopago",
+            external_payment_id: String(pixResultDsOb.paymentId),
+            description: `Pagamento - ${productName}`,
+            product_name: productName,
+            product_type: productType,
+            qr_code: pixResultDsOb.qrCode,
+            qr_code_url: pixResultDsOb.qrCodeUrl,
+            copy_paste: pixResultDsOb.copyPaste,
+            pix_code: pixResultDsOb.copyPaste || pixResultDsOb.qrCode,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          
+          // Buscar config de mensagens de pagamento do flow
+          const flowDsOb = await getActiveFlowForBot(supabase, botUuid)
+          const flowConfigDsOb = (flowDsOb?.config as Record<string, unknown>) || {}
+          const paymentMessagesDsOb = (flowConfigDsOb.paymentMessages as PaymentMessagesConfig) || {}
+          
+          // Enviar mensagens de PIX
+          await sendPixPaymentMessages({
+            botToken,
+            chatId,
+            pixCode: pixResultDsOb.copyPaste || pixResultDsOb.qrCode || "",
+            qrCodeUrl: pixResultDsOb.qrCodeUrl,
+            amount: totalPrice,
+            productName: productName,
+            paymentId: String(pixResultDsOb.paymentId),
+            config: paymentMessagesDsOb,
+            userName: userFirstName || "Cliente"
+          })
+          
+        } catch (pixErrorDsOb) {
+          const errorMsgDsOb = pixErrorDsOb instanceof Error ? pixErrorDsOb.message : String(pixErrorDsOb)
+          console.error("[v0] Erro ao gerar PIX para Downsell+OB:", errorMsgDsOb)
+          await sendTelegramMessage(botToken, chatId, `Erro ao processar pagamento: ${errorMsgDsOb}`, undefined)
+        }
+        
+        return
+      }
+      // ========== FIM ORDER BUMP DOWNSELL CALLBACKS ==========
+
       // ========== DOWNSELL CALLBACKS ==========
       // Callback format: ds_{shortMsgId}_{planIndex}_{priceInCents}
       // Limite de 64 chars do Telegram
       if (callbackData.startsWith("ds_") && !callbackData.startsWith("ds_plan_")) {
         console.log("[v0] Downsell Callback recebido:", callbackData)
-        
-        await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
         
         // Parse callback: ds_{shortMsgId}_{planIndex}_{priceInCents}
         const parts = callbackData.replace("ds_", "").split("_")
@@ -1584,7 +1714,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         console.log(`[v0] Downsell: shortMsgId=${shortMsgId}, planIndex=${planIndex}, price=${price}`)
         
         // Buscar a mensagem original pelo shortMsgId (ultimos 8 chars do id)
-        const { data: scheduledMsg, error: scheduledMsgError } = await supabase
+        const { data: scheduledMsg } = await supabase
           .from("scheduled_messages")
           .select("*")
           .like("id", `%${shortMsgId}`)
@@ -1636,6 +1766,78 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           await sendTelegramMessage(botToken, chatId, "Erro: Bot nao encontrado.")
           return
         }
+        
+        // ========== VERIFICAR ORDER BUMP DO DOWNSELL ==========
+        const flowDs = await getActiveFlowForBot(supabase, botUuid)
+        const flowConfigDs = (flowDs?.config as Record<string, unknown>) || {}
+        const orderBumpConfigDs = flowConfigDs.orderBump as Record<string, unknown> | undefined
+        const orderBumpDownsell = orderBumpConfigDs?.downsell as { enabled?: boolean; name?: string; price?: number; description?: string; acceptText?: string; rejectText?: string; medias?: string[] } | undefined
+        
+        console.log("[v0] Downsell Order Bump Check - enabled:", orderBumpDownsell?.enabled, "price:", orderBumpDownsell?.price)
+        
+        // Se Order Bump do Downsell esta ativado, mostrar ANTES de gerar pagamento
+        if (orderBumpDownsell?.enabled && orderBumpDownsell?.price && orderBumpDownsell.price > 0) {
+          console.log("[v0] Downsell tem Order Bump ativo - mostrando oferta")
+          await answerCallback(botToken, callbackQueryId, "Preparando oferta especial...")
+          
+          // Salvar estado para saber que esta esperando resposta do order bump
+          await supabase.from("user_flow_state").upsert({
+            bot_id: botUuid,
+            telegram_user_id: String(telegramUserId),
+            flow_id: flowId || flowDs?.id,
+            status: "waiting_order_bump_downsell",
+            metadata: {
+              main_price: price,
+              main_plan_name: planName,
+              order_bump_price: orderBumpDownsell.price,
+              order_bump_name: orderBumpDownsell.name,
+            },
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "bot_id,telegram_user_id" })
+          
+          // Enviar midias do order bump primeiro (se houver)
+          if (orderBumpDownsell.medias && orderBumpDownsell.medias.length > 0) {
+            for (const mediaUrl of orderBumpDownsell.medias) {
+              if (mediaUrl && mediaUrl.trim()) {
+                try {
+                  if (mediaUrl.match(/\.(mp4|mov|avi|webm)$/i)) {
+                    await sendTelegramVideo(botToken, chatId, mediaUrl)
+                  } else {
+                    await sendTelegramPhoto(botToken, chatId, mediaUrl)
+                  }
+                } catch (mediaError) {
+                  console.error("[v0] Erro ao enviar midia do Order Bump Downsell:", mediaError)
+                }
+              }
+            }
+          }
+          
+          // Calcular precos
+          const mainPriceCents = Math.round(price * 100)
+          const obPriceCents = Math.round(orderBumpDownsell.price * 100)
+          const totalWithOb = price + orderBumpDownsell.price
+          
+          // Montar mensagem do Order Bump
+          const obMessage = orderBumpDownsell.description || `Adicione ${orderBumpDownsell.name} por apenas R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}!`
+          
+          // Enviar mensagem com botoes
+          await sendTelegramMessage(
+            botToken,
+            chatId,
+            `*OFERTA ESPECIAL!*\n\n${obMessage}\n\n*Valor do plano:* R$ ${price.toFixed(2).replace(".", ",")}\n*Valor do adicional:* R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}\n*Total com adicional:* R$ ${totalWithOb.toFixed(2).replace(".", ",")}`,
+            {
+              inline_keyboard: [
+                [{ text: orderBumpDownsell.acceptText || "QUERO", callback_data: `dsob_accept_${mainPriceCents}_${obPriceCents}` }],
+                [{ text: orderBumpDownsell.rejectText || "NAO QUERO", callback_data: `dsob_reject_${mainPriceCents}_0` }]
+              ]
+            }
+          )
+          
+          return // STOP - aguardar decisao do Order Bump
+        }
+        // ========== FIM ORDER BUMP DOWNSELL ==========
+        
+        await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
         
         // Buscar gateway pelo user_id (igual ao plano normal)
         const { data: gateway, error: gwError } = await supabase
@@ -1750,12 +1952,142 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
       }
       // ========== FIM DOWNSELL CALLBACKS ==========
 
+      // ========== ORDER BUMP DO UPSELL CALLBACKS ==========
+      // upob_accept_{mainPriceCents}_{obPriceCents} ou upob_reject_{mainPriceCents}_0
+      if (callbackData.startsWith("upob_")) {
+        console.log("[v0] Order Bump Upsell Callback recebido:", callbackData)
+        
+        await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
+        
+        const isAccept = callbackData.startsWith("upob_accept_")
+        const obParts = callbackData.replace("upob_accept_", "").replace("upob_reject_", "").split("_")
+        const mainPriceCents = parseInt(obParts[0]) || 0
+        const obPriceCents = parseInt(obParts[1]) || 0
+        const mainPrice = mainPriceCents / 100
+        const obPrice = obPriceCents / 100
+        const totalPrice = isAccept ? mainPrice + obPrice : mainPrice
+        
+        console.log(`[v0] Order Bump Upsell - accept: ${isAccept}, mainPrice: ${mainPrice}, obPrice: ${obPrice}, total: ${totalPrice}`)
+        
+        // Buscar estado para pegar os nomes
+        const { data: userState } = await supabase
+          .from("user_flow_state")
+          .select("*")
+          .eq("bot_id", botUuid)
+          .eq("telegram_user_id", String(telegramUserId))
+          .single()
+        
+        const stateMetadata = userState?.metadata as Record<string, unknown> | null
+        const mainPlanName = (stateMetadata?.main_plan_name as string) || "Oferta Especial"
+        const obName = (stateMetadata?.order_bump_name as string) || "Adicional"
+        const productName = isAccept ? `${mainPlanName} + ${obName}` : mainPlanName
+        
+        // Buscar user_id do bot owner
+        const { data: botOwnerUpOb } = await supabase
+          .from("bots")
+          .select("user_id")
+          .eq("id", botUuid)
+          .single()
+        
+        if (!botOwnerUpOb?.user_id) {
+          await sendTelegramMessage(botToken, chatId, "Erro: Bot nao encontrado.")
+          return
+        }
+        
+        // Buscar gateway pelo user_id
+        const { data: gatewayUpOb } = await supabase
+          .from("user_gateways")
+          .select("*")
+          .eq("user_id", botOwnerUpOb.user_id)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+        
+        if (!gatewayUpOb?.access_token) {
+          await sendTelegramMessage(botToken, chatId, "Gateway de pagamento nao configurado. Entre em contato com o suporte.")
+          return
+        }
+        
+        // Enviar mensagem de processando
+        const msgText = isAccept 
+          ? `Otima escolha! Voce adicionou *${obName}*\n\nValor total: R$ ${totalPrice.toFixed(2).replace(".", ",")}\n\nGerando pagamento PIX...`
+          : `Voce selecionou: *${mainPlanName}*\n\nValor: R$ ${totalPrice.toFixed(2).replace(".", ",")}\n\nGerando pagamento PIX...`
+        
+        await sendTelegramMessage(botToken, chatId, msgText, undefined)
+        
+        // Gerar PIX
+        try {
+          const pixResultUpOb = await createPixPayment({
+            accessToken: gatewayUpOb.access_token,
+            amount: totalPrice,
+            description: `Pagamento - ${productName}`,
+            payerEmail: "luismarquesdevp@gmail.com",
+          })
+          
+          if (!pixResultUpOb.success) {
+            await sendTelegramMessage(botToken, chatId, `Erro ao gerar PIX: ${pixResultUpOb.error || "Tente novamente"}`, undefined)
+            return
+          }
+          
+          // Salvar pagamento
+          const productType = isAccept ? "upsell_with_bump" : "upsell"
+          console.log("[v0] Saving upsell+OB payment - user_id:", botOwnerUpOb.user_id, "amount:", totalPrice, "product_type:", productType)
+          
+          await supabase.from("payments").insert({
+            user_id: botOwnerUpOb.user_id,
+            bot_id: botUuid,
+            telegram_user_id: String(telegramUserId),
+            telegram_username: userUsername || null,
+            telegram_first_name: userFirstName || null,
+            telegram_last_name: userLastName || null,
+            amount: totalPrice,
+            status: "pending",
+            payment_method: "pix",
+            gateway: gatewayUpOb.gateway_name || "mercadopago",
+            external_payment_id: String(pixResultUpOb.paymentId),
+            description: `Pagamento - ${productName}`,
+            product_name: productName,
+            product_type: productType,
+            qr_code: pixResultUpOb.qrCode,
+            qr_code_url: pixResultUpOb.qrCodeUrl,
+            copy_paste: pixResultUpOb.copyPaste,
+            pix_code: pixResultUpOb.copyPaste || pixResultUpOb.qrCode,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          
+          // Buscar config de mensagens de pagamento do flow
+          const flowUpOb = await getActiveFlowForBot(supabase, botUuid)
+          const flowConfigUpOb = (flowUpOb?.config as Record<string, unknown>) || {}
+          const paymentMessagesUpOb = (flowConfigUpOb.paymentMessages as PaymentMessagesConfig) || {}
+          
+          // Enviar mensagens de PIX
+          await sendPixPaymentMessages({
+            botToken,
+            chatId,
+            pixCode: pixResultUpOb.copyPaste || pixResultUpOb.qrCode || "",
+            qrCodeUrl: pixResultUpOb.qrCodeUrl,
+            amount: totalPrice,
+            productName: productName,
+            paymentId: String(pixResultUpOb.paymentId),
+            config: paymentMessagesUpOb,
+            userName: userFirstName || "Cliente"
+          })
+          
+        } catch (pixErrorUpOb) {
+          const errorMsgUpOb = pixErrorUpOb instanceof Error ? pixErrorUpOb.message : String(pixErrorUpOb)
+          console.error("[v0] Erro ao gerar PIX para Upsell+OB:", errorMsgUpOb)
+          await sendTelegramMessage(botToken, chatId, `Erro ao processar pagamento: ${errorMsgUpOb}`, undefined)
+        }
+        
+        return
+      }
+      // ========== FIM ORDER BUMP UPSELL CALLBACKS ==========
+
       // ========== UPSELL CALLBACKS ==========
       // Formato: up_{msgId}_{planIndex}_{priceInCents} (igual downsell)
       if (callbackData.startsWith("up_")) {
         console.log("[v0] Upsell Callback recebido:", callbackData)
-        
-        await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
         
         // Parse callback: up_{shortMsgId}_{planIndex}_{priceInCents}
         const parts = callbackData.replace("up_", "").split("_")
@@ -1817,6 +2149,78 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           await sendTelegramMessage(botToken, chatId, "Erro: Bot nao encontrado.")
           return
         }
+        
+        // ========== VERIFICAR ORDER BUMP DO UPSELL ==========
+        const flowUp = await getActiveFlowForBot(supabase, botUuid)
+        const flowConfigUp = (flowUp?.config as Record<string, unknown>) || {}
+        const orderBumpConfigUp = flowConfigUp.orderBump as Record<string, unknown> | undefined
+        const orderBumpUpsell = orderBumpConfigUp?.upsell as { enabled?: boolean; name?: string; price?: number; description?: string; acceptText?: string; rejectText?: string; medias?: string[] } | undefined
+        
+        console.log("[v0] Upsell Order Bump Check - enabled:", orderBumpUpsell?.enabled, "price:", orderBumpUpsell?.price)
+        
+        // Se Order Bump do Upsell esta ativado, mostrar ANTES de gerar pagamento
+        if (orderBumpUpsell?.enabled && orderBumpUpsell?.price && orderBumpUpsell.price > 0) {
+          console.log("[v0] Upsell tem Order Bump ativo - mostrando oferta")
+          await answerCallback(botToken, callbackQueryId, "Preparando oferta especial...")
+          
+          // Salvar estado para saber que esta esperando resposta do order bump
+          await supabase.from("user_flow_state").upsert({
+            bot_id: botUuid,
+            telegram_user_id: String(telegramUserId),
+            flow_id: flowId || flowUp?.id,
+            status: "waiting_order_bump_upsell",
+            metadata: {
+              main_price: price,
+              main_plan_name: planName,
+              order_bump_price: orderBumpUpsell.price,
+              order_bump_name: orderBumpUpsell.name,
+            },
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "bot_id,telegram_user_id" })
+          
+          // Enviar midias do order bump primeiro (se houver)
+          if (orderBumpUpsell.medias && orderBumpUpsell.medias.length > 0) {
+            for (const mediaUrl of orderBumpUpsell.medias) {
+              if (mediaUrl && mediaUrl.trim()) {
+                try {
+                  if (mediaUrl.match(/\.(mp4|mov|avi|webm)$/i)) {
+                    await sendTelegramVideo(botToken, chatId, mediaUrl)
+                  } else {
+                    await sendTelegramPhoto(botToken, chatId, mediaUrl)
+                  }
+                } catch (mediaError) {
+                  console.error("[v0] Erro ao enviar midia do Order Bump Upsell:", mediaError)
+                }
+              }
+            }
+          }
+          
+          // Calcular precos
+          const mainPriceCents = Math.round(price * 100)
+          const obPriceCents = Math.round(orderBumpUpsell.price * 100)
+          const totalWithOb = price + orderBumpUpsell.price
+          
+          // Montar mensagem do Order Bump
+          const obMessage = orderBumpUpsell.description || `Adicione ${orderBumpUpsell.name} por apenas R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}!`
+          
+          // Enviar mensagem com botoes
+          await sendTelegramMessage(
+            botToken,
+            chatId,
+            `*OFERTA ESPECIAL!*\n\n${obMessage}\n\n*Valor do plano:* R$ ${price.toFixed(2).replace(".", ",")}\n*Valor do adicional:* R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}\n*Total com adicional:* R$ ${totalWithOb.toFixed(2).replace(".", ",")}`,
+            {
+              inline_keyboard: [
+                [{ text: orderBumpUpsell.acceptText || "QUERO", callback_data: `upob_accept_${mainPriceCents}_${obPriceCents}` }],
+                [{ text: orderBumpUpsell.rejectText || "NAO QUERO", callback_data: `upob_reject_${mainPriceCents}_0` }]
+              ]
+            }
+          )
+          
+          return // STOP - aguardar decisao do Order Bump
+        }
+        // ========== FIM ORDER BUMP UPSELL ==========
+        
+        await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
         
         // Buscar gateway pelo user_id (igual ao downsell - NAO pelo bot_id!)
         const { data: gateway, error: gwError } = await supabase
