@@ -68,6 +68,36 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Send multiple medias as album (grouped)
+async function sendMediaGroup(
+  botToken: string,
+  chatId: number,
+  mediaUrls: string[],
+  caption?: string,
+) {
+  const url = `https://api.telegram.org/bot${botToken}/sendMediaGroup`
+  
+  const media = mediaUrls.map((mediaUrl, index) => {
+    const isVideo = mediaUrl.includes(".mp4") || mediaUrl.includes("video") || mediaUrl.match(/\.(mp4|mov|avi|webm)$/i)
+    const item: Record<string, unknown> = {
+      type: isVideo ? "video" : "photo",
+      media: mediaUrl,
+    }
+    // Caption only on first item
+    if (index === 0 && caption) {
+      item.caption = caption
+      item.parse_mode = "HTML"
+    }
+    return item
+  })
+  
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, media }),
+  })
+}
+
 // Criar link de convite unico para grupo VIP (limite de 1 uso)
 async function createVipInviteLink(botToken: string, chatId: string): Promise<string | null> {
   try {
