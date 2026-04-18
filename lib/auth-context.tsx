@@ -75,6 +75,7 @@ export async function toggleUserBan(userId: string, banned: boolean) {
 // ---- Provider ----
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  console.log("[v0] AuthProvider mounting...")
   const [session, setSession] = useState<AuthSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
