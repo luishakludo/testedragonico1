@@ -68,6 +68,38 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Enviar múltiplas mídias como grupo no Telegram
+async function sendMediaGroup(
+  botToken: string,
+  chatId: number,
+  medias: string[],
+  caption: string
+) {
+  if (!medias || medias.length === 0) return
+
+  // Telegram sendMediaGroup aceita array de InputMedia
+  const mediaGroup = medias.map((url, index) => {
+    const isVideo = url.includes(".mp4") || url.includes("video")
+    return {
+      type: isVideo ? "video" : "photo",
+      media: url,
+      caption: index === 0 ? caption : undefined, // Caption só na primeira mídia
+      parse_mode: index === 0 && caption ? "HTML" : undefined,
+    }
+  })
+
+  const url = `https://api.telegram.org/bot${botToken}/sendMediaGroup`
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      media: mediaGroup,
+    }),
+  })
+  return res.json()
+}
+
 // Criar link de convite unico para grupo VIP (limite de 1 uso)
 async function createVipInviteLink(botToken: string, chatId: string): Promise<string | null> {
   try {
