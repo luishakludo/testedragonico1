@@ -422,7 +422,8 @@ async function sendMediaGroup(
   })
 }
 
-// Helper: Enviar Order Bump no mesmo formato dos packs (imagem + caption + botões juntos)
+// Helper: Enviar Order Bump (mídias em grupo + mensagem com botões)
+// Formato padrão: Título, Descrição, Por apenas R$ X,XX
 async function sendOrderBumpOffer(params: {
   botToken: string
   chatId: number
@@ -433,14 +434,13 @@ async function sendOrderBumpOffer(params: {
   rejectText?: string
   medias?: string[]
   mainAmountCents: number
-  customMessage?: string // Mensagem customizada (se não fornecido, monta automaticamente)
   callbackPrefix?: string // Prefixo do callback (padrão: "ob")
 }) {
-  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, customMessage, callbackPrefix = "ob" } = params
+  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, callbackPrefix = "ob" } = params
   
   const obPriceCents = Math.round(price * 100)
-  // Usar mensagem customizada ou montar automaticamente
-  const obMessage = customMessage || `<b>${name || "Oferta Especial"}</b>\n\n${description || ""}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
+  // Mensagem padrão simples: Título, Descrição, Por apenas R$ X,XX
+  const obMessage = `<b>${name || "Oferta Especial"}</b>\n\n${description || ""}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
   
   const obButtons = {
     inline_keyboard: [
@@ -449,47 +449,18 @@ async function sendOrderBumpOffer(params: {
     ]
   }
   
-  // Se tiver mídia, enviar foto com caption e botões (mesmo formato dos packs)
+  // Se tiver mídias, enviar TODAS em grupo primeiro, depois mensagem com botões
   if (medias && medias.length > 0) {
-    const firstMedia = medias[0]
-    const isVideo = firstMedia.includes(".mp4") || firstMedia.includes("video") || firstMedia.match(/\.(mp4|mov|avi|webm)$/i)
-    
     try {
-      if (isVideo) {
-        // Para vídeos, enviar vídeo com caption e botões
-        await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            video: firstMedia,
-            caption: obMessage,
-            parse_mode: "HTML",
-            reply_markup: obButtons
-          })
-        })
-      } else {
-        // Para fotos, enviar foto com caption e botões
-        await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            photo: firstMedia,
-            caption: obMessage,
-            parse_mode: "HTML",
-            reply_markup: obButtons
-          })
-        })
-      }
-    } catch {
-      // Fallback: enviar só texto com botões
-      await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
+      // Enviar todas as mídias como grupo (sem caption, sem botões - Telegram não suporta)
+      await sendMediaGroup(botToken, chatId, medias, "")
+    } catch (e) {
+      console.error("[v0] Erro ao enviar media group do Order Bump:", e)
     }
-  } else {
-    // Sem mídia, enviar só texto com botões
-    await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
   }
+  
+  // Enviar mensagem com botões (sempre)
+  await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
 }
 
 // ---------------------------------------------------------------------------
@@ -1865,23 +1836,18 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
-          const totalWithOb = price + orderBumpDownsell.price
           
-          // Montar mensagem do Order Bump
-          const obMessageText = orderBumpDownsell.description || `Adicione ${orderBumpDownsell.name} por apenas R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}!`
-          const fullObMessage = `<b>OFERTA ESPECIAL!</b>\n\n${obMessageText}\n\n<b>Valor do plano:</b> R$ ${price.toFixed(2).replace(".", ",")}\n<b>Valor do adicional:</b> R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}\n<b>Total com adicional:</b> R$ ${totalWithOb.toFixed(2).replace(".", ",")}`
-          
-          // Enviar order bump no formato correto (imagem + caption + botões juntos)
+          // Enviar order bump no formato padrão (mídias em grupo + mensagem simples com botões)
           await sendOrderBumpOffer({
             botToken,
             chatId,
             name: orderBumpDownsell.name || "Oferta Especial",
+            description: orderBumpDownsell.description,
             price: orderBumpDownsell.price,
             acceptText: orderBumpDownsell.acceptText,
             rejectText: orderBumpDownsell.rejectText,
             medias: orderBumpDownsell.medias,
             mainAmountCents: mainPriceCents,
-            customMessage: fullObMessage,
             callbackPrefix: "dsob"
           })
           
@@ -2232,23 +2198,18 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
-          const totalWithOb = price + orderBumpUpsell.price
           
-          // Montar mensagem do Order Bump
-          const obMessageText = orderBumpUpsell.description || `Adicione ${orderBumpUpsell.name} por apenas R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}!`
-          const fullObMessage = `<b>OFERTA ESPECIAL!</b>\n\n${obMessageText}\n\n<b>Valor do plano:</b> R$ ${price.toFixed(2).replace(".", ",")}\n<b>Valor do adicional:</b> R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}\n<b>Total com adicional:</b> R$ ${totalWithOb.toFixed(2).replace(".", ",")}`
-          
-          // Enviar order bump no formato correto (imagem + caption + botões juntos)
+          // Enviar order bump no formato padrão (mídias em grupo + mensagem simples com botões)
           await sendOrderBumpOffer({
             botToken,
             chatId,
             name: orderBumpUpsell.name || "Oferta Especial",
+            description: orderBumpUpsell.description,
             price: orderBumpUpsell.price,
             acceptText: orderBumpUpsell.acceptText,
             rejectText: orderBumpUpsell.rejectText,
             medias: orderBumpUpsell.medias,
             mainAmountCents: mainPriceCents,
-            customMessage: fullObMessage,
             callbackPrefix: "upob"
           })
           
@@ -2557,32 +2518,20 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               // Se tem MAIS DE 1: mostra so QUERO (o PROSSEGUIR vem no final)
               if (hasMultipleBumps) {
                 // Multiplos bumps: enviar cada um com só botão QUERO
-                // Não podemos usar sendOrderBumpOffer diretamente porque ela sempre tem QUERO + NAO QUERO
                 const obMessage = `<b>${planOrderBump.name || "Oferta Especial"}</b>\n\n${planOrderBump.description || ""}\n\n💰 Por apenas <b>R$ ${planOrderBump.price.toFixed(2).replace(".", ",")}</b>`
                 const acceptCallback = `ob_accept_${mainPriceRounded}_${bumpPriceRounded}`
                 const obButtons = { inline_keyboard: [[{ text: planOrderBump.acceptText || "QUERO", callback_data: acceptCallback }]] }
                 
+                // Enviar TODAS as mídias em grupo primeiro
                 if (planOrderBump.medias && planOrderBump.medias.length > 0) {
-                  const firstMedia = planOrderBump.medias[0]
-                  const isVideo = firstMedia.includes(".mp4") || firstMedia.includes("video") || firstMedia.match(/\.(mp4|mov|avi|webm)$/i)
                   try {
-                    if (isVideo) {
-                      await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ chat_id: chatId, video: firstMedia, caption: obMessage, parse_mode: "HTML", reply_markup: obButtons })
-                      })
-                    } else {
-                      await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ chat_id: chatId, photo: firstMedia, caption: obMessage, parse_mode: "HTML", reply_markup: obButtons })
-                      })
-                    }
-                  } catch {
-                    await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
+                    await sendMediaGroup(botToken, chatId, planOrderBump.medias, "")
+                  } catch (e) {
+                    console.error("[v0] Erro ao enviar media group do Plan Order Bump:", e)
                   }
-                } else {
-                  await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
                 }
+                // Depois enviar mensagem com botão
+                await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
               } else {
                 // Apenas 1 bump: usar sendOrderBumpOffer com QUERO + NAO QUERO
                 await sendOrderBumpOffer({
