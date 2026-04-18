@@ -422,6 +422,76 @@ async function sendMediaGroup(
   })
 }
 
+// Helper: Enviar Order Bump no mesmo formato dos packs (imagem + caption + botões juntos)
+async function sendOrderBumpOffer(params: {
+  botToken: string
+  chatId: number
+  name: string
+  description?: string
+  price: number
+  acceptText?: string
+  rejectText?: string
+  medias?: string[]
+  mainAmountCents: number
+  customMessage?: string // Mensagem customizada (se não fornecido, monta automaticamente)
+  callbackPrefix?: string // Prefixo do callback (padrão: "ob")
+}) {
+  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, customMessage, callbackPrefix = "ob" } = params
+  
+  const obPriceCents = Math.round(price * 100)
+  // Usar mensagem customizada ou montar automaticamente
+  const obMessage = customMessage || `<b>${name || "Oferta Especial"}</b>\n\n${description || ""}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
+  
+  const obButtons = {
+    inline_keyboard: [
+      [{ text: acceptText || "QUERO", callback_data: `${callbackPrefix}_accept_${mainAmountCents}_${obPriceCents}` }],
+      [{ text: rejectText || "NAO QUERO", callback_data: `${callbackPrefix}_decline_${mainAmountCents}_0` }]
+    ]
+  }
+  
+  // Se tiver mídia, enviar foto com caption e botões (mesmo formato dos packs)
+  if (medias && medias.length > 0) {
+    const firstMedia = medias[0]
+    const isVideo = firstMedia.includes(".mp4") || firstMedia.includes("video") || firstMedia.match(/\.(mp4|mov|avi|webm)$/i)
+    
+    try {
+      if (isVideo) {
+        // Para vídeos, enviar vídeo com caption e botões
+        await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            video: firstMedia,
+            caption: obMessage,
+            parse_mode: "HTML",
+            reply_markup: obButtons
+          })
+        })
+      } else {
+        // Para fotos, enviar foto com caption e botões
+        await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            photo: firstMedia,
+            caption: obMessage,
+            parse_mode: "HTML",
+            reply_markup: obButtons
+          })
+        })
+      }
+    } catch {
+      // Fallback: enviar só texto com botões
+      await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
+    }
+  } else {
+    // Sem mídia, enviar só texto com botões
+    await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Process message in background (non-blocking)
 // ---------------------------------------------------------------------------
@@ -1161,19 +1231,17 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             updated_at: new Date().toISOString()
           }, { onConflict: "bot_id,telegram_user_id" })
           
-          // Enviar midias do order bump se houver
-          if (orderBumpPacks.medias && orderBumpPacks.medias.length > 0) {
-            await sendMediaGroup(botToken, chatId, orderBumpPacks.medias, "")
-          }
-          
-          // Enviar mensagem do order bump
-          const obMessage = `*${orderBumpPacks.name || "Oferta Especial"}*\n\n${orderBumpPacks.description || ""}\n\n💰 Por apenas *R$ ${orderBumpPacks.price.toFixed(2).replace(".", ",")}*`
-          
-          await sendTelegramMessage(botToken, chatId, obMessage, {
-            inline_keyboard: [
-[{ text: orderBumpPacks.acceptText || "QUERO", callback_data: `ob_accept_${Math.round(packPrice * 100)}_${Math.round(orderBumpPacks.price * 100)}` }],
-                [{ text: orderBumpPacks.rejectText || "NAO QUERO", callback_data: `ob_decline_${Math.round(packPrice * 100)}_0` }]
-            ]
+          // Enviar order bump no formato correto (imagem + caption + botões juntos)
+          await sendOrderBumpOffer({
+            botToken,
+            chatId,
+            name: orderBumpPacks.name || "Oferta Especial",
+            description: orderBumpPacks.description,
+            price: orderBumpPacks.price,
+            acceptText: orderBumpPacks.acceptText,
+            rejectText: orderBumpPacks.rejectText,
+            medias: orderBumpPacks.medias,
+            mainAmountCents: Math.round(packPrice * 100)
           })
           
           return
@@ -1795,43 +1863,27 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             updated_at: new Date().toISOString(),
           }, { onConflict: "bot_id,telegram_user_id" })
           
-          // Enviar midias do order bump primeiro (se houver)
-          if (orderBumpDownsell.medias && orderBumpDownsell.medias.length > 0) {
-            for (const mediaUrl of orderBumpDownsell.medias) {
-              if (mediaUrl && mediaUrl.trim()) {
-                try {
-                  if (mediaUrl.match(/\.(mp4|mov|avi|webm)$/i)) {
-                    await sendTelegramVideo(botToken, chatId, mediaUrl)
-                  } else {
-                    await sendTelegramPhoto(botToken, chatId, mediaUrl)
-                  }
-                } catch (mediaError) {
-                  console.error("[v0] Erro ao enviar midia do Order Bump Downsell:", mediaError)
-                }
-              }
-            }
-          }
-          
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
-          const obPriceCents = Math.round(orderBumpDownsell.price * 100)
           const totalWithOb = price + orderBumpDownsell.price
           
           // Montar mensagem do Order Bump
-          const obMessage = orderBumpDownsell.description || `Adicione ${orderBumpDownsell.name} por apenas R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}!`
+          const obMessageText = orderBumpDownsell.description || `Adicione ${orderBumpDownsell.name} por apenas R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}!`
+          const fullObMessage = `<b>OFERTA ESPECIAL!</b>\n\n${obMessageText}\n\n<b>Valor do plano:</b> R$ ${price.toFixed(2).replace(".", ",")}\n<b>Valor do adicional:</b> R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}\n<b>Total com adicional:</b> R$ ${totalWithOb.toFixed(2).replace(".", ",")}`
           
-          // Enviar mensagem com botoes
-          await sendTelegramMessage(
+          // Enviar order bump no formato correto (imagem + caption + botões juntos)
+          await sendOrderBumpOffer({
             botToken,
             chatId,
-            `*OFERTA ESPECIAL!*\n\n${obMessage}\n\n*Valor do plano:* R$ ${price.toFixed(2).replace(".", ",")}\n*Valor do adicional:* R$ ${orderBumpDownsell.price.toFixed(2).replace(".", ",")}\n*Total com adicional:* R$ ${totalWithOb.toFixed(2).replace(".", ",")}`,
-            {
-              inline_keyboard: [
-                [{ text: orderBumpDownsell.acceptText || "QUERO", callback_data: `dsob_accept_${mainPriceCents}_${obPriceCents}` }],
-                [{ text: orderBumpDownsell.rejectText || "NAO QUERO", callback_data: `dsob_reject_${mainPriceCents}_0` }]
-              ]
-            }
-          )
+            name: orderBumpDownsell.name || "Oferta Especial",
+            price: orderBumpDownsell.price,
+            acceptText: orderBumpDownsell.acceptText,
+            rejectText: orderBumpDownsell.rejectText,
+            medias: orderBumpDownsell.medias,
+            mainAmountCents: mainPriceCents,
+            customMessage: fullObMessage,
+            callbackPrefix: "dsob"
+          })
           
           return // STOP - aguardar decisao do Order Bump
         }
@@ -2178,43 +2230,27 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             updated_at: new Date().toISOString(),
           }, { onConflict: "bot_id,telegram_user_id" })
           
-          // Enviar midias do order bump primeiro (se houver)
-          if (orderBumpUpsell.medias && orderBumpUpsell.medias.length > 0) {
-            for (const mediaUrl of orderBumpUpsell.medias) {
-              if (mediaUrl && mediaUrl.trim()) {
-                try {
-                  if (mediaUrl.match(/\.(mp4|mov|avi|webm)$/i)) {
-                    await sendTelegramVideo(botToken, chatId, mediaUrl)
-                  } else {
-                    await sendTelegramPhoto(botToken, chatId, mediaUrl)
-                  }
-                } catch (mediaError) {
-                  console.error("[v0] Erro ao enviar midia do Order Bump Upsell:", mediaError)
-                }
-              }
-            }
-          }
-          
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
-          const obPriceCents = Math.round(orderBumpUpsell.price * 100)
           const totalWithOb = price + orderBumpUpsell.price
           
           // Montar mensagem do Order Bump
-          const obMessage = orderBumpUpsell.description || `Adicione ${orderBumpUpsell.name} por apenas R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}!`
+          const obMessageText = orderBumpUpsell.description || `Adicione ${orderBumpUpsell.name} por apenas R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}!`
+          const fullObMessage = `<b>OFERTA ESPECIAL!</b>\n\n${obMessageText}\n\n<b>Valor do plano:</b> R$ ${price.toFixed(2).replace(".", ",")}\n<b>Valor do adicional:</b> R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}\n<b>Total com adicional:</b> R$ ${totalWithOb.toFixed(2).replace(".", ",")}`
           
-          // Enviar mensagem com botoes
-          await sendTelegramMessage(
+          // Enviar order bump no formato correto (imagem + caption + botões juntos)
+          await sendOrderBumpOffer({
             botToken,
             chatId,
-            `*OFERTA ESPECIAL!*\n\n${obMessage}\n\n*Valor do plano:* R$ ${price.toFixed(2).replace(".", ",")}\n*Valor do adicional:* R$ ${orderBumpUpsell.price.toFixed(2).replace(".", ",")}\n*Total com adicional:* R$ ${totalWithOb.toFixed(2).replace(".", ",")}`,
-            {
-              inline_keyboard: [
-                [{ text: orderBumpUpsell.acceptText || "QUERO", callback_data: `upob_accept_${mainPriceCents}_${obPriceCents}` }],
-                [{ text: orderBumpUpsell.rejectText || "NAO QUERO", callback_data: `upob_reject_${mainPriceCents}_0` }]
-              ]
-            }
-          )
+            name: orderBumpUpsell.name || "Oferta Especial",
+            price: orderBumpUpsell.price,
+            acceptText: orderBumpUpsell.acceptText,
+            rejectText: orderBumpUpsell.rejectText,
+            medias: orderBumpUpsell.medias,
+            mainAmountCents: mainPriceCents,
+            customMessage: fullObMessage,
+            callbackPrefix: "upob"
+          })
           
           return // STOP - aguardar decisao do Order Bump
         }
@@ -2510,46 +2546,56 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               undefined
             )
             
-            // Mostrar CADA order bump
+            // Mostrar CADA order bump no formato correto (imagem + caption + botões juntos)
             for (let i = 0; i < activePlanOrderBumps.length; i++) {
               const planOrderBump = activePlanOrderBumps[i]
               const bumpPriceRounded = Math.round(planOrderBump.price * 100)
               
-              const orderBumpDesc = planOrderBump.description || `Deseja adicionar ${planOrderBump.name || "este bonus"} por apenas R$ ${planOrderBump.price.toFixed(2).replace(".", ",")}?`
-              const orderBumpAcceptText = planOrderBump.acceptText || "QUERO"
-              
-              // Callback para aceitar este order bump especifico
-              const acceptCallback = `ob_accept_${mainPriceRounded}_${bumpPriceRounded}`
-              
-              console.log("[v0] Plan Order Bump", i + 1, "- callback:", acceptCallback)
-              
-              // Enviar midias do order bump se houver
-              if (planOrderBump.medias && planOrderBump.medias.length > 0) {
-                console.log("[v0] Enviando midias do Plan Order Bump", i + 1, ":", planOrderBump.medias.length)
-                await sendMediaGroup(botToken, chatId, planOrderBump.medias, "")
-              }
+              console.log("[v0] Plan Order Bump", i + 1, "- price:", bumpPriceRounded)
               
               // Se tem APENAS 1 order bump: mostra QUERO + NAO QUERO
               // Se tem MAIS DE 1: mostra so QUERO (o PROSSEGUIR vem no final)
               if (hasMultipleBumps) {
-                // Multiplos bumps: so botao QUERO
-                const bumpKeyboard = {
-                  inline_keyboard: [
-                    [{ text: orderBumpAcceptText, callback_data: acceptCallback }]
-                  ]
+                // Multiplos bumps: enviar cada um com só botão QUERO
+                // Não podemos usar sendOrderBumpOffer diretamente porque ela sempre tem QUERO + NAO QUERO
+                const obMessage = `<b>${planOrderBump.name || "Oferta Especial"}</b>\n\n${planOrderBump.description || ""}\n\n💰 Por apenas <b>R$ ${planOrderBump.price.toFixed(2).replace(".", ",")}</b>`
+                const acceptCallback = `ob_accept_${mainPriceRounded}_${bumpPriceRounded}`
+                const obButtons = { inline_keyboard: [[{ text: planOrderBump.acceptText || "QUERO", callback_data: acceptCallback }]] }
+                
+                if (planOrderBump.medias && planOrderBump.medias.length > 0) {
+                  const firstMedia = planOrderBump.medias[0]
+                  const isVideo = firstMedia.includes(".mp4") || firstMedia.includes("video") || firstMedia.match(/\.(mp4|mov|avi|webm)$/i)
+                  try {
+                    if (isVideo) {
+                      await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ chat_id: chatId, video: firstMedia, caption: obMessage, parse_mode: "HTML", reply_markup: obButtons })
+                      })
+                    } else {
+                      await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ chat_id: chatId, photo: firstMedia, caption: obMessage, parse_mode: "HTML", reply_markup: obButtons })
+                      })
+                    }
+                  } catch {
+                    await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
+                  }
+                } else {
+                  await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
                 }
-                await sendTelegramMessage(botToken, chatId, orderBumpDesc, bumpKeyboard)
               } else {
-                // Apenas 1 bump: QUERO + NAO QUERO
-                const declineCallback = `ob_decline_${mainPriceRounded}_0`
-                const orderBumpDeclineText = planOrderBump.rejectText || "NAO QUERO"
-                const bumpKeyboard = {
-                  inline_keyboard: [
-                    [{ text: orderBumpAcceptText, callback_data: acceptCallback }],
-                    [{ text: orderBumpDeclineText, callback_data: declineCallback }]
-                  ]
-                }
-                await sendTelegramMessage(botToken, chatId, orderBumpDesc, bumpKeyboard)
+                // Apenas 1 bump: usar sendOrderBumpOffer com QUERO + NAO QUERO
+                await sendOrderBumpOffer({
+                  botToken,
+                  chatId,
+                  name: planOrderBump.name || "Oferta Especial",
+                  description: planOrderBump.description,
+                  price: planOrderBump.price,
+                  acceptText: planOrderBump.acceptText,
+                  rejectText: planOrderBump.rejectText,
+                  medias: planOrderBump.medias,
+                  mainAmountCents: mainPriceRounded
+                })
               }
             }
             
@@ -2607,41 +2653,29 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           if (orderBumpInicial?.enabled && orderBumpInicial?.price > 0) {
             console.log("[v0] Order Bump GLOBAL ATIVADO! Enviando oferta ao usuario...")
             
-            const orderBumpDesc = orderBumpInicial.description || `Deseja adicionar ${orderBumpInicial.name || "este bonus"} por apenas R$ ${orderBumpInicial.price}?`
-            const orderBumpAcceptText = orderBumpInicial.acceptText || "QUERO"
-            const orderBumpDeclineText = orderBumpInicial.rejectText || "NAO QUERO"
-            
-            // Formato: ob_accept_{mainAmount}_{bumpAmount} ou ob_decline_{mainAmount}
-            // Arredondar precos para evitar problemas com decimais no callback
             const mainPriceRounded = Math.round(planPrice * 100)
-            const bumpPriceRounded = Math.round(orderBumpInicial.price * 100)
-            const acceptCallback = `ob_accept_${mainPriceRounded}_${bumpPriceRounded}`
-            const declineCallback = `ob_decline_${mainPriceRounded}_0`
-            console.log("[v0] Order Bump callbacks:", acceptCallback, declineCallback)
-            
-            const orderBumpKeyboard = {
-              inline_keyboard: [
-                [{ text: orderBumpAcceptText, callback_data: acceptCallback }],
-                [{ text: orderBumpDeclineText, callback_data: declineCallback }]
-              ]
-            }
+            console.log("[v0] Order Bump callbacks - mainPrice:", mainPriceRounded, "bumpPrice:", Math.round(orderBumpInicial.price * 100))
             
             // Enviar mensagem do plano selecionado
             await sendTelegramMessage(
               botToken,
               chatId,
-              `Voce selecionou: *${planName}*\n\nValor: R$ ${planPrice.toFixed(2).replace(".", ",")}`,
+              `Voce selecionou: <b>${planName}</b>\n\nValor: R$ ${planPrice.toFixed(2).replace(".", ",")}`,
               undefined
             )
             
-            // Enviar midias do order bump se houver
-            if (orderBumpInicial.medias && orderBumpInicial.medias.length > 0) {
-              console.log("[v0] Enviando midias do Order Bump:", orderBumpInicial.medias.length)
-              await sendMediaGroup(botToken, chatId, orderBumpInicial.medias, "")
-            }
-            
-            // Enviar oferta do Order Bump
-            await sendTelegramMessage(botToken, chatId, orderBumpDesc, orderBumpKeyboard)
+            // Enviar order bump no formato correto (imagem + caption + botões juntos)
+            await sendOrderBumpOffer({
+              botToken,
+              chatId,
+              name: orderBumpInicial.name || "Oferta Especial",
+              description: orderBumpInicial.description,
+              price: orderBumpInicial.price,
+              acceptText: orderBumpInicial.acceptText,
+              rejectText: orderBumpInicial.rejectText,
+              medias: orderBumpInicial.medias,
+              mainAmountCents: mainPriceRounded
+            })
             
             // Salvar estado para quando usuario responder
             console.log("[v0] Salvando estado Order Bump - bot_id:", botUuid, "telegram_user_id:", String(telegramUserId))
