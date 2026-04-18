@@ -142,7 +142,7 @@ export default function DashboardPage() {
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null)
   
   // Obter userId do usuario logado para filtrar dados corretamente
-  const userId = session?.user?.id || session?.userId
+  const userId = session?.userId
 
   // Handler para selecionar preset de data
   const handlePresetSelect = (preset: string) => {

@@ -41,7 +41,7 @@ interface Payment {
 
 export default function VendasPage() {
   const { session, isLoading: authLoading } = useAuth()
-  const userId = session?.user?.id || session?.userId
+  const userId = session?.userId
   
   // Debug: mostra userId no console assim que carregar
   console.log("[v0] VendasPage - session:", session, "userId:", userId, "authLoading:", authLoading)
