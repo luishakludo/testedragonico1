@@ -93,6 +93,72 @@ async function createVipInviteLink(botToken: string, chatId: string): Promise<st
   }
 }
 
+// Helper: Enviar Order Bump no mesmo formato dos packs (imagem + caption + botões juntos)
+async function sendOrderBumpOffer(params: {
+  botToken: string
+  chatId: number
+  name: string
+  description?: string
+  price: number
+  acceptText?: string
+  rejectText?: string
+  medias?: string[]
+  mainAmountCents: number
+  customMessage?: string // Mensagem customizada (se não fornecido, monta automaticamente)
+  callbackPrefix?: string // Prefixo do callback (padrão: "ob")
+}) {
+  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, customMessage, callbackPrefix = "ob" } = params
+  
+  const obPriceCents = Math.round(price * 100)
+  // Usar mensagem customizada ou montar automaticamente
+  const obMessage = customMessage || `<b>${name || "Oferta Especial"}</b>\n\n${description || ""}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
+  
+  const obButtons = {
+    inline_keyboard: [
+      [{ text: acceptText || "QUERO", callback_data: `${callbackPrefix}_accept_${mainAmountCents}_${obPriceCents}` }],
+      [{ text: rejectText || "NAO QUERO", callback_data: `${callbackPrefix}_decline_${mainAmountCents}_0` }]
+    ]
+  }
+  
+  // Se tiver mídia, enviar foto com caption e botões (mesmo formato dos packs)
+  if (medias && medias.length > 0) {
+    const firstMedia = medias[0]
+    const isVideo = firstMedia.includes(".mp4") || firstMedia.includes("video") || firstMedia.match(/\.(mp4|mov|avi|webm)$/i)
+    
+    try {
+      if (isVideo) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            video: firstMedia,
+            caption: obMessage,
+            parse_mode: "HTML",
+            reply_markup: obButtons
+          })
+        })
+      } else {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            photo: firstMedia,
+            caption: obMessage,
+            parse_mode: "HTML",
+            reply_markup: obButtons
+          })
+        })
+      }
+    } catch {
+      await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
+    }
+  } else {
+    await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
+  }
+}
+
 function calculateDelayMs(value: number, unit: "minutes" | "hours" | "days"): number {
   switch (unit) {
     case "minutes": return value * 60 * 1000
@@ -117,18 +183,6 @@ async function sendUpsellOffer(
   console.log(`[UPSELL] Sending upsell ${upsellIndex} to user ${chatId}`)
   console.log(`[UPSELL] Upsell data:`, JSON.stringify(upsell))
 
-  // Enviar midias se existirem
-  if (upsell.medias && upsell.medias.length > 0) {
-    for (const mediaUrl of upsell.medias) {
-      if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
-        await sendTelegramVideo(botToken, chatId, mediaUrl, "")
-      } else {
-        await sendTelegramPhoto(botToken, chatId, mediaUrl, "")
-      }
-      await sleep(500)
-    }
-  }
-
   // Montar botoes - mesma estrutura do downsell (apenas planos)
   const plans = upsell.plans || []
   const inlineKeyboard: { inline_keyboard: { text: string; callback_data: string }[][] } = {
@@ -148,9 +202,47 @@ async function sendUpsellOffer(
     }
   }
 
-  // Enviar mensagem
+  // Enviar mensagem com midia (se existir) junto com os botões
   const message = upsell.message || "Oferta especial para voce!"
-  await sendTelegramMessage(botToken, chatId, message, inlineKeyboard)
+  
+  if (upsell.medias && upsell.medias.length > 0) {
+    const firstMedia = upsell.medias[0]
+    const isVideo = firstMedia.includes(".mp4") || firstMedia.includes("video")
+    
+    try {
+      if (isVideo) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            video: firstMedia,
+            caption: message,
+            parse_mode: "HTML",
+            reply_markup: inlineKeyboard
+          })
+        })
+      } else {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            photo: firstMedia,
+            caption: message,
+            parse_mode: "HTML",
+            reply_markup: inlineKeyboard
+          })
+        })
+      }
+    } catch {
+      // Fallback: enviar só texto com botões
+      await sendTelegramMessage(botToken, chatId, message, inlineKeyboard)
+    }
+  } else {
+    // Sem mídia - enviar só texto com botões
+    await sendTelegramMessage(botToken, chatId, message, inlineKeyboard)
+  }
 
   // Atualizar estado - salvar info do primeiro plano se existir
   const firstPlan = plans[0]
@@ -752,26 +844,17 @@ export async function POST(request: NextRequest) {
                       updated_at: new Date().toISOString()
                     }, { onConflict: "bot_id,telegram_user_id" })
                     
-                    // Enviar midias do order bump se houver
-                    if (orderBumpToUse.medias && orderBumpToUse.medias.length > 0) {
-                      for (const mediaUrl of orderBumpToUse.medias) {
-                        if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
-                          await sendTelegramVideo(bot.token, chatId, mediaUrl, "")
-                        } else {
-                          await sendTelegramPhoto(bot.token, chatId, mediaUrl, "")
-                        }
-                        await sleep(500)
-                      }
-                    }
-                    
-                    // Enviar mensagem do order bump
-                    const obMessage = `*${orderBumpToUse.name || "Oferta Especial"}*\n\n${orderBumpToUse.description || ""}\n\n Por apenas *R$ ${orderBumpToUse.price.toFixed(2).replace(".", ",")}*`
-                    
-                    await sendTelegramMessage(bot.token, chatId, obMessage, {
-                      inline_keyboard: [
-                        [{ text: orderBumpToUse.acceptText || "QUERO", callback_data: `ob_accept_${Math.round(payment.amount * 100)}_${Math.round(orderBumpToUse.price * 100)}` }],
-                        [{ text: orderBumpToUse.rejectText || "NAO QUERO", callback_data: `ob_decline_${Math.round(payment.amount * 100)}_0` }]
-                      ]
+                    // Enviar order bump no formato correto (imagem + caption + botões juntos)
+                    await sendOrderBumpOffer({
+                      botToken: bot.token,
+                      chatId,
+                      name: orderBumpToUse.name || "Oferta Especial",
+                      description: orderBumpToUse.description,
+                      price: orderBumpToUse.price,
+                      acceptText: orderBumpToUse.acceptText,
+                      rejectText: orderBumpToUse.rejectText,
+                      medias: orderBumpToUse.medias,
+                      mainAmountCents: Math.round(payment.amount * 100)
                     })
                     
                     return NextResponse.json({ received: true })
