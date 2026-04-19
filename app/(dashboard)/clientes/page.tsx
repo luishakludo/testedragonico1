@@ -19,8 +19,11 @@ import {
   Package,
   Filter,
   GitBranch,
-  Calendar
+  Calendar,
+  Ban,
+  Loader2
 } from "lucide-react"
+import { toast } from "sonner"
 
 interface Purchase {
   id: string
@@ -94,7 +97,47 @@ export default function ClientesPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [bots, setBots] = useState<Bot[]>([]) // Para uso futuro (filtro por bot)
   const [selectedFlowId, setSelectedFlowId] = useState<string>("")
+  const [banningClient, setBanningClient] = useState<string | null>(null)
   const ITEMS_PER_PAGE = 50
+
+  // Funcao para banir cliente
+  const handleBanClient = async (client: Client, action: "ban" | "remove" = "remove") => {
+    if (!client.telegram_user_id || !client.bot_id) {
+      toast.error("Dados do cliente incompletos")
+      return
+    }
+
+    setBanningClient(client.id)
+    
+    try {
+      const res = await fetch("/api/clients/ban", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telegramUserId: client.telegram_user_id,
+          botId: client.bot_id,
+          action,
+          reason: "Manual ban from dashboard"
+        })
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        toast.success(data.message || "Cliente removido com sucesso")
+        // Atualizar lista de clientes
+        fetchClients()
+        setSelectedClient(null)
+      } else {
+        toast.error(data.error || "Erro ao remover cliente")
+      }
+    } catch (err) {
+      console.error("[ban] Error:", err)
+      toast.error("Erro ao processar banimento")
+    } finally {
+      setBanningClient(null)
+    }
+  }
 
   useEffect(() => {
     if (authLoading) return
@@ -345,13 +388,14 @@ export default function ClientesPage() {
             {/* Table Layout */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {/* Header */}
-              <div className="grid grid-cols-[48px_180px_140px_100px_100px_1fr] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-200">
+              <div className="grid grid-cols-[48px_180px_140px_100px_100px_100px_80px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-200">
                 <div />
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Cliente</span>
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Tipo</span>
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Plano</span>
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Tempo</span>
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide text-right">Total Gasto</span>
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Gasto</span>
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide text-right">Acoes</span>
               </div>
 
               {/* Body */}
@@ -370,10 +414,9 @@ export default function ClientesPage() {
               ) : (
                 <div className="divide-y divide-gray-100">
                   {filteredClients.map((client) => (
-                    <button
+                    <div
                       key={client.id}
-                      onClick={() => setSelectedClient(client)}
-                      className="w-full grid grid-cols-[48px_180px_140px_100px_100px_1fr] gap-4 items-center px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+                      className="w-full grid grid-cols-[48px_180px_140px_100px_100px_100px_80px] gap-4 items-center px-5 py-4 hover:bg-gray-50 transition-colors text-left"
                     >
                       {/* Avatar */}
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
@@ -451,15 +494,46 @@ export default function ClientesPage() {
                       </div>
 
                       {/* Total Gasto */}
-                      <div className="text-right">
+                      <button 
+                        onClick={() => setSelectedClient(client)}
+                        className="text-left"
+                      >
                         <p className="text-base font-bold text-emerald-600">
                           {formatCurrency(client.total_spent)}
                         </p>
                         <p className="text-xs text-gray-500">
                           {client.purchases.length} compra{client.purchases.length !== 1 ? "s" : ""}
                         </p>
+                      </button>
+
+                      {/* Acoes */}
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setSelectedClient(client)}
+                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="Ver detalhes"
+                        >
+                          <Search className="w-4 h-4" />
+                        </button>
+                        {client.type === "assinante" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleBanClient(client, "remove")
+                            }}
+                            disabled={banningClient === client.id}
+                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Remover do grupo"
+                          >
+                            {banningClient === client.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Ban className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -677,6 +751,32 @@ export default function ClientesPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Botao de Banimento (apenas para assinantes) */}
+                {selectedClient.type === "assinante" && (
+                  <div className="pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() => handleBanClient(selectedClient, "remove")}
+                      disabled={banningClient === selectedClient.id}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-medium text-sm transition-colors disabled:opacity-50"
+                    >
+                      {banningClient === selectedClient.id ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Removendo...
+                        </>
+                      ) : (
+                        <>
+                          <Ban className="w-4 h-4" />
+                          Remover do Grupo VIP
+                        </>
+                      )}
+                    </button>
+                    <p className="text-xs text-gray-400 text-center mt-2">
+                      Remove o acesso do usuario ao grupo VIP e cancela a assinatura
+                    </p>
+                  </div>
+                )}
               </div>
             </>
           )}
