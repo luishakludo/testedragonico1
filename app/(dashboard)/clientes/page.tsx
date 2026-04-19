@@ -332,24 +332,6 @@ export default function ClientesPage() {
                   />
                 </div>
 
-                {/* Filtro por Fluxo */}
-                {flows.length > 0 && (
-                  <div className="relative">
-                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <select
-                      value={selectedFlowId}
-                      onChange={(e) => { setSelectedFlowId(e.target.value); setCurrentPage(1); }}
-                      className="h-9 pl-9 pr-8 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-100 focus:border-gray-300 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="">Todos os fluxos</option>
-                      {flows.map((flow) => (
-                        <option key={flow.id} value={flow.id}>{flow.name}</option>
-                      ))}
-                    </select>
-                    <GitBranch className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                  </div>
-                )}
-
                 <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
                   {tabs.map((tab) => (
                     <button
@@ -367,20 +349,37 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              {/* Mostrar filtro ativo */}
-              {selectedFlowId && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Filtrando por:</span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#1c1c1e] text-white text-xs font-medium rounded-full">
-                    <GitBranch className="w-3 h-3" />
-                    {flows.find(f => f.id === selectedFlowId)?.name || "Fluxo"}
-                    <button 
-                      onClick={() => setSelectedFlowId("")}
-                      className="ml-1 hover:bg-white/20 rounded-full p-0.5"
+              {/* Filtro por Fluxo - Botoes */}
+              {flows.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Filter className="w-3.5 h-3.5" />
+                    <span>Filtrar por fluxo:</span>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedFlowId(""); setCurrentPage(1); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      selectedFlowId === ""
+                        ? "bg-[#1c1c1e] text-white"
+                        : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  {flows.map((flow) => (
+                    <button
+                      key={flow.id}
+                      onClick={() => { setSelectedFlowId(flow.id); setCurrentPage(1); }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        selectedFlowId === flow.id
+                          ? "bg-[#1c1c1e] text-white"
+                          : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
                     >
-                      <X className="w-3 h-3" />
+                      <GitBranch className="w-3 h-3" />
+                      {flow.name}
                     </button>
-                  </span>
+                  ))}
                 </div>
               )}
             </div>

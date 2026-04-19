@@ -120,6 +120,7 @@ export async function GET(request: NextRequest) {
         product_type,
         product_name,
         plan_id,
+        duration_days,
         created_at,
         bots:bot_id (
           id,
@@ -179,6 +180,33 @@ export async function GET(request: NextRequest) {
       (flowPlans || []).map(p => [p.id, p])
     )
 
+    // Buscar flows para pegar configuracao de planos (duracao do pagamento pode vir de la)
+    const flowIds = [...new Set(payments?.map(p => p.flow_id).filter(Boolean) || [])]
+    
+    interface FlowPlanConfig {
+      id: string
+      name: string
+      duration_days: number
+      price?: number | string
+    }
+    
+    const flowConfigsMap = new Map<string, FlowPlanConfig[]>()
+    
+    if (flowIds.length > 0) {
+      const { data: flows } = await supabase
+        .from("flows")
+        .select("id, config")
+        .in("id", flowIds)
+      
+      for (const flow of flows || []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const config = flow.config as any
+        if (config?.plans) {
+          flowConfigsMap.set(flow.id, config.plans)
+        }
+      }
+    }
+
     // Agrupar pagamentos por telegram_user_id + bot_id
     const clientsMap = new Map<string, Client>()
 
@@ -196,12 +224,36 @@ export async function GET(request: NextRequest) {
       // Buscar info do plano se for assinatura
       let planInfo = payment.plan_id ? flowPlansMap.get(payment.plan_id) : null
       
-      // Se nao tem plan_id, tentar pegar duration do product_type via regex
+      // Tentar pegar duracao de multiplas fontes
       let durationDays: number | null = null
       let durationType: string | undefined = undefined
       
-      if (planInfo) {
+      // 1. Primeiro, verificar se o pagamento tem duration_days diretamente
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const paymentDuration = (payment as any).duration_days
+      if (paymentDuration !== undefined && paymentDuration !== null) {
+        durationDays = paymentDuration
+      }
+      // 2. Se nao, tentar buscar do flow_plans
+      else if (planInfo?.duration_days !== undefined) {
         durationDays = planInfo.duration_days
+      }
+      // 3. Se nao, tentar buscar da configuracao do flow (plans no config)
+      else if (payment.flow_id && flowConfigsMap.has(payment.flow_id)) {
+        const flowPlans = flowConfigsMap.get(payment.flow_id) || []
+        // Tentar encontrar o plano pelo plan_id ou pelo nome
+        const matchingPlan = flowPlans.find(p => 
+          p.id === payment.plan_id || 
+          p.name === payment.product_name
+        )
+        if (matchingPlan?.duration_days !== undefined) {
+          durationDays = matchingPlan.duration_days
+        }
+      }
+      
+      // Se durationDays for 0, e vitalicio
+      if (durationDays === 0) {
+        durationDays = null // null = vitalicio
       }
 
       if (!clientsMap.has(key)) {
