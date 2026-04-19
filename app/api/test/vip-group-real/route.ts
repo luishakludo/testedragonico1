@@ -277,8 +277,14 @@ export async function GET() {
     // Listar bots
     const { data: bots } = await supabase
       .from("bots")
-      .select("id, name, username")
+      .select("id, name, username, token")
       .limit(10)
+
+    // Listar flow_bots (vinculo entre flows e bots)
+    const { data: flowBots } = await supabase
+      .from("flow_bots")
+      .select("flow_id, bot_id")
+      .limit(20)
 
     // Listar flows que tem entregavel vip_group
     const { data: flows } = await supabase
@@ -293,16 +299,52 @@ export async function GET() {
       const hasVipDeliverable = deliverables.some((d: { type: string }) => d.type === "vip_group")
       const hasLegacyVip = config?.delivery?.type === "vip_group"
       return hasVipDeliverable || hasLegacyVip
-    }).map(f => ({
-      id: f.id,
-      name: f.name,
-      bot_id: f.bot_id
-    }))
+    }).map(f => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const config = f.config as Record<string, any> | null
+      const deliverables = config?.deliverables || []
+      const vipDeliverable = deliverables.find((d: { type: string }) => d.type === "vip_group")
+      return {
+        id: f.id,
+        name: f.name,
+        bot_id: f.bot_id,
+        vip_chat_id: vipDeliverable?.vipGroupChatId || config?.delivery?.vipGroupId || "NAO_CONFIGURADO"
+      }
+    })
+
+    // Diagnostico
+    const botsCount = bots?.length || 0
+    const flowsWithoutBot = flows?.filter(f => !f.bot_id).length || 0
+    const flowBotsCount = flowBots?.length || 0
 
     return NextResponse.json({
       usage: "POST com { bot_id, flow_id, telegram_user_id } para testar",
-      bots: bots || [],
+      
+      diagnostico: {
+        problema_principal: botsCount === 0 
+          ? "CRITICO: Nenhum bot cadastrado na tabela 'bots'. Os bots precisam estar salvos para entregar grupo VIP."
+          : flowsWithoutBot > 0 
+            ? `AVISO: ${flowsWithoutBot} flow(s) sem bot_id vinculado`
+            : "OK",
+        bots_cadastrados: botsCount,
+        flow_bots_vinculos: flowBotsCount,
+        flows_sem_bot: flowsWithoutBot,
+        solucao: botsCount === 0 
+          ? "Cadastre um bot via dashboard ou API antes de testar entrega VIP"
+          : "Vincule um bot ao flow usando POST /api/fluxo/[flowId]/vincular-bot"
+      },
+      
+      bots: bots?.map(b => ({
+        id: b.id,
+        name: b.name,
+        username: b.username,
+        has_token: !!b.token
+      })) || [],
+      
+      flow_bots: flowBots || [],
+      
       flows_with_vip: flowsWithVip || [],
+      
       all_flows: flows?.map(f => ({ id: f.id, name: f.name, bot_id: f.bot_id })) || []
     })
   } catch (error: unknown) {
