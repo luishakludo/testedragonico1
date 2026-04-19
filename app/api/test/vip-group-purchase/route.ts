@@ -110,7 +110,7 @@ export async function GET() {
     if (targetBotId) {
       const { data, error } = await supabase
         .from("bots")
-        .select("id, name, token, username, user_id")
+        .select("id, name, token, user_id")
         .eq("id", targetBotId)
         .single()
       
@@ -135,7 +135,6 @@ export async function GET() {
           details: {
             bot_id: data.id,
             bot_name: data.name,
-            bot_username: data.username,
             has_token: !!data.token,
             token_preview: data.token ? `${data.token.substring(0, 15)}...` : null
           }
@@ -153,7 +152,7 @@ export async function GET() {
       if (flowBotLink?.bot_id) {
         const { data, error } = await supabase
           .from("bots")
-          .select("id, name, token, username, user_id")
+          .select("id, name, token, user_id")
           .eq("id", flowBotLink.bot_id)
           .single()
         
@@ -167,7 +166,6 @@ export async function GET() {
             details: {
               bot_id: data.id,
               bot_name: data.name,
-              bot_username: data.username,
               has_token: !!data.token,
               token_preview: data.token ? `${data.token.substring(0, 15)}...` : null
             }
@@ -536,7 +534,7 @@ export async function POST(req: NextRequest) {
     if (targetBotId) {
       const { data, error } = await supabase
         .from("bots")
-        .select("id, name, token, username, user_id")
+        .select("id, name, token, user_id")
         .eq("id", targetBotId)
         .single()
       
@@ -561,7 +559,6 @@ export async function POST(req: NextRequest) {
           details: {
             bot_id: data.id,
             bot_name: data.name,
-            bot_username: data.username,
             has_token: !!data.token,
             token_preview: data.token ? `${data.token.substring(0, 15)}...` : null
           }
@@ -579,7 +576,7 @@ export async function POST(req: NextRequest) {
       if (flowBotLink?.bot_id) {
         const { data, error } = await supabase
           .from("bots")
-          .select("id, name, token, username, user_id")
+          .select("id, name, token, user_id")
           .eq("id", flowBotLink.bot_id)
           .single()
         
@@ -593,7 +590,6 @@ export async function POST(req: NextRequest) {
             details: {
               bot_id: data.id,
               bot_name: data.name,
-              bot_username: data.username,
               has_token: !!data.token,
               token_preview: data.token ? `${data.token.substring(0, 15)}...` : null
             }
