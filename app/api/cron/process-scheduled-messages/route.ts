@@ -72,6 +72,41 @@ async function sendTelegramVideo(
   return res.json()
 }
 
+async function sendTelegramMediaGroup(
+  botToken: string,
+  chatId: number | string,
+  medias: string[],
+  caption?: string
+) {
+  const url = `https://api.telegram.org/bot${botToken}/sendMediaGroup`
+  
+  // Montar array de InputMedia - caption apenas na primeira midia
+  const mediaArray = medias.map((mediaUrl, index) => {
+    const isVideo = mediaUrl.includes("video") || mediaUrl.includes("mp4") || mediaUrl.includes(".mp4")
+    return {
+      type: isVideo ? "video" : "photo",
+      media: mediaUrl,
+      // Caption e parse_mode apenas na primeira midia
+      ...(index === 0 && caption ? { caption, parse_mode: "HTML" } : {})
+    }
+  })
+  
+  const body = {
+    chat_id: chatId,
+    media: mediaArray,
+  }
+  
+  console.log(`[CRON] Enviando sendMediaGroup com ${medias.length} midias`)
+  console.log(`[CRON] Media array:`, JSON.stringify(mediaArray))
+  
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  return res.json()
+}
+
 export async function GET(request: NextRequest) {
   console.log("[CRON] Iniciando processamento de mensagens agendadas")
   
@@ -293,18 +328,15 @@ export async function GET(request: NextRequest) {
               console.error(`[CRON] ERRO no envio Telegram:`, sendResult?.description || sendResult)
             }
           } else {
-            // Multiplas midias: enviar todas as midias primeiro
-            for (let i = 0; i < medias.length; i++) {
-              const media = medias[i]
-              const caption = i === 0 ? message : undefined // Caption apenas na primeira
-              if (media.includes("video") || media.includes("mp4")) {
-                await sendTelegramVideo(botToken, chatId, media, caption)
-              } else {
-                await sendTelegramPhoto(botToken, chatId, media, caption)
-              }
+            // Multiplas midias: usar sendMediaGroup para enviar todas juntas
+            const mediaGroupResult = await sendTelegramMediaGroup(botToken, chatId, medias, message)
+            console.log(`[CRON] Resultado do sendMediaGroup:`, JSON.stringify(mediaGroupResult))
+            
+            if (!mediaGroupResult?.ok) {
+              console.error(`[CRON] ERRO no sendMediaGroup:`, mediaGroupResult?.description || mediaGroupResult)
             }
             
-            // Enviar botoes separadamente apos as midias (ultima midia nao suporta botoes em media group)
+            // Enviar botoes separadamente apos as midias (sendMediaGroup nao suporta botoes)
             if (replyMarkup) {
               const offerText = messageType === "upsell" ? "Aproveite essa oferta exclusiva!" : "Escolha seu plano:"
               await sendTelegramMessage(botToken, chatId, offerText, replyMarkup)
