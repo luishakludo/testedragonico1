@@ -1074,27 +1074,4 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET continua retornando dados mockados para referencia
-export async function GET() {
-  return NextResponse.json({
-    message: "Use POST para testar o fluxo real",
-    usage: {
-      method: "POST",
-      body: {
-        flow_id: "uuid-do-fluxo (recomendado - busca tudo automatico)",
-        bot_id: "uuid-do-bot (opcional)",
-        telegram_group_id: "-100xxx (opcional - sobrescreve o do flow)",
-        user_telegram_id: "123456789 (opcional - para receber o link no Telegram)"
-      },
-      example_curl: `curl -X POST ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/test/vip-group-purchase -H "Content-Type: application/json" -d '{"flow_id": "seu-flow-id"}'`
-    },
-    what_it_tests: [
-      "1. Buscar dados do Flow no banco",
-      "2. Buscar Bot e Token",
-      "3. Buscar Entregavel VIP Group configurado",
-      "4. Verificar permissoes do Bot no grupo (API Telegram real)",
-      "5. Criar link de convite unico (API Telegram real)",
-      "6. Enviar link para usuario (opcional, se user_telegram_id fornecido)"
-    ]
-  })
-}
+
