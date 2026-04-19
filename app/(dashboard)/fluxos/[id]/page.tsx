@@ -1005,6 +1005,24 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     }
 
     console.log("[v0] Update payload orderBump:", JSON.stringify(updatePayload.config.orderBump, null, 2))
+    console.log("[v0] SALVANDO ENTREGAVEIS:")
+    console.log("[v0]   mainDeliverableId:", mainDeliverableId)
+    console.log("[v0]   deliverables count:", deliverables.length)
+    if (deliverables.length > 0) {
+      deliverables.forEach((del, i) => {
+        console.log(`[v0]   [${i}] ID: ${del.id}, Nome: ${del.name}, Tipo: ${del.type}`)
+        if (del.type === "vip_group") {
+          console.log(`[v0]       vipGroupChatId: ${del.vipGroupChatId}`)
+          console.log(`[v0]       vipGroupName: ${del.vipGroupName}`)
+        }
+        if (del.type === "media") {
+          console.log(`[v0]       medias: ${del.medias?.length || 0} arquivos`)
+        }
+        if (del.type === "link") {
+          console.log(`[v0]       link: ${del.link}`)
+        }
+      })
+    }
 
     const { data, error } = await supabase
       .from("flows")
