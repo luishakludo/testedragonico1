@@ -1,6 +1,456 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/supabase"
 
+// GET /api/test/vip-group-purchase
+// Acesse direto no navegador - busca automaticamente um flow com VIP Group e testa o fluxo real
+export async function GET() {
+  const supabase = getSupabaseAdmin()
+  const now = new Date()
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const steps: any[] = []
+  let overallSuccess = true
+  let errorStep: string | null = null
+  let errorMessage: string | null = null
+
+  try {
+    // ========== ETAPA 0: Buscar automaticamente um Flow com VIP Group ==========
+    const { data: allFlows, error: flowsError } = await supabase
+      .from("flows")
+      .select("id, name, config, bot_id, user_id")
+      .not("config", "is", null)
+      .limit(50)
+
+    if (flowsError || !allFlows || allFlows.length === 0) {
+      return NextResponse.json({
+        test_info: {
+          description: "Teste REAL do fluxo de criacao de link VIP",
+          executed_at: now.toISOString(),
+          mode: "GET automatico"
+        },
+        error: "Nenhum flow encontrado no banco de dados",
+        details: flowsError?.message
+      }, { status: 404 })
+    }
+
+    // Encontrar flow com entregavel vip_group
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let targetFlow: any = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let vipDeliverable: any = null
+
+    for (const flow of allFlows) {
+      if (flow.config?.deliverables) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const vip = flow.config.deliverables.find((d: any) => d.type === "vip_group")
+        if (vip && vip.vipGroupChatId) {
+          targetFlow = flow
+          vipDeliverable = vip
+          break
+        }
+      }
+      // Verificar sistema legado
+      if (flow.config?.delivery?.type === "vip_group" && flow.config?.delivery?.vipGroupId) {
+        targetFlow = flow
+        vipDeliverable = {
+          type: "vip_group",
+          vipGroupChatId: flow.config.delivery.vipGroupId,
+          vipGroupName: flow.config.delivery.vipGroupName || "Grupo VIP (legado)"
+        }
+        break
+      }
+    }
+
+    if (!targetFlow || !vipDeliverable) {
+      return NextResponse.json({
+        test_info: {
+          description: "Teste REAL do fluxo de criacao de link VIP",
+          executed_at: now.toISOString(),
+          mode: "GET automatico"
+        },
+        error: "Nenhum flow com entregavel VIP Group encontrado",
+        flows_checked: allFlows.length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        flows_summary: allFlows.map((f: any) => ({
+          id: f.id,
+          name: f.name,
+          has_deliverables: !!f.config?.deliverables,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          deliverable_types: f.config?.deliverables?.map((d: any) => d.type) || []
+        }))
+      }, { status: 404 })
+    }
+
+    steps.push({
+      step: 0,
+      name: "Buscar Flow com VIP Group (automatico)",
+      status: "success",
+      details: {
+        flow_id: targetFlow.id,
+        flow_name: targetFlow.name,
+        vip_deliverable: {
+          type: vipDeliverable.type,
+          vipGroupChatId: vipDeliverable.vipGroupChatId,
+          vipGroupName: vipDeliverable.vipGroupName || vipDeliverable.name
+        }
+      }
+    })
+
+    const flow_id = targetFlow.id
+    const flowData = targetFlow
+    const flowConfig = targetFlow.config
+    const vipGroupChatId = vipDeliverable.vipGroupChatId
+    const vipGroupName = vipDeliverable.vipGroupName || vipDeliverable.name || "Grupo VIP"
+
+    // ========== ETAPA 1: Buscar Bot ==========
+    let botData = null
+    let botToken = null
+    const targetBotId = flowData?.bot_id
+
+    if (targetBotId) {
+      const { data, error } = await supabase
+        .from("bots")
+        .select("id, name, token, username, user_id")
+        .eq("id", targetBotId)
+        .single()
+      
+      if (error || !data) {
+        steps.push({
+          step: 1,
+          name: "Buscar Bot (via flow.bot_id)",
+          status: "error",
+          error: error?.message || "Bot nao encontrado",
+          details: { bot_id: targetBotId }
+        })
+        overallSuccess = false
+        errorStep = "Buscar Bot"
+        errorMessage = error?.message || "Bot nao encontrado"
+      } else {
+        botData = data
+        botToken = data.token
+        steps.push({
+          step: 1,
+          name: "Buscar Bot (via flow.bot_id)",
+          status: "success",
+          details: {
+            bot_id: data.id,
+            bot_name: data.name,
+            bot_username: data.username,
+            has_token: !!data.token,
+            token_preview: data.token ? `${data.token.substring(0, 15)}...` : null
+          }
+        })
+      }
+    } else {
+      // Tentar buscar bot via flow_bots
+      const { data: flowBotLink } = await supabase
+        .from("flow_bots")
+        .select("bot_id")
+        .eq("flow_id", flow_id)
+        .limit(1)
+        .single()
+      
+      if (flowBotLink?.bot_id) {
+        const { data, error } = await supabase
+          .from("bots")
+          .select("id, name, token, username, user_id")
+          .eq("id", flowBotLink.bot_id)
+          .single()
+        
+        if (!error && data) {
+          botData = data
+          botToken = data.token
+          steps.push({
+            step: 1,
+            name: "Buscar Bot (via flow_bots)",
+            status: "success",
+            details: {
+              bot_id: data.id,
+              bot_name: data.name,
+              bot_username: data.username,
+              has_token: !!data.token,
+              token_preview: data.token ? `${data.token.substring(0, 15)}...` : null
+            }
+          })
+        } else {
+          steps.push({
+            step: 1,
+            name: "Buscar Bot (via flow_bots)",
+            status: "error",
+            error: error?.message || "Bot nao encontrado",
+            details: { bot_id: flowBotLink.bot_id }
+          })
+          overallSuccess = false
+          errorStep = "Buscar Bot"
+          errorMessage = "Bot nao encontrado via flow_bots"
+        }
+      } else {
+        steps.push({
+          step: 1,
+          name: "Buscar Bot",
+          status: "error",
+          error: "Nenhum bot vinculado ao flow",
+          details: { flow_id }
+        })
+        overallSuccess = false
+        errorStep = "Buscar Bot"
+        errorMessage = "Nenhum bot vinculado ao flow"
+      }
+    }
+
+    // ========== ETAPA 2: Verificar Permissoes do Bot no Grupo (API Real do Telegram) ==========
+    let botPermissions = null
+    
+    if (botToken && vipGroupChatId) {
+      try {
+        // Primeiro, obter info do bot
+        const getMeRes = await fetch(
+          `https://api.telegram.org/bot${botToken}/getMe`,
+          { method: "GET" }
+        )
+        const getMeData = await getMeRes.json()
+        
+        if (!getMeData.ok) {
+          steps.push({
+            step: 2,
+            name: "Verificar Bot (getMe)",
+            status: "error",
+            error: getMeData.description || "Token invalido",
+            details: {
+              telegram_response: getMeData
+            }
+          })
+          overallSuccess = false
+          errorStep = errorStep || "Verificar Bot"
+          errorMessage = errorMessage || getMeData.description
+        } else {
+          const botInfo = getMeData.result
+          
+          // Verificar se bot e membro do grupo
+          const getChatMemberRes = await fetch(
+            `https://api.telegram.org/bot${botToken}/getChatMember`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: vipGroupChatId,
+                user_id: botInfo.id
+              })
+            }
+          )
+          const getChatMemberData = await getChatMemberRes.json()
+          
+          if (!getChatMemberData.ok) {
+            steps.push({
+              step: 2,
+              name: "Verificar Bot no Grupo",
+              status: "error",
+              error: getChatMemberData.description || "Bot nao e membro do grupo",
+              details: {
+                bot_id: botInfo.id,
+                bot_username: botInfo.username,
+                group_chat_id: vipGroupChatId,
+                telegram_error_code: getChatMemberData.error_code,
+                telegram_response: getChatMemberData
+              }
+            })
+            overallSuccess = false
+            errorStep = errorStep || "Verificar Bot no Grupo"
+            errorMessage = errorMessage || getChatMemberData.description
+          } else {
+            const memberInfo = getChatMemberData.result
+            const isAdmin = memberInfo.status === "administrator" || memberInfo.status === "creator"
+            const canInviteUsers = memberInfo.can_invite_users === true
+            
+            botPermissions = {
+              status: memberInfo.status,
+              is_admin: isAdmin,
+              can_invite_users: canInviteUsers,
+              can_restrict_members: memberInfo.can_restrict_members,
+              can_delete_messages: memberInfo.can_delete_messages
+            }
+            
+            if (!isAdmin) {
+              steps.push({
+                step: 2,
+                name: "Verificar Bot no Grupo",
+                status: "error",
+                error: "Bot NAO e administrador do grupo",
+                details: {
+                  bot_id: botInfo.id,
+                  bot_username: botInfo.username,
+                  bot_status: memberInfo.status,
+                  permissions: botPermissions,
+                  fix: "Adicione o bot como ADMINISTRADOR do grupo com permissao para convidar usuarios"
+                }
+              })
+              overallSuccess = false
+              errorStep = errorStep || "Verificar Bot no Grupo"
+              errorMessage = errorMessage || "Bot nao e administrador do grupo"
+            } else if (!canInviteUsers) {
+              steps.push({
+                step: 2,
+                name: "Verificar Bot no Grupo",
+                status: "error",
+                error: "Bot e admin mas NAO tem permissao para convidar usuarios",
+                details: {
+                  bot_id: botInfo.id,
+                  bot_username: botInfo.username,
+                  bot_status: memberInfo.status,
+                  permissions: botPermissions,
+                  fix: "Edite as permissoes do bot e ative 'Convidar usuarios via link'"
+                }
+              })
+              overallSuccess = false
+              errorStep = errorStep || "Verificar Permissoes"
+              errorMessage = errorMessage || "Bot sem permissao de convidar usuarios"
+            } else {
+              steps.push({
+                step: 2,
+                name: "Verificar Bot no Grupo",
+                status: "success",
+                details: {
+                  bot_id: botInfo.id,
+                  bot_username: botInfo.username,
+                  bot_status: memberInfo.status,
+                  permissions: botPermissions
+                }
+              })
+            }
+          }
+        }
+      } catch (e) {
+        steps.push({
+          step: 2,
+          name: "Verificar Bot no Grupo",
+          status: "error",
+          error: `Excecao ao verificar: ${e instanceof Error ? e.message : String(e)}`,
+          details: {}
+        })
+        overallSuccess = false
+        errorStep = errorStep || "Verificar Bot no Grupo"
+        errorMessage = errorMessage || `Excecao: ${e instanceof Error ? e.message : String(e)}`
+      }
+    } else {
+      steps.push({
+        step: 2,
+        name: "Verificar Bot no Grupo",
+        status: "skipped",
+        details: {
+          reason: !botToken ? "Token do bot nao disponivel" : "Chat ID do grupo nao disponivel"
+        }
+      })
+    }
+
+    // ========== ETAPA 3: Criar Link de Convite Unico (API Real do Telegram) ==========
+    let inviteLink = null
+    
+    if (botToken && vipGroupChatId && overallSuccess) {
+      try {
+        const createLinkRes = await fetch(
+          `https://api.telegram.org/bot${botToken}/createChatInviteLink`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: vipGroupChatId,
+              name: `TEST-VIP-${Date.now()}`,
+              member_limit: 1
+            })
+          }
+        )
+        const createLinkData = await createLinkRes.json()
+        
+        if (!createLinkData.ok) {
+          steps.push({
+            step: 3,
+            name: "Criar Link de Convite",
+            status: "error",
+            error: createLinkData.description || "Falha ao criar link",
+            details: {
+              telegram_error_code: createLinkData.error_code,
+              telegram_response: createLinkData
+            }
+          })
+          overallSuccess = false
+          errorStep = errorStep || "Criar Link de Convite"
+          errorMessage = errorMessage || createLinkData.description
+        } else {
+          inviteLink = createLinkData.result.invite_link
+          steps.push({
+            step: 3,
+            name: "Criar Link de Convite",
+            status: "success",
+            details: {
+              invite_link: inviteLink,
+              member_limit: createLinkData.result.member_limit,
+              name: createLinkData.result.name
+            }
+          })
+        }
+      } catch (e) {
+        steps.push({
+          step: 3,
+          name: "Criar Link de Convite",
+          status: "error",
+          error: `Excecao ao criar link: ${e instanceof Error ? e.message : String(e)}`,
+          details: {}
+        })
+        overallSuccess = false
+        errorStep = errorStep || "Criar Link de Convite"
+        errorMessage = errorMessage || `Excecao: ${e instanceof Error ? e.message : String(e)}`
+      }
+    } else if (!overallSuccess) {
+      steps.push({
+        step: 3,
+        name: "Criar Link de Convite",
+        status: "skipped",
+        details: { reason: "Etapa anterior falhou" }
+      })
+    }
+
+    // ========== RESULTADO FINAL ==========
+    return NextResponse.json({
+      test_info: {
+        description: "Teste REAL do fluxo de criacao de link VIP",
+        executed_at: now.toISOString(),
+        mode: "GET automatico - acessou direto no navegador"
+      },
+      flow_used: {
+        id: targetFlow.id,
+        name: targetFlow.name,
+        vip_group: {
+          chat_id: vipGroupChatId,
+          name: vipGroupName
+        }
+      },
+      steps,
+      summary: {
+        total_steps: steps.length,
+        successful_steps: steps.filter(s => s.status === "success").length,
+        failed_steps: steps.filter(s => s.status === "error").length,
+        skipped_steps: steps.filter(s => s.status === "skipped").length,
+        overall_success: overallSuccess,
+        error_step: errorStep,
+        error_message: errorMessage,
+        invite_link_generated: inviteLink
+      }
+    })
+
+  } catch (e) {
+    return NextResponse.json({
+      test_info: {
+        description: "Teste REAL do fluxo de criacao de link VIP",
+        executed_at: now.toISOString(),
+        mode: "GET automatico"
+      },
+      error: "Excecao geral",
+      message: e instanceof Error ? e.message : String(e),
+      steps
+    }, { status: 500 })
+  }
+}
+
 // POST /api/test/vip-group-purchase
 // Teste REAL do fluxo de criacao de link de grupo VIP
 // Passa por todas as etapas reais para identificar onde falha
