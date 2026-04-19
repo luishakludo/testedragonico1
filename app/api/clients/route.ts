@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Buscar todos os pagamentos aprovados dos bots
-    // Nota: flow_id pode nao existir na tabela ainda - buscar sem ele para compatibilidade
+    // Nota: Removido plan_id e duration_days pois podem nao existir na tabela
     let paymentsQuery = supabase
       .from("payments")
       .select(`
@@ -157,8 +157,6 @@ export async function GET(request: NextRequest) {
         status,
         product_type,
         product_name,
-        plan_id,
-        duration_days,
         created_at,
         bots:bot_id (
           id,
@@ -211,17 +209,8 @@ export async function GET(request: NextRequest) {
       (botUsers || []).map(u => [String(u.telegram_user_id), u])
     )
 
-    // Buscar flow_plans para pegar duracao
-    const planIds = [...new Set(payments?.map(p => p.plan_id).filter(Boolean) || [])]
-    
-    const { data: flowPlans } = await supabase
-      .from("flow_plans")
-      .select("id, name, duration_days")
-      .in("id", planIds)
-
-    const flowPlansMap = new Map(
-      (flowPlans || []).map(p => [p.id, p])
-    )
+    // Buscar flow_plans - nao temos plan_id no payment, vamos buscar pelo product_name
+    const flowPlansMap = new Map()
 
     // Buscar flows para pegar configuracao de planos (duracao do pagamento pode vir de la)
     const flowIds = [...new Set(payments?.map(p => p.flow_id).filter(Boolean) || [])]
@@ -264,23 +253,12 @@ export async function GET(request: NextRequest) {
       const productType = payment.product_type || "main_product"
       const isSubscription = productType === "main_product" || productType === "plan"
       
-      // Buscar info do plano se for assinatura
-      let planInfo = payment.plan_id ? flowPlansMap.get(payment.plan_id) : null
+      // Buscar info do plano pelo nome do produto
+      const planInfo = null // plan_id nao existe mais na tabela payments
       
       // Tentar pegar duracao de multiplas fontes
       let durationDays: number | null = null
-      let durationType: string | undefined = undefined
-      
-      // 1. Primeiro, verificar se o pagamento tem duration_days diretamente
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const paymentDuration = (payment as any).duration_days
-      if (paymentDuration !== undefined && paymentDuration !== null) {
-        durationDays = paymentDuration
-      }
-      // 2. Se nao, tentar buscar do flow_plans
-      else if (planInfo?.duration_days !== undefined) {
-        durationDays = planInfo.duration_days
-      }
+      const durationType: string | undefined = undefined
       // 3. Derivar flow_id a partir do bot_id (via flow_bots) se nao existir diretamente
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let derivedFlowId = (payment as any).flow_id as string | undefined
@@ -302,11 +280,8 @@ export async function GET(request: NextRequest) {
       // Tentar buscar da configuracao do flow (plans no config)
       if (derivedFlowId && flowConfigsMap.has(derivedFlowId)) {
         const flowPlans = flowConfigsMap.get(derivedFlowId) || []
-        // Tentar encontrar o plano pelo plan_id ou pelo nome
-        const matchingPlan = flowPlans.find(p => 
-          p.id === payment.plan_id || 
-          p.name === payment.product_name
-        )
+        // Tentar encontrar o plano pelo nome
+        const matchingPlan = flowPlans.find(p => p.name === payment.product_name)
         if (matchingPlan?.duration_days !== undefined) {
           durationDays = matchingPlan.duration_days
         }
