@@ -6467,7 +6467,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
                         </div>
                       ))}
                       {(tempDeliverable.medias || []).length < 20 && (
-                        <label className="h-12 w-12 rounded-lg border-2 border-dashed border-neutral-200 flex items-center justify-center cursor-pointer hover:border-[#BEFF00]/50 hover:bg-[#BEFF00]/5 transition-colors">
+                        <label className="h-12 w-12 rounded-lg border-2 border-dashed border-neutral-200 flex items-center justify-center cursor-pointer hover:border-[#BEFF00]/50 hover:bg-[#BEFF00]/5 transition-colors relative">
                           <Plus className="h-4 w-4 text-neutral-500" />
                           <input
                             type="file"
@@ -6476,11 +6476,49 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
                             onChange={async (e) => {
                               const file = e.target.files?.[0]
                               if (!file) return
-                              const url = URL.createObjectURL(file)
+                              
+                              // Mostrar loading temporario
+                              const tempUrl = URL.createObjectURL(file)
                               setTempDeliverable({
                                 ...tempDeliverable,
-                                medias: [...(tempDeliverable.medias || []), url]
+                                medias: [...(tempDeliverable.medias || []), tempUrl]
                               })
+                              
+                              try {
+                                // Upload real para API
+                                const formData = new FormData()
+                                formData.append("file", file)
+                                
+                                const res = await fetch("/api/upload", {
+                                  method: "POST",
+                                  body: formData,
+                                })
+                                
+                                const data = await res.json()
+                                
+                                if (!res.ok) {
+                                  throw new Error(data.error || "Erro no upload")
+                                }
+                                
+                                // Substituir blob URL pela URL real
+                                setTempDeliverable(prev => ({
+                                  ...prev,
+                                  medias: (prev.medias || []).map(m => m === tempUrl ? data.url : m)
+                                }))
+                              } catch (err) {
+                                console.error("Erro no upload:", err)
+                                // Remover a URL temporaria em caso de erro
+                                setTempDeliverable(prev => ({
+                                  ...prev,
+                                  medias: (prev.medias || []).filter(m => m !== tempUrl)
+                                }))
+                                alert("Erro ao fazer upload da midia. Tente novamente.")
+                              } finally {
+                                URL.revokeObjectURL(tempUrl)
+                              }
+                              
+                              // Limpar input
+                              e.target.value = ""
                             }}
                           />
                         </label>
