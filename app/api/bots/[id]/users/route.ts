@@ -8,17 +8,26 @@ export async function GET(
   const supabase = getSupabase()
   try {
     const { id: botId } = await params
+    const { searchParams } = new URL(req.url)
+    const since = searchParams.get("since") // Filtro desde uma data (usado para stats de fluxo)
 
     if (!botId) {
       return NextResponse.json({ error: "bot_id is required" }, { status: 400 })
     }
 
     // Buscar usuarios
-    const { data: users, error } = await supabase
+    let usersQuery = supabase
       .from("bot_users")
       .select("*")
       .eq("bot_id", botId)
       .order("created_at", { ascending: false })
+    
+    // Aplicar filtro "since" (usado para stats de fluxo - so conta a partir da data de vinculo)
+    if (since) {
+      usersQuery = usersQuery.gte("created_at", since)
+    }
+    
+    const { data: users, error } = await usersQuery
 
     if (error) {
       console.error("[bot-users] Error fetching:", error)

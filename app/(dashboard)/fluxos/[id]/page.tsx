@@ -664,6 +664,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
         id,
         flow_id,
         bot_id,
+        created_at,
         bots:bot_id (
           id,
           name,
@@ -679,6 +680,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
         id: fb.id,
         flow_id: fb.flow_id,
         bot_id: fb.bot_id,
+        linked_at: fb.created_at, // Data que o bot foi vinculado ao fluxo
         bot: fb.bots ? {
           id: fb.bots.id,
           username: fb.bots.name,
@@ -815,6 +817,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
   }, [flowBots, conversionsPeriod, fetchConversions])
 
   // Fetch flow stats (leads, vips, revenue) from all bots in this flow
+  // IMPORTANTE: Só conta dados a partir da data que o bot foi vinculado ao fluxo
   const fetchFlowStats = useCallback(async () => {
     if (flowBots.length === 0) {
       setStats({ leads: 0, vips: 0, revenue: 0 })
@@ -824,8 +827,6 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     setLoadingStats(true)
     
     try {
-      const botIds = flowBots.map(fb => fb.bot_id)
-      
       // Buscar usuarios unicos (leads) e pagamentos de todos os bots do fluxo
       let totalLeads = 0
       let totalVips = 0
@@ -833,14 +834,27 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
       const uniqueLeadIds = new Set<string>()
       const uniqueVipIds = new Set<string>()
       
-      for (const botId of botIds) {
-        // Buscar usuarios do bot (leads = quem deu start)
-        const usersRes = await fetch(`/api/bots/${botId}/users`)
+      for (const flowBot of flowBots) {
+        const botId = flowBot.bot_id
+        // Data que o bot foi vinculado ao fluxo - so conta dados a partir dessa data
+        const linkedAt = (flowBot as any).linked_at
+        const sinceParam = linkedAt ? `&since=${encodeURIComponent(linkedAt)}` : ""
+        
+        // Buscar usuarios do bot (leads = quem deu start) - filtra por data de vinculacao
+        const usersRes = await fetch(`/api/bots/${botId}/users?${sinceParam ? sinceParam.substring(1) : ""}`)
         const usersData = await usersRes.json()
         
         if (usersData?.users) {
           // Adicionar telegram_user_id ao set para contar unicos
-          usersData.users.forEach((u: { telegram_user_id: string; payment_status?: string }) => {
+          // Filtra tambem no frontend por seguranca
+          usersData.users.forEach((u: { telegram_user_id: string; payment_status?: string; created_at?: string }) => {
+            // Se linkedAt existe, verifica se o usuario foi criado depois
+            if (linkedAt && u.created_at) {
+              const userDate = new Date(u.created_at)
+              const linkDate = new Date(linkedAt)
+              if (userDate < linkDate) return // Ignora usuarios anteriores ao vinculo
+            }
+            
             uniqueLeadIds.add(u.telegram_user_id)
             // VIPs = quem pagou pelo menos uma vez
             if (u.payment_status === "paid" || u.payment_status === "approved") {
@@ -849,12 +863,19 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
           })
         }
         
-        // Buscar pagamentos aprovados do bot (receita)
-        const paymentsRes = await fetch(`/api/payments/list?botId=${botId}&limit=1000`)
+        // Buscar pagamentos aprovados do bot (receita) - filtra por data de vinculacao
+        const paymentsRes = await fetch(`/api/payments/list?botId=${botId}&limit=1000${sinceParam}`)
         const paymentsData = await paymentsRes.json()
         
         if (paymentsData?.payments) {
-          paymentsData.payments.forEach((p: { status: string; amount: number; telegram_user_id?: string }) => {
+          paymentsData.payments.forEach((p: { status: string; amount: number; telegram_user_id?: string; created_at?: string }) => {
+            // Se linkedAt existe, verifica se o pagamento foi criado depois
+            if (linkedAt && p.created_at) {
+              const paymentDate = new Date(p.created_at)
+              const linkDate = new Date(linkedAt)
+              if (paymentDate < linkDate) return // Ignora pagamentos anteriores ao vinculo
+            }
+            
             if (p.status === "approved" || p.status === "paid") {
               totalRevenue += Number(p.amount) || 0
               // Tambem adicionar ao VIPs pelo pagamento
@@ -1091,12 +1112,13 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
         token: newBotToken.trim(),
       })
       
-      // Link to this flow
+      // Link to this flow - registra created_at para filtrar stats corretamente
       const { error } = await supabase
         .from("flow_bots")
         .insert({
           flow_id: flowId,
           bot_id: newBot.id,
+          created_at: new Date().toISOString(),
         })
 
       if (error) {
@@ -1129,11 +1151,13 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
       return
     }
 
+    // Registra created_at para filtrar stats corretamente (so conta dados a partir dessa data)
     const { data, error } = await supabase
       .from("flow_bots")
       .insert({
         flow_id: flowId,
         bot_id: selectedBotToAdd,
+        created_at: new Date().toISOString(),
       })
       .select()
 
