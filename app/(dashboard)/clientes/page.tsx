@@ -16,7 +16,10 @@ import {
   Clock,
   Infinity,
   AlertCircle,
-  Package
+  Package,
+  Filter,
+  GitBranch,
+  Calendar
 } from "lucide-react"
 
 interface Purchase {
@@ -26,6 +29,7 @@ interface Purchase {
   amount: number
   status: string
   created_at: string
+  flow_id?: string
 }
 
 interface Client {
@@ -43,11 +47,15 @@ interface Client {
   remaining_days?: number | null
   is_lifetime?: boolean
   is_expired?: boolean
+  subscription_start?: string
+  subscription_end?: string
   purchase_date: string
   purchases: Purchase[]
   total_spent: number
   bot_id: string
   bot_name?: string
+  flow_id?: string
+  flow_name?: string
 }
 
 interface Stats {
@@ -57,6 +65,17 @@ interface Stats {
   assinantes_ativos: number
   assinantes_expirados: number
   vitalicio: number
+}
+
+interface Flow {
+  id: string
+  name: string
+  bot_id?: string
+}
+
+interface Bot {
+  id: string
+  name: string
 }
 
 export default function ClientesPage() {
@@ -71,6 +90,10 @@ export default function ClientesPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [stats, setStats] = useState<Stats | null>(null)
+  const [flows, setFlows] = useState<Flow[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [bots, setBots] = useState<Bot[]>([]) // Para uso futuro (filtro por bot)
+  const [selectedFlowId, setSelectedFlowId] = useState<string>("")
   const ITEMS_PER_PAGE = 50
 
   useEffect(() => {
@@ -80,7 +103,8 @@ export default function ClientesPage() {
     } else {
       setLoading(false)
     }
-  }, [currentPage, activeTab, userId, authLoading])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, activeTab, userId, authLoading, selectedFlowId])
 
   const fetchClients = async () => {
     if (!userId) return
@@ -89,15 +113,21 @@ export default function ClientesPage() {
     try {
       const offset = (currentPage - 1) * ITEMS_PER_PAGE
       const filterParam = activeTab !== "all" ? `&filter=${activeTab}` : ""
-      const url = `/api/clients?userId=${userId}&limit=${ITEMS_PER_PAGE}&offset=${offset}${filterParam}`
+      const flowParam = selectedFlowId ? `&flowId=${selectedFlowId}` : ""
+      const url = `/api/clients?userId=${userId}&limit=${ITEMS_PER_PAGE}&offset=${offset}${filterParam}${flowParam}`
       
+      console.log("[v0] Fetching clients:", url)
       const res = await fetch(url, { credentials: "include" })
       const data = await res.json()
+      
+      console.log("[v0] Clients response:", data)
       
       if (data.clients) {
         setClients(data.clients)
         setTotalCount(data.total || 0)
         if (data.stats) setStats(data.stats)
+        if (data.flows) setFlows(data.flows)
+        if (data.bots) setBots(data.bots)
       }
     } catch (err) {
       console.error("[clientes] Error:", err)
@@ -245,34 +275,71 @@ export default function ClientesPage() {
               </div>
             </div>
 
-            {/* Search and Tabs */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mb-4">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar por nome, @username..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-9 pl-9 pr-4 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100 focus:border-gray-300 transition-all"
-                />
+            {/* Search and Filters */}
+            <div className="flex flex-col gap-4 mb-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nome, @username..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full h-9 pl-9 pr-4 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100 focus:border-gray-300 transition-all"
+                  />
+                </div>
+
+                {/* Filtro por Fluxo */}
+                {flows.length > 0 && (
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <select
+                      value={selectedFlowId}
+                      onChange={(e) => { setSelectedFlowId(e.target.value); setCurrentPage(1); }}
+                      className="h-9 pl-9 pr-8 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-100 focus:border-gray-300 transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="">Todos os fluxos</option>
+                      {flows.map((flow) => (
+                        <option key={flow.id} value={flow.id}>{flow.name}</option>
+                      ))}
+                    </select>
+                    <GitBranch className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => { setActiveTab(tab.id); setCurrentPage(1); }}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                        activeTab === tab.id
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => { setActiveTab(tab.id); setCurrentPage(1); }}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      activeTab === tab.id
-                        ? "bg-white text-gray-900 shadow-sm"
-                        : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    {tab.label} ({tab.count})
-                  </button>
-                ))}
-              </div>
+              {/* Mostrar filtro ativo */}
+              {selectedFlowId && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Filtrando por:</span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#1c1c1e] text-white text-xs font-medium rounded-full">
+                    <GitBranch className="w-3 h-3" />
+                    {flows.find(f => f.id === selectedFlowId)?.name || "Fluxo"}
+                    <button 
+                      onClick={() => setSelectedFlowId("")}
+                      className="ml-1 hover:bg-white/20 rounded-full p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Table Layout */}
@@ -517,9 +584,57 @@ export default function ClientesPage() {
                       <p className="text-sm font-bold text-gray-900">
                         {selectedClient.plan_name} - {formatCurrency(selectedClient.plan_price || 0)}
                       </p>
+                      {selectedClient.duration_days && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Duracao: {selectedClient.duration_days} dias
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
+
+                {/* Subscription Details (for subscribers) */}
+                {selectedClient.type === "assinante" && (
+                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calendar className="w-4 h-4 text-amber-600" />
+                      <p className="text-sm font-bold text-amber-800">Detalhes da Assinatura</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-amber-600">Inicio</p>
+                        <p className="text-sm font-medium text-amber-900">
+                          {selectedClient.subscription_start ? formatDate(selectedClient.subscription_start) : formatDate(selectedClient.purchase_date)}
+                        </p>
+                      </div>
+                      {!selectedClient.is_lifetime && selectedClient.subscription_end && (
+                        <div>
+                          <p className="text-xs text-amber-600">Vencimento</p>
+                          <p className="text-sm font-medium text-amber-900">
+                            {formatDate(selectedClient.subscription_end)}
+                          </p>
+                        </div>
+                      )}
+                      {selectedClient.is_lifetime && (
+                        <div>
+                          <p className="text-xs text-amber-600">Vencimento</p>
+                          <p className="text-sm font-medium text-emerald-600 flex items-center gap-1">
+                            <Infinity className="w-3 h-3" /> Vitalicio
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Flow Info */}
+                {selectedClient.flow_name && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
+                    <GitBranch className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm text-gray-600">Fluxo:</span>
+                    <span className="text-sm font-medium text-gray-900">{selectedClient.flow_name}</span>
+                  </div>
+                )}
 
                 {/* Info Grid */}
                 <div className="grid grid-cols-2 gap-4">

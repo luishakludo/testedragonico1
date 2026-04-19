@@ -4,17 +4,7 @@ import { createClient } from "@supabase/supabase-js"
 const SUPABASE_URL = "https://izvulojnfvgsbmhyvqtn.supabase.co"
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dnVsb2puZnZnc2JtaHl2cXRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTk0NTMsImV4cCI6MjA4ODgzNTQ1M30.Djnn3tsrxSGLBR-Bm1dWOpQe0NHCSOWJFZkbbTOk2oM"
 
-// Converter duration_type para dias
-function getDurationDays(durationType: string): number | null {
-  switch (durationType) {
-    case "daily": return 1
-    case "weekly": return 7
-    case "monthly": return 30
-    case "yearly": return 365
-    case "lifetime": return null // Vitalicio
-    default: return null
-  }
-}
+
 
 // Calcular dias restantes
 function calculateRemainingDays(purchaseDate: string, durationDays: number | null): number | null {
@@ -45,6 +35,8 @@ export interface Client {
   remaining_days?: number | null
   is_lifetime?: boolean
   is_expired?: boolean
+  subscription_start?: string // Data de inicio da assinatura
+  subscription_end?: string // Data de fim da assinatura (se nao for vitalicio)
   purchase_date: string
   purchases: Array<{
     id: string
@@ -53,10 +45,13 @@ export interface Client {
     amount: number
     status: string
     created_at: string
+    flow_id?: string
   }>
   total_spent: number
   bot_id: string
   bot_name?: string
+  flow_id?: string
+  flow_name?: string
 }
 
 export async function GET(request: NextRequest) {
@@ -64,37 +59,62 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const userId = searchParams.get("userId")
     const botId = searchParams.get("botId")
+    const flowId = searchParams.get("flowId") // Filtro por fluxo
     const filter = searchParams.get("filter") // "all" | "assinantes" | "compradores"
     const limit = parseInt(searchParams.get("limit") || "50")
     const offset = parseInt(searchParams.get("offset") || "0")
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+    console.log("[v0] clients API - userId:", userId, "botId:", botId, "flowId:", flowId)
+
     // Buscar bots do usuario
     let userBotIds: string[] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let userBots: any[] = []
     if (userId) {
-      const { data: userBots } = await supabase
+      const { data: bots } = await supabase
         .from("bots")
         .select("id, name")
         .eq("user_id", userId)
       
-      userBotIds = userBots?.map(b => b.id) || []
+      userBots = bots || []
+      userBotIds = userBots.map(b => b.id)
+    }
+
+    // Buscar fluxos do usuario (para o filtro de fluxo)
+    let userFlows: { id: string; name: string; bot_id?: string }[] = []
+    if (userId) {
+      const { data: flows } = await supabase
+        .from("flows")
+        .select("id, name, bot_id")
+        .eq("user_id", userId)
+      
+      userFlows = flows || []
     }
 
     // Se botId especifico, usar apenas ele
     const botIdsToQuery = botId ? [botId] : userBotIds
 
     if (botIdsToQuery.length === 0) {
-      return NextResponse.json({ clients: [], total: 0, stats: { assinantes: 0, compradores: 0 } })
+      console.log("[v0] clients API - Nenhum bot encontrado para o usuario")
+      return NextResponse.json({ 
+        clients: [], 
+        total: 0, 
+        stats: { total: 0, assinantes: 0, compradores: 0, assinantes_ativos: 0, assinantes_expirados: 0, vitalicio: 0 },
+        flows: userFlows,
+        bots: userBots
+      })
     }
 
     // Buscar todos os pagamentos aprovados dos bots
-    const { data: payments, error: paymentsError } = await supabase
+    let paymentsQuery = supabase
       .from("payments")
       .select(`
         id,
         telegram_user_id,
         bot_id,
+        flow_id,
         amount,
         status,
         product_type,
@@ -110,9 +130,29 @@ export async function GET(request: NextRequest) {
       .eq("status", "approved")
       .order("created_at", { ascending: false })
 
+    // Filtrar por fluxo se especificado
+    if (flowId) {
+      paymentsQuery = paymentsQuery.eq("flow_id", flowId)
+    }
+
+    const { data: payments, error: paymentsError } = await paymentsQuery
+
+    console.log("[v0] clients API - payments query result:", payments?.length || 0, "error:", paymentsError?.message || "none")
+
     if (paymentsError) {
       console.error("[clients] Error fetching payments:", paymentsError)
       return NextResponse.json({ error: "Erro ao buscar pagamentos" }, { status: 500 })
+    }
+
+    if (!payments || payments.length === 0) {
+      console.log("[v0] clients API - Nenhum pagamento aprovado encontrado")
+      return NextResponse.json({ 
+        clients: [], 
+        total: 0, 
+        stats: { total: 0, assinantes: 0, compradores: 0, assinantes_ativos: 0, assinantes_expirados: 0, vitalicio: 0 },
+        flows: userFlows,
+        bots: userBots
+      })
     }
 
     // Buscar informacoes dos bot_users
@@ -186,11 +226,17 @@ export async function GET(request: NextRequest) {
           is_expired: durationDays !== null 
             ? calculateRemainingDays(payment.created_at, durationDays) === 0 
             : false,
-          purchase_date: payment.created_at,
-          purchases: [],
-          total_spent: 0,
-          bot_id: payment.bot_id,
-          bot_name: botInfo?.name
+subscription_start: isSubscription ? payment.created_at : undefined,
+        subscription_end: isSubscription && durationDays !== null 
+          ? new Date(new Date(payment.created_at).getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString()
+          : undefined,
+        purchase_date: payment.created_at,
+        purchases: [],
+        total_spent: 0,
+        bot_id: payment.bot_id,
+        bot_name: botInfo?.name,
+        flow_id: payment.flow_id || undefined,
+        flow_name: userFlows.find(f => f.id === payment.flow_id)?.name
         })
       }
 
@@ -218,8 +264,15 @@ export async function GET(request: NextRequest) {
         product_name: payment.product_name || productType,
         amount: Number(payment.amount),
         status: payment.status,
-        created_at: payment.created_at
+        created_at: payment.created_at,
+        flow_id: payment.flow_id || undefined
       })
+
+      // Atualizar flow_id do cliente se ainda nao tiver
+      if (payment.flow_id && !client.flow_id) {
+        client.flow_id = payment.flow_id
+        client.flow_name = userFlows.find(f => f.id === payment.flow_id)?.name
+      }
 
       client.total_spent += Number(payment.amount)
     }
@@ -254,6 +307,8 @@ export async function GET(request: NextRequest) {
       clients: paginatedClients,
       total: clients.length,
       stats,
+      flows: userFlows,
+      bots: userBots,
       limit,
       offset
     })
