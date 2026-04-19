@@ -367,6 +367,8 @@ export default function FlowEditorPage() {
   const [deliverableModalOpen, setDeliverableModalOpen] = useState(false)
   const [deliverableModalStep, setDeliverableModalStep] = useState<"select" | "form">("select")
   const [editingDeliverable, setEditingDeliverable] = useState<Deliverable | null>(null)
+  const [isTestingVipGroup, setIsTestingVipGroup] = useState(false)
+  const [vipTestResult, setVipTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [tempDeliverable, setTempDeliverable] = useState<Deliverable>({
     id: "",
     name: "",
@@ -1169,6 +1171,143 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
       setTelegramChats([])
       setIsLoadingChats(false)
     }, 1000)
+  }
+
+  // Test VIP Group - verifica se o bot e admin e pode criar links
+  const handleTestVipGroup = async () => {
+    if (!tempDeliverable.vipGroupChatId) {
+      setVipTestResult({ success: false, message: "Digite o Chat ID do grupo" })
+      return
+    }
+
+    // Pegar o token do primeiro bot do fluxo
+    if (flowBots.length === 0) {
+      setVipTestResult({ success: false, message: "Nenhum bot vinculado ao fluxo. Adicione um bot primeiro." })
+      return
+    }
+
+    setIsTestingVipGroup(true)
+    setVipTestResult(null)
+
+    try {
+      // Buscar o token do bot
+      const { data: bot, error: botError } = await supabase
+        .from("bots")
+        .select("token, username")
+        .eq("id", flowBots[0].bot_id)
+        .single()
+
+      if (botError || !bot?.token) {
+        setVipTestResult({ success: false, message: "Erro ao buscar token do bot" })
+        setIsTestingVipGroup(false)
+        return
+      }
+
+      // Verificar se o bot e admin do grupo
+      const chatInfoRes = await fetch(`https://api.telegram.org/bot${bot.token}/getChat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: tempDeliverable.vipGroupChatId }),
+      })
+      const chatInfo = await chatInfoRes.json()
+
+      if (!chatInfo.ok) {
+        setVipTestResult({ 
+          success: false, 
+          message: `Grupo nao encontrado: ${chatInfo.description || "Verifique o Chat ID"}` 
+        })
+        setIsTestingVipGroup(false)
+        return
+      }
+
+      // Verificar permissoes do bot
+      const memberRes = await fetch(`https://api.telegram.org/bot${bot.token}/getChatMember`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          chat_id: tempDeliverable.vipGroupChatId,
+          user_id: bot.token.split(":")[0] // Bot ID e a primeira parte do token
+        }),
+      })
+      const memberInfo = await memberRes.json()
+
+      if (!memberInfo.ok) {
+        setVipTestResult({ 
+          success: false, 
+          message: `Bot nao esta no grupo. Adicione @${bot.username || "o bot"} ao grupo como admin.` 
+        })
+        setIsTestingVipGroup(false)
+        return
+      }
+
+      const status = memberInfo.result?.status
+      const canInvite = memberInfo.result?.can_invite_users
+
+      if (status !== "administrator" && status !== "creator") {
+        setVipTestResult({ 
+          success: false, 
+          message: `Bot precisa ser ADMIN do grupo. Status atual: ${status}` 
+        })
+        setIsTestingVipGroup(false)
+        return
+      }
+
+      if (!canInvite && status !== "creator") {
+        setVipTestResult({ 
+          success: false, 
+          message: "Bot nao tem permissao para convidar usuarios. Ative a permissao 'Invite Users via Link' nas configs do admin." 
+        })
+        setIsTestingVipGroup(false)
+        return
+      }
+
+      // Tentar criar um link de convite de teste
+      const inviteRes = await fetch(`https://api.telegram.org/bot${bot.token}/createChatInviteLink`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: tempDeliverable.vipGroupChatId,
+          name: `Teste - ${Date.now()}`,
+          member_limit: 1,
+          expire_date: Math.floor(Date.now() / 1000) + 60, // Expira em 1 minuto
+        }),
+      })
+      const inviteData = await inviteRes.json()
+
+      if (!inviteData.ok) {
+        setVipTestResult({ 
+          success: false, 
+          message: `Erro ao criar link: ${inviteData.description}` 
+        })
+        setIsTestingVipGroup(false)
+        return
+      }
+
+      // Revogar o link de teste
+      await fetch(`https://api.telegram.org/bot${bot.token}/revokeChatInviteLink`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: tempDeliverable.vipGroupChatId,
+          invite_link: inviteData.result.invite_link,
+        }),
+      })
+
+      // Salvar o nome do grupo se nao tiver
+      if (!tempDeliverable.vipGroupName && chatInfo.result?.title) {
+        setTempDeliverable({ ...tempDeliverable, vipGroupName: chatInfo.result.title })
+      }
+
+      setVipTestResult({ 
+        success: true, 
+        message: `Tudo certo! Grupo "${chatInfo.result?.title}" configurado. Bot e admin e pode criar links.` 
+      })
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
+      setVipTestResult({ success: false, message: `Erro: ${errorMessage}` })
+    } finally {
+      setIsTestingVipGroup(false)
+    }
   }
 
   // Add plan
@@ -6423,11 +6562,38 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
                         <AlertTriangle className="h-3 w-3 shrink-0" />
                         <p className="text-[9px]">Bot precisa ser ADMIN</p>
                       </div>
-                      <Button variant="outline" size="sm" className="h-7 text-[10px] px-2" type="button">
-                        <Zap className="h-3 w-3 mr-1" />
-                        Testar
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-7 text-[10px] px-2" 
+                        type="button"
+                        onClick={handleTestVipGroup}
+                        disabled={isTestingVipGroup || !tempDeliverable.vipGroupChatId}
+                      >
+                        {isTestingVipGroup ? (
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        ) : (
+                          <Zap className="h-3 w-3 mr-1" />
+                        )}
+                        {isTestingVipGroup ? "Testando..." : "Testar"}
                       </Button>
                     </div>
+                    
+                    {/* Resultado do teste */}
+                    {vipTestResult && (
+                      <div className={`flex items-start gap-1.5 px-2 py-1.5 rounded text-[9px] ${
+                        vipTestResult.success 
+                          ? "bg-green-500/10 text-green-600" 
+                          : "bg-red-500/10 text-red-600"
+                      }`}>
+                        {vipTestResult.success ? (
+                          <Check className="h-3 w-3 shrink-0 mt-0.5" />
+                        ) : (
+                          <X className="h-3 w-3 shrink-0 mt-0.5" />
+                        )}
+                        <p>{vipTestResult.message}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
