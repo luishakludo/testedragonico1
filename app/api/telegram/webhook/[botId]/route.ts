@@ -533,17 +533,21 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
   
   // ========== ACCESS DELIVERABLE CALLBACK ==========
   if (callbackData === "access_deliverable") {
-    console.log("[v0] Access Deliverable Callback - chatId:", chatId, "botUuid:", botUuid)
+    console.log("[v0] ACCESS_DELIVERABLE: ========== INICIO ==========")
+    console.log("[v0] ACCESS_DELIVERABLE: chatId:", chatId, "botUuid:", botUuid)
     
     // Confirmar callback
     await answerCallback(botToken, callbackQueryId, "Liberando acesso...")
     
     // Buscar flow para pegar o entregavel
     const flowForDelivery = await getActiveFlowForBot(supabase, botUuid)
+    console.log("[v0] ACCESS_DELIVERABLE: Flow encontrado?", !!flowForDelivery)
     
     if (flowForDelivery) {
       const flowConfig = (flowForDelivery.config as Record<string, unknown>) || {}
-      console.log("[v0] Sending delivery from access_deliverable callback")
+      console.log("[v0] ACCESS_DELIVERABLE: flowConfig keys:", Object.keys(flowConfig))
+      console.log("[v0] ACCESS_DELIVERABLE: mainDeliverableId:", flowConfig.mainDeliverableId)
+      console.log("[v0] ACCESS_DELIVERABLE: deliverables count:", (flowConfig.deliverables as unknown[])?.length || 0)
       
       // Buscar nome do usuario
       let userName = "Cliente"
@@ -584,12 +588,18 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
       
       // Se tiver mainDeliverableId, usar esse entregavel
       if (mainDeliverableId && deliverables) {
+        console.log("[v0] ACCESS_DELIVERABLE: Buscando entregavel com ID:", mainDeliverableId)
         const mainDeliverable = deliverables.find(d => d.id === mainDeliverableId)
         if (mainDeliverable) {
-          console.log("[v0] Sending main deliverable:", mainDeliverable.name, mainDeliverable.type)
+          console.log("[v0] ACCESS_DELIVERABLE: Entregavel encontrado!")
+          console.log("[v0] ACCESS_DELIVERABLE: Nome:", mainDeliverable.name)
+          console.log("[v0] ACCESS_DELIVERABLE: Tipo:", mainDeliverable.type)
+          console.log("[v0] ACCESS_DELIVERABLE: Dados:", JSON.stringify(mainDeliverable))
           
           if (mainDeliverable.type === "media" && mainDeliverable.medias && mainDeliverable.medias.length > 0) {
+            console.log("[v0] ACCESS_DELIVERABLE: Enviando", mainDeliverable.medias.length, "midias...")
             for (const mediaUrl of mainDeliverable.medias) {
+              console.log("[v0] ACCESS_DELIVERABLE: Enviando midia:", mediaUrl.substring(0, 50))
               if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
                 await sendTelegramVideo(botToken, chatId, mediaUrl, "")
               } else {
@@ -598,16 +608,25 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             }
             await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu conteudo foi liberado acima.")
             deliverableSent = true
+            console.log("[v0] ACCESS_DELIVERABLE: Midias enviadas com sucesso!")
           } else if (mainDeliverable.type === "link" && mainDeliverable.link) {
+            console.log("[v0] ACCESS_DELIVERABLE: Tipo LINK")
+            console.log("[v0] ACCESS_DELIVERABLE: link:", mainDeliverable.link)
+            console.log("[v0] ACCESS_DELIVERABLE: linkText:", mainDeliverable.linkText)
             const buttonText = mainDeliverable.linkText || "Acessar conteudo"
             const keyboard = {
               inline_keyboard: [[{ text: buttonText, url: mainDeliverable.link }]]
             }
             await sendTelegramMessage(botToken, chatId, "Clique no botao abaixo para acessar:", keyboard)
             deliverableSent = true
+            console.log("[v0] ACCESS_DELIVERABLE: Link enviado com sucesso!")
           } else if (mainDeliverable.type === "vip_group" && mainDeliverable.vipGroupChatId) {
             // Criar link de convite
+            console.log("[v0] ACCESS_DELIVERABLE: Tipo VIP_GROUP")
+            console.log("[v0] ACCESS_DELIVERABLE: vipGroupChatId:", mainDeliverable.vipGroupChatId)
+            console.log("[v0] ACCESS_DELIVERABLE: vipGroupName:", mainDeliverable.vipGroupName)
             try {
+              console.log("[v0] ACCESS_DELIVERABLE: Criando link de convite...")
               const inviteRes = await fetch(`https://api.telegram.org/bot${botToken}/createChatInviteLink`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -618,6 +637,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 }),
               })
               const inviteData = await inviteRes.json()
+              console.log("[v0] ACCESS_DELIVERABLE: Resposta Telegram:", JSON.stringify(inviteData))
               if (inviteData.ok && inviteData.result?.invite_link) {
                 const groupName = mainDeliverable.vipGroupName || "Grupo VIP"
                 const keyboard = {
@@ -630,9 +650,14 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                   keyboard
                 )
                 deliverableSent = true
+                console.log("[v0] ACCESS_DELIVERABLE: Link VIP enviado com sucesso!")
+              } else {
+                console.log("[v0] ACCESS_DELIVERABLE: ERRO - Falha ao criar link!")
+                console.log("[v0] ACCESS_DELIVERABLE: error_code:", inviteData.error_code)
+                console.log("[v0] ACCESS_DELIVERABLE: description:", inviteData.description)
               }
             } catch (inviteError) {
-              console.error("[v0] Error creating invite link:", inviteError)
+              console.error("[v0] ACCESS_DELIVERABLE: EXCECAO ao criar link:", inviteError)
             }
           }
         }

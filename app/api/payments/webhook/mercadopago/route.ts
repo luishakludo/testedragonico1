@@ -70,25 +70,43 @@ function sleep(ms: number) {
 
 // Criar link de convite unico para grupo VIP (limite de 1 uso)
 async function createVipInviteLink(botToken: string, chatId: string): Promise<string | null> {
+  console.log(`[v0] VIP: ========== createVipInviteLink INICIO ==========`)
+  console.log(`[v0] VIP: chatId (grupo): ${chatId}`)
+  console.log(`[v0] VIP: botToken (primeiros 10 chars): ${botToken?.substring(0, 10)}...`)
+  
   try {
+    const requestBody = {
+      chat_id: chatId,
+      member_limit: 1, // Link unico para 1 pessoa
+      name: `VIP Access - ${Date.now()}`,
+    }
+    console.log(`[v0] VIP: Request body:`, JSON.stringify(requestBody))
+    
     const res = await fetch(`https://api.telegram.org/bot${botToken}/createChatInviteLink`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        member_limit: 1, // Link unico para 1 pessoa
-        name: `VIP Access - ${Date.now()}`,
-      }),
+      body: JSON.stringify(requestBody),
     })
+    
+    console.log(`[v0] VIP: Response status: ${res.status}`)
+    
     const data = await res.json()
+    console.log(`[v0] VIP: Response data:`, JSON.stringify(data))
+    
     if (data.ok && data.result?.invite_link) {
-      console.log(`[VIP] Created invite link for chat ${chatId}: ${data.result.invite_link}`)
+      console.log(`[v0] VIP: SUCESSO - Link criado: ${data.result.invite_link}`)
+      console.log(`[v0] VIP: ========== createVipInviteLink FIM (sucesso) ==========`)
       return data.result.invite_link
     }
-    console.log(`[VIP] Failed to create invite link:`, data)
+    
+    console.log(`[v0] VIP: ERRO - Falha ao criar link!`)
+    console.log(`[v0] VIP: error_code: ${data.error_code}`)
+    console.log(`[v0] VIP: description: ${data.description}`)
+    console.log(`[v0] VIP: ========== createVipInviteLink FIM (erro) ==========`)
     return null
   } catch (error) {
-    console.error(`[VIP] Error creating invite link:`, error)
+    console.error(`[v0] VIP: EXCECAO ao criar link:`, error)
+    console.log(`[v0] VIP: ========== createVipInviteLink FIM (excecao) ==========`)
     return null
   }
 }
@@ -230,62 +248,104 @@ async function sendDeliverable(
   chatId: number,
   deliverable: Deliverable
 ) {
-  console.log(`[DELIVERY] Sending deliverable "${deliverable.name}" (type: ${deliverable.type}) to user ${chatId}`)
+  console.log(`[v0] DELIVERY: ========== sendDeliverable INICIO ==========`)
+  console.log(`[v0] DELIVERY: Deliverable name: "${deliverable.name}"`)
+  console.log(`[v0] DELIVERY: Deliverable type: "${deliverable.type}"`)
+  console.log(`[v0] DELIVERY: Deliverable id: "${deliverable.id}"`)
+  console.log(`[v0] DELIVERY: chatId: ${chatId}`)
+  console.log(`[v0] DELIVERY: Deliverable data:`, JSON.stringify(deliverable))
 
-  switch (deliverable.type) {
-    case "media":
-      // Enviar midias
-      if (deliverable.medias && deliverable.medias.length > 0) {
-        for (const mediaUrl of deliverable.medias) {
-          if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
-            await sendTelegramVideo(botToken, chatId, mediaUrl, "")
-          } else {
-            await sendTelegramPhoto(botToken, chatId, mediaUrl, "")
+  try {
+    switch (deliverable.type) {
+      case "media":
+        // Enviar midias
+        console.log(`[v0] DELIVERY: Processando tipo MEDIA`)
+        console.log(`[v0] DELIVERY: Medias count: ${deliverable.medias?.length || 0}`)
+        if (deliverable.medias && deliverable.medias.length > 0) {
+          console.log(`[v0] DELIVERY: Enviando ${deliverable.medias.length} midias...`)
+          for (let i = 0; i < deliverable.medias.length; i++) {
+            const mediaUrl = deliverable.medias[i]
+            console.log(`[v0] DELIVERY: Enviando midia ${i + 1}/${deliverable.medias.length}: ${mediaUrl.substring(0, 50)}...`)
+            if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
+              await sendTelegramVideo(botToken, chatId, mediaUrl, "")
+            } else {
+              await sendTelegramPhoto(botToken, chatId, mediaUrl, "")
+            }
+            await sleep(500)
           }
-          await sleep(500)
+          console.log(`[v0] DELIVERY: Todas as midias enviadas com sucesso!`)
+          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu conteudo foi liberado acima.")
+        } else {
+          console.log(`[v0] DELIVERY: AVISO - Nenhuma midia configurada no entregavel!`)
+          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
         }
-        await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu conteudo foi liberado acima.")
-      }
-      break
+        break
 
-    case "link":
-      // Enviar link com botao
-      if (deliverable.link) {
-        const buttonText = deliverable.linkText || "Acessar conteudo"
-        const keyboard = {
-          inline_keyboard: [
-            [{ text: buttonText, url: deliverable.link }]
-          ]
-        }
-        await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Clique no botao abaixo para acessar:", keyboard)
-      }
-      break
-
-    case "vip_group":
-      // Criar link de convite unico e enviar
-      if (deliverable.vipGroupChatId) {
-        const inviteLink = await createVipInviteLink(botToken, deliverable.vipGroupChatId)
-        if (inviteLink) {
-          const groupName = deliverable.vipGroupName || "Grupo VIP"
+      case "link":
+        // Enviar link com botao
+        console.log(`[v0] DELIVERY: Processando tipo LINK`)
+        console.log(`[v0] DELIVERY: Link: ${deliverable.link}`)
+        console.log(`[v0] DELIVERY: LinkText: ${deliverable.linkText}`)
+        if (deliverable.link) {
+          const buttonText = deliverable.linkText || "Acessar conteudo"
           const keyboard = {
             inline_keyboard: [
-              [{ text: `Entrar no ${groupName}`, url: inviteLink }]
+              [{ text: buttonText, url: deliverable.link }]
             ]
           }
-          await sendTelegramMessage(
-            botToken,
-            chatId,
-            `Obrigado pela compra! Seu acesso ao <b>${groupName}</b> foi liberado.\n\n<i>Este link e unico e pode ser usado apenas uma vez.</i>`,
-            keyboard
-          )
+          console.log(`[v0] DELIVERY: Enviando link com botao "${buttonText}"`)
+          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Clique no botao abaixo para acessar:", keyboard)
+          console.log(`[v0] DELIVERY: Link enviado com sucesso!`)
         } else {
-          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Houve um problema ao gerar seu link de acesso. Entre em contato com o suporte.")
+          console.log(`[v0] DELIVERY: AVISO - Nenhum link configurado no entregavel!`)
+          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
         }
-      }
-      break
+        break
+
+      case "vip_group":
+        // Criar link de convite unico e enviar
+        console.log(`[v0] DELIVERY: Processando tipo VIP_GROUP`)
+        console.log(`[v0] DELIVERY: vipGroupChatId: ${deliverable.vipGroupChatId}`)
+        console.log(`[v0] DELIVERY: vipGroupName: ${deliverable.vipGroupName}`)
+        if (deliverable.vipGroupChatId) {
+          console.log(`[v0] DELIVERY: Criando link de convite unico para grupo ${deliverable.vipGroupChatId}...`)
+          const inviteLink = await createVipInviteLink(botToken, deliverable.vipGroupChatId)
+          console.log(`[v0] DELIVERY: Invite link criado: ${inviteLink}`)
+          if (inviteLink) {
+            const groupName = deliverable.vipGroupName || "Grupo VIP"
+            const keyboard = {
+              inline_keyboard: [
+                [{ text: `Entrar no ${groupName}`, url: inviteLink }]
+              ]
+            }
+            console.log(`[v0] DELIVERY: Enviando mensagem com link de convite para ${groupName}`)
+            await sendTelegramMessage(
+              botToken,
+              chatId,
+              `Obrigado pela compra! Seu acesso ao <b>${groupName}</b> foi liberado.\n\n<i>Este link e unico e pode ser usado apenas uma vez.</i>`,
+              keyboard
+            )
+            console.log(`[v0] DELIVERY: Link de grupo VIP enviado com sucesso!`)
+          } else {
+            console.log(`[v0] DELIVERY: ERRO - Falha ao criar link de convite!`)
+            await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Houve um problema ao gerar seu link de acesso. Entre em contato com o suporte.")
+          }
+        } else {
+          console.log(`[v0] DELIVERY: AVISO - Nenhum vipGroupChatId configurado!`)
+          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+        }
+        break
+      
+      default:
+        console.log(`[v0] DELIVERY: AVISO - Tipo de entregavel desconhecido: ${deliverable.type}`)
+        await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+    }
+  } catch (error) {
+    console.error(`[v0] DELIVERY: ERRO ao enviar entregavel:`, error)
+    await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
   }
 
-  console.log(`[DELIVERY] Deliverable "${deliverable.name}" sent successfully`)
+  console.log(`[v0] DELIVERY: ========== sendDeliverable FIM ==========`)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -304,32 +364,54 @@ async function sendDelivery(
   console.log(`[v0] DELIVERY: flowConfig.deliverables?`, flowConfig?.deliverables?.length || 0)
   console.log(`[v0] DELIVERY: flowConfig.mainDeliverableId?`, flowConfig?.mainDeliverableId || "NAO DEFINIDO")
   console.log(`[v0] DELIVERY: flowConfig.delivery?`, !!flowConfig?.delivery)
+  
+  // Log detalhado dos entregaveis disponiveis
+  if (flowConfig?.deliverables && flowConfig.deliverables.length > 0) {
+    console.log(`[v0] DELIVERY: Lista de entregaveis disponiveis:`)
+    for (const d of flowConfig.deliverables) {
+      console.log(`[v0] DELIVERY:   - ID: ${d.id}, Nome: ${d.name}, Tipo: ${d.type}`)
+    }
+  }
 
   // Se tiver um deliverableId especifico, buscar e usar esse entregavel
   if (deliverableId && flowConfig?.deliverables) {
+    console.log(`[v0] DELIVERY: Buscando entregavel especifico com ID: ${deliverableId}`)
     const deliverable = flowConfig.deliverables.find((d: Deliverable) => d.id === deliverableId)
     if (deliverable) {
+      console.log(`[v0] DELIVERY: Encontrado entregavel especifico: ${deliverable.name} (${deliverable.type})`)
       await sendDeliverable(botToken, chatId, deliverable)
+      console.log(`[v0] DELIVERY: ========== FIM sendDelivery (via ID especifico) ==========`)
       return
+    } else {
+      console.log(`[v0] DELIVERY: AVISO - Entregavel especifico ${deliverableId} NAO encontrado!`)
     }
   }
 
   // Se tiver mainDeliverableId configurado, usar o entregavel principal
   if (flowConfig?.mainDeliverableId && flowConfig?.deliverables) {
+    console.log(`[v0] DELIVERY: Buscando entregavel principal com ID: ${flowConfig.mainDeliverableId}`)
     const mainDeliverable = flowConfig.deliverables.find((d: Deliverable) => d.id === flowConfig.mainDeliverableId)
     if (mainDeliverable) {
+      console.log(`[v0] DELIVERY: Encontrado entregavel principal: ${mainDeliverable.name} (${mainDeliverable.type})`)
       await sendDeliverable(botToken, chatId, mainDeliverable)
+      console.log(`[v0] DELIVERY: ========== FIM sendDelivery (via mainDeliverableId) ==========`)
       return
+    } else {
+      console.log(`[v0] DELIVERY: AVISO - Entregavel principal ${flowConfig.mainDeliverableId} NAO encontrado nos deliverables!`)
     }
   }
+
+  console.log(`[v0] DELIVERY: Usando sistema LEGADO de delivery (fallback)`)
 
   // Fallback: usar o sistema antigo de delivery (para compatibilidade)
   if (flowConfig?.delivery) {
     const delivery = flowConfig.delivery
+    console.log(`[v0] DELIVERY: Sistema legado - delivery.type: ${delivery.type}`)
 
     // Verificar tipo de entrega do sistema antigo
     if (delivery.type === "vip_group" && delivery.vipGroupId) {
       // Grupo VIP (sistema antigo)
+      console.log(`[v0] DELIVERY: Sistema legado - Tipo VIP_GROUP, vipGroupId: ${delivery.vipGroupId}`)
       const inviteLink = await createVipInviteLink(botToken, delivery.vipGroupId)
       if (inviteLink) {
         const groupName = delivery.vipGroupName || "Grupo VIP"
@@ -344,14 +426,18 @@ async function sendDelivery(
           `Obrigado pela compra! Seu acesso ao <b>${groupName}</b> foi liberado.\n\n<i>Este link e unico e pode ser usado apenas uma vez.</i>`,
           keyboard
         )
+        console.log(`[v0] DELIVERY: Link VIP enviado com sucesso (sistema legado)`)
       } else {
+        console.log(`[v0] DELIVERY: ERRO - Falha ao criar link VIP (sistema legado)`)
         await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Houve um problema ao gerar seu link de acesso. Entre em contato com o suporte.")
       }
+      console.log(`[v0] DELIVERY: ========== FIM sendDelivery (VIP legado) ==========`)
       return
     }
 
     // Enviar midias de entrega (sistema antigo)
     if (delivery.medias && delivery.medias.length > 0) {
+      console.log(`[v0] DELIVERY: Sistema legado - Enviando ${delivery.medias.length} midias`)
       for (const mediaUrl of delivery.medias) {
         if (mediaUrl.includes(".mp4") || mediaUrl.includes("video")) {
           await sendTelegramVideo(botToken, chatId, mediaUrl, "")
@@ -360,10 +446,12 @@ async function sendDelivery(
         }
         await sleep(500)
       }
+      console.log(`[v0] DELIVERY: Midias enviadas com sucesso (sistema legado)`)
     }
 
     // Enviar link de acesso (sistema antigo)
     if (delivery.link) {
+      console.log(`[v0] DELIVERY: Sistema legado - Enviando link: ${delivery.link}`)
       const buttonText = delivery.linkText || "Acessar conteudo"
       const keyboard = {
         inline_keyboard: [
@@ -372,13 +460,15 @@ async function sendDelivery(
       }
       await sendTelegramMessage(botToken, chatId, "Seu acesso foi liberado! Clique no botao abaixo:", keyboard)
     } else if (!delivery.medias || delivery.medias.length === 0) {
+      console.log(`[v0] DELIVERY: Sistema legado - Sem midias e sem link, enviando mensagem padrao`)
       await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
     }
   } else {
+    console.log(`[v0] DELIVERY: AVISO - Nenhum entregavel configurado! Enviando mensagem padrao.`)
     await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
   }
 
-  console.log(`[DELIVERY] Delivery sent successfully`)
+  console.log(`[v0] DELIVERY: ========== FIM sendDelivery ==========`)
 }
 
 // ---------------------------------------------------------------------------
@@ -565,6 +655,28 @@ export async function POST(request: NextRequest) {
                   console.log(`[v0] Flow ${flowId} config keys:`, Object.keys(flowConfig || {}))
                   console.log(`[v0] mainDeliverableId:`, flowConfig?.mainDeliverableId)
                   console.log(`[v0] deliverables count:`, flowConfig?.deliverables?.length || 0)
+                  
+                  // Log detalhado de cada entregavel
+                  if (flowConfig?.deliverables && flowConfig.deliverables.length > 0) {
+                    console.log(`[v0] ENTREGAVEIS CONFIGURADOS:`)
+                    for (const del of flowConfig.deliverables) {
+                      console.log(`[v0]   - ID: ${del.id}`)
+                      console.log(`[v0]     Nome: ${del.name}`)
+                      console.log(`[v0]     Tipo: ${del.type}`)
+                      if (del.type === "media") {
+                        console.log(`[v0]     Midias: ${del.medias?.length || 0} arquivos`)
+                      } else if (del.type === "link") {
+                        console.log(`[v0]     Link: ${del.link}`)
+                        console.log(`[v0]     LinkText: ${del.linkText}`)
+                      } else if (del.type === "vip_group") {
+                        console.log(`[v0]     VIP Chat ID: ${del.vipGroupChatId}`)
+                        console.log(`[v0]     VIP Nome: ${del.vipGroupName}`)
+                      }
+                    }
+                  } else {
+                    console.log(`[v0] AVISO: Nenhum entregavel configurado no flow!`)
+                  }
+                  
                   console.log(`[v0] paymentMessages:`, !!paymentMessages)
                   console.log(`[v0] UPSELL: Flow ${flowId} has ${upsellSequences.length} upsell sequences, enabled: ${upsellConfig?.enabled}`)
 
