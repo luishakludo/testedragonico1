@@ -2789,34 +2789,31 @@ duration_days: 30,
                                 <div className="space-y-2">
                                   <Label className="text-sm text-neutral-600">Duracao (dias)</Label>
                                   <div className="flex items-center gap-2">
-                                    <Input
-                                      type="number"
-                                      min={0}
-                                      max={999}
-                                      value={plan.duration_days ?? ""}
-                                      onChange={(e) => {
-                                        const rawValue = e.target.value
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      defaultValue={plan.duration_days ?? 30}
+                                      key={`duration-${plan.id}`}
+                                      onBlur={(e) => {
+                                        const rawValue = e.target.value.replace(/[^0-9]/g, "")
                                         if (rawValue === "") {
                                           handleUpdatePlan(plan.id, "duration_days", 0)
                                           handleUpdatePlan(plan.id, "duration_type", "lifetime")
+                                          e.target.value = "0"
                                         } else {
                                           const numValue = parseInt(rawValue, 10)
-                                          if (!isNaN(numValue)) {
-                                            const clampedValue = Math.min(999, Math.max(0, numValue))
-                                            handleUpdatePlan(plan.id, "duration_days", clampedValue)
-                                            if (clampedValue === 0) {
-                                              handleUpdatePlan(plan.id, "duration_type", "lifetime")
-                                            } else {
-                                              handleUpdatePlan(plan.id, "duration_type", "daily")
-                                            }
-                                          }
+                                          const clampedValue = Math.min(999, Math.max(0, numValue))
+                                          handleUpdatePlan(plan.id, "duration_days", clampedValue)
+                                          handleUpdatePlan(plan.id, "duration_type", clampedValue === 0 ? "lifetime" : "daily")
+                                          e.target.value = String(clampedValue)
                                         }
                                       }}
                                       placeholder="Ex: 30"
-                                      className="bg-white border-neutral-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                     <span className="text-sm text-neutral-500 whitespace-nowrap">
-                                      {plan.duration_days === 0 || !plan.duration_days ? "Vitalicio" : plan.duration_days === 1 ? "dia" : "dias"}
+                                      dias
                                     </span>
                                   </div>
                                   <p className="text-xs text-neutral-400">
