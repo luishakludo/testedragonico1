@@ -10,8 +10,10 @@ import {
 } from "@/components/ui/dialog"
 import { NoBotSelected } from "@/components/no-bot-selected"
 import { useBots } from "@/lib/bot-context"
-import { useState } from "react"
-import { Zap, GitBranch, BarChart3, Globe, Plus, RefreshCw, X, Facebook, Mail } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { supabase } from "@/lib/supabase"
+import { useState, useEffect } from "react"
+import { Zap, GitBranch, BarChart3, Globe, Plus, RefreshCw, X, Facebook, Mail, Loader2 } from "lucide-react"
 
 interface TrackingProfile {
   id: string
@@ -26,6 +28,12 @@ interface TrackingProfile {
   active: boolean
 }
 
+interface Flow {
+  id: string
+  name: string
+  status: string
+}
+
 const EVENTS = [
   { id: "PageView", label: "PageView" },
   { id: "ViewContent", label: "ViewContent" },
@@ -34,18 +42,16 @@ const EVENTS = [
   { id: "Purchase", label: "Purchase" },
 ]
 
-// Mock flows for demonstration
-const AVAILABLE_FLOWS = [
-  { id: "flow1", name: "dsddss", active: true },
-  { id: "flow2", name: "dcdcddssdx", active: true },
-  { id: "flow3", name: "teste", active: true },
-]
-
 export default function TrackingPage() {
   const { selectedBot } = useBots()
+  const { session } = useAuth()
   const [profiles, setProfiles] = useState<TrackingProfile[]>([])
   const [showPlatformDialog, setShowPlatformDialog] = useState(false)
   const [showFacebookDialog, setShowFacebookDialog] = useState(false)
+  
+  // Flows from database
+  const [availableFlows, setAvailableFlows] = useState<Flow[]>([])
+  const [isLoadingFlows, setIsLoadingFlows] = useState(false)
   
   // Form state
   const [profileName, setProfileName] = useState("")
@@ -57,6 +63,27 @@ export default function TrackingPage() {
   const [captureContact, setCaptureContact] = useState(false)
   const [selectedEvents, setSelectedEvents] = useState<string[]>(["PageView", "ViewContent", "Lead", "InitiateCheckout", "Purchase"])
   const [selectedFlows, setSelectedFlows] = useState<string[]>([])
+  
+  // Fetch flows from database
+  useEffect(() => {
+    async function fetchFlows() {
+      if (!session?.userId) return
+      
+      setIsLoadingFlows(true)
+      const { data, error } = await supabase
+        .from("flows")
+        .select("id, name, status")
+        .eq("user_id", session.userId)
+        .order("created_at", { ascending: false })
+      
+      if (!error && data) {
+        setAvailableFlows(data)
+      }
+      setIsLoadingFlows(false)
+    }
+    
+    fetchFlows()
+  }, [session?.userId])
 
   if (!selectedBot) {
     return <NoBotSelected />
@@ -485,40 +512,37 @@ export default function TrackingPage() {
                 </div>
                 
                 <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {AVAILABLE_FLOWS.map((flow) => (
-                    <div
-                      key={flow.id}
-                      onClick={() => toggleFlow(flow.id)}
-                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                        selectedFlows.includes(flow.id)
-                          ? "bg-blue-500/5 border-blue-500/30"
-                          : "bg-muted/30 border-border hover:border-border/80"
-                      }`}
-                    >
-                      <Checkbox 
-                        checked={selectedFlows.includes(flow.id)}
-                        className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500 border-border"
-                      />
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{flow.name}</p>
-                        <p className="text-xs text-muted-foreground">{flow.active ? "Ativo" : "Inativo"}</p>
-                      </div>
+                  {isLoadingFlows ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                     </div>
-                  ))}
+                  ) : availableFlows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhum fluxo criado
+                    </p>
+                  ) : (
+                    availableFlows.map((flow) => (
+                      <div
+                        key={flow.id}
+                        onClick={() => toggleFlow(flow.id)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                          selectedFlows.includes(flow.id)
+                            ? "bg-blue-500/5 border-blue-500/30"
+                            : "bg-muted/30 border-border hover:border-border/80"
+                        }`}
+                      >
+                        <Checkbox 
+                          checked={selectedFlows.includes(flow.id)}
+                          className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500 border-border"
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{flow.name}</p>
+                          <p className="text-xs text-muted-foreground">{flow.status === "ativo" || flow.status === "active" ? "Ativo" : "Inativo"}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-              </div>
-
-              {/* Checkouts Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-px bg-border"></div>
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Checkouts Vinculados</span>
-                  <div className="flex-1 h-px bg-border"></div>
-                </div>
-                
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum checkout disponivel
-                </p>
               </div>
             </div>
           </ScrollArea>
