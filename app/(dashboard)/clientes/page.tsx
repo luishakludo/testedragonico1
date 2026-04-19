@@ -139,6 +139,25 @@ export default function ClientesPage() {
     }
   }
 
+  // Buscar fluxos separadamente para garantir que os botoes de filtro aparecam
+  useEffect(() => {
+    if (!userId) return
+    
+    const fetchFlows = async () => {
+      try {
+        const res = await fetch(`/api/fluxo/list?userId=${userId}`)
+        const data = await res.json()
+        if (data.flows) {
+          setFlows(data.flows)
+        }
+      } catch (err) {
+        console.error("[v0] Error fetching flows:", err)
+      }
+    }
+    
+    fetchFlows()
+  }, [userId])
+  
   useEffect(() => {
     if (authLoading) return
     if (userId) {
