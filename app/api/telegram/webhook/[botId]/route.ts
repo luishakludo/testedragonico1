@@ -2963,6 +2963,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         const allMedias = (flowConfig.welcomeMedias as string[]) || []
         const welcomeMedias = allMedias.filter(m => m && !m.startsWith("data:") && (m.startsWith("http") || m.startsWith("/")))
         
+        const ctaButtonEnabled = flowConfig.ctaButtonEnabled !== false // default true
         const ctaButtonText = (flowConfig.ctaButtonText as string) || "Ver Planos"
         const redirectButton = flowConfig.redirectButton as { enabled?: boolean; text?: string; url?: string } || {}
         const secondaryMsg = flowConfig.secondaryMessage as { enabled?: boolean; message?: string } || {}
@@ -2972,14 +2973,43 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         const packsEnabled = packsConfig?.enabled && packsConfig?.list && packsConfig.list.filter(p => p.active !== false).length > 0
         const packsButtonText = packsConfig?.buttonText || "Packs Disponiveis"
         
+        // Pegar planos para mostrar direto (se ctaButtonEnabled = false)
+        // Primeiro tenta da tabela flow_plans, depois do config
+        let plansToShow: Array<{ id: string; name: string }> = []
+        if (!ctaButtonEnabled) {
+          const { data: flowPlans } = await supabase
+            .from("flow_plans")
+            .select("id, name")
+            .eq("flow_id", startFlow.id)
+            .eq("is_active", true)
+            .order("position", { ascending: true })
+          
+          if (flowPlans && flowPlans.length > 0) {
+            plansToShow = flowPlans
+          } else {
+            // Fallback: planos do config
+            const configPlans = (flowConfig.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+            plansToShow = configPlans.filter(p => p.active !== false)
+          }
+        }
+        
         // Always send welcome flow (we have at least a default message)
         const finalMsg = replaceVars(welcomeMsg) || `Ola! Bem-vindo ao ${bot.name || "bot"}.`
         
         // Build inline keyboard with buttons
         const inlineKeyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = []
         
-        // CTA Button (Ver Planos) - callback button
-        inlineKeyboard.push([{ text: ctaButtonText, callback_data: "ver_planos" }])
+        // Se CTA Button ativado: mostra botao "Ver Planos"
+        // Se CTA Button desativado: mostra planos direto na boas-vindas
+        if (ctaButtonEnabled) {
+          // CTA Button (Ver Planos) - callback button
+          inlineKeyboard.push([{ text: ctaButtonText, callback_data: "ver_planos" }])
+        } else {
+          // Mostrar planos direto na mensagem de boas-vindas
+          for (const plan of plansToShow) {
+            inlineKeyboard.push([{ text: plan.name, callback_data: `plan_${plan.id}` }])
+          }
+        }
         
         // Packs Button - se habilitado, adiciona na mensagem de boas-vindas
         if (packsEnabled) {

@@ -19,6 +19,7 @@ import {
   ChevronRight,
   LogOut,
   Target,
+  Users,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Dashboard", description: "Visao geral", href: "/", icon: LayoutDashboard },
       { label: "Vendas", description: "Vendas e transacoes", href: "/payments", icon: DollarSign },
+      { label: "Clientes", description: "Assinantes e compradores", href: "/clientes", icon: Users },
     ],
   },
   {
