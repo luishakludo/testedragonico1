@@ -64,92 +64,51 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const userId = searchParams.get("userId")
     const botId = searchParams.get("botId")
-    const flowId = searchParams.get("flowId") // Filtro por fluxo
     const filter = searchParams.get("filter") // "all" | "assinantes" | "compradores"
     const limit = parseInt(searchParams.get("limit") || "50")
     const offset = parseInt(searchParams.get("offset") || "0")
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-    console.log("[v0] Clients API - userId:", userId, "botId:", botId, "flowId:", flowId, "filter:", filter)
-
     // Buscar bots do usuario
     let userBotIds: string[] = []
-    let botsMap = new Map<string, { id: string; name: string; flow_id?: string }>()
-    
     if (userId) {
-      const { data: userBots, error: botsError } = await supabase
+      const { data: userBots } = await supabase
         .from("bots")
-        .select("id, name, flow_id")
+        .select("id, name")
         .eq("user_id", userId)
       
-      console.log("[v0] Clients - userBots:", userBots?.length, "error:", botsError)
-      
       userBotIds = userBots?.map(b => b.id) || []
-      userBots?.forEach(b => botsMap.set(b.id, b))
     }
 
     // Se botId especifico, usar apenas ele
-    let botIdsToQuery = botId ? [botId] : userBotIds
+    const botIdsToQuery = botId ? [botId] : userBotIds
 
-    // Se flowId especifico, filtrar bots desse fluxo
-    if (flowId && !botId) {
-      const { data: flowBots } = await supabase
-        .from("bots")
-        .select("id, name, flow_id")
-        .eq("flow_id", flowId)
-        .eq("user_id", userId)
-      
-      botIdsToQuery = flowBots?.map(b => b.id) || []
-      flowBots?.forEach(b => botsMap.set(b.id, b))
-      console.log("[v0] Clients - flowBots for flowId", flowId, ":", botIdsToQuery.length)
+    if (botIdsToQuery.length === 0) {
+      return NextResponse.json({ clients: [], total: 0, stats: { assinantes: 0, compradores: 0 } })
     }
 
-    if (botIdsToQuery.length === 0 && !userId) {
-      console.log("[v0] Clients - No bots found, returning empty")
-      return NextResponse.json({ clients: [], total: 0, stats: { total: 0, assinantes: 0, compradores: 0, assinantes_ativos: 0, assinantes_expirados: 0, vitalicio: 0 }, flows: [] })
-    }
-
-    // Buscar todos os pagamentos aprovados
-    let query = supabase
+    // Buscar todos os pagamentos aprovados dos bots
+    const { data: payments, error: paymentsError } = await supabase
       .from("payments")
       .select(`
         id,
         telegram_user_id,
-        payer_email,
-        payer_name,
         bot_id,
-        user_id,
         amount,
         status,
         product_type,
         product_name,
         plan_id,
-        flow_id,
         created_at,
         bots:bot_id (
           id,
-          name,
-          flow_id
+          name
         )
       `)
+      .in("bot_id", botIdsToQuery)
       .eq("status", "approved")
       .order("created_at", { ascending: false })
-    
-    // Filtrar por bot_id dos bots do usuario OU user_id direto
-    if (userId && botIdsToQuery.length > 0) {
-      const botIdsString = botIdsToQuery.join(",")
-      const orFilter = `bot_id.in.(${botIdsString}),user_id.eq.${userId}`
-      query = query.or(orFilter)
-    } else if (userId) {
-      query = query.eq("user_id", userId)
-    } else if (botIdsToQuery.length > 0) {
-      query = query.in("bot_id", botIdsToQuery)
-    }
-
-    const { data: payments, error: paymentsError } = await query
-
-    console.log("[v0] Clients - payments found:", payments?.length, "error:", paymentsError)
 
     if (paymentsError) {
       console.error("[clients] Error fetching payments:", paymentsError)
