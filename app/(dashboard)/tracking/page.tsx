@@ -1,227 +1,550 @@
 "use client"
 
-
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose,
 } from "@/components/ui/dialog"
 import { NoBotSelected } from "@/components/no-bot-selected"
 import { useBots } from "@/lib/bot-context"
 import { useState } from "react"
+import { Zap, GitBranch, BarChart3, Globe, Plus, RefreshCw, X, Facebook, Mail } from "lucide-react"
 
-const pixels = [
-  { nome: "Facebook Pixel", id: "FB-1234567890", tipo: "Facebook", ativo: true, cor: "#1877f2" },
-  { nome: "TikTok Pixel", id: "TT-9876543210", tipo: "TikTok", ativo: true, cor: "#000000" },
-  { nome: "Google Ads Tag", id: "AW-112233445566", tipo: "Google", ativo: true, cor: "#ea4335" },
-  { nome: "Kwai Ads", id: "KW-445566778899", tipo: "Kwai", ativo: false, cor: "#ff6a00" },
+interface TrackingProfile {
+  id: string
+  name: string
+  pixelId: string
+  accessToken: string
+  utmifyToken: string
+  otimizeyToken: string
+  captureContact: boolean
+  events: string[]
+  linkedFlows: string[]
+  active: boolean
+}
+
+const EVENTS = [
+  { id: "PageView", label: "PageView" },
+  { id: "ViewContent", label: "ViewContent" },
+  { id: "Lead", label: "Lead" },
+  { id: "InitiateCheckout", label: "InitiateCheckout" },
+  { id: "Purchase", label: "Purchase" },
 ]
 
-const utms = [
-  { nome: "Campanha Verao", source: "facebook", medium: "cpc", campaign: "verao_2026" },
-  { nome: "Lancamento Bot", source: "tiktok", medium: "social", campaign: "launch_v2" },
-  { nome: "Brand Search", source: "google", medium: "cpc", campaign: "brand_search" },
+// Mock flows for demonstration
+const AVAILABLE_FLOWS = [
+  { id: "flow1", name: "dsddss", active: true },
+  { id: "flow2", name: "dcdcddssdx", active: true },
+  { id: "flow3", name: "teste", active: true },
 ]
 
 export default function TrackingPage() {
   const { selectedBot } = useBots()
-  const [pixelStates, setPixelStates] = useState<Record<string, boolean>>(
-    Object.fromEntries(pixels.map(p => [p.id, p.ativo]))
-  )
+  const [profiles, setProfiles] = useState<TrackingProfile[]>([])
+  const [showPlatformDialog, setShowPlatformDialog] = useState(false)
+  const [showFacebookDialog, setShowFacebookDialog] = useState(false)
+  
+  // Form state
+  const [profileName, setProfileName] = useState("")
+  const [pixelId, setPixelId] = useState("")
+  const [accessToken, setAccessToken] = useState("")
+  const [pixelExtra, setPixelExtra] = useState(false)
+  const [utmifyToken, setUtmifyToken] = useState("")
+  const [otimizeyToken, setOtimizeyToken] = useState("")
+  const [captureContact, setCaptureContact] = useState(false)
+  const [selectedEvents, setSelectedEvents] = useState<string[]>(["PageView", "ViewContent", "Lead", "InitiateCheckout", "Purchase"])
+  const [selectedFlows, setSelectedFlows] = useState<string[]>([])
 
   if (!selectedBot) {
-    return (
-      <>
+    return <NoBotSelected />
+  }
 
-        <NoBotSelected />
-      </>
+  const handleSelectPlatform = () => {
+    setShowPlatformDialog(false)
+    setShowFacebookDialog(true)
+  }
+
+  const handleCreateProfile = () => {
+    if (!profileName.trim()) return
+    
+    const newProfile: TrackingProfile = {
+      id: Date.now().toString(),
+      name: profileName,
+      pixelId,
+      accessToken,
+      utmifyToken,
+      otimizeyToken,
+      captureContact,
+      events: selectedEvents,
+      linkedFlows: selectedFlows,
+      active: true,
+    }
+    
+    setProfiles([...profiles, newProfile])
+    resetForm()
+    setShowFacebookDialog(false)
+  }
+
+  const resetForm = () => {
+    setProfileName("")
+    setPixelId("")
+    setAccessToken("")
+    setPixelExtra(false)
+    setUtmifyToken("")
+    setOtimizeyToken("")
+    setCaptureContact(false)
+    setSelectedEvents(["PageView", "ViewContent", "Lead", "InitiateCheckout", "Purchase"])
+    setSelectedFlows([])
+  }
+
+  const toggleEvent = (eventId: string) => {
+    setSelectedEvents(prev => 
+      prev.includes(eventId) 
+        ? prev.filter(e => e !== eventId)
+        : [...prev, eventId]
     )
   }
 
-  const togglePixel = (id: string) => {
-    setPixelStates(prev => ({ ...prev, [id]: !prev[id] }))
+  const toggleFlow = (flowId: string) => {
+    setSelectedFlows(prev => 
+      prev.includes(flowId) 
+        ? prev.filter(f => f !== flowId)
+        : [...prev, flowId]
+    )
   }
 
+  const toggleProfileActive = (profileId: string) => {
+    setProfiles(prev => 
+      prev.map(p => p.id === profileId ? { ...p, active: !p.active } : p)
+    )
+  }
+
+  const activeProfiles = profiles.filter(p => p.active).length
+  const linkedFlowsCount = profiles.reduce((acc, p) => acc + p.linkedFlows.length, 0)
+  const totalEvents = profiles.reduce((acc, p) => acc + p.events.length, 0)
+
   return (
-    <>
-      <ScrollArea className="flex-1">
-        <div className="p-4 md:p-8 bg-background min-h-full">
-          <div className="max-w-5xl mx-auto">
+    <ScrollArea className="flex-1">
+      <div className="p-4 md:p-8 bg-[#0a0a0a] min-h-full">
+        <div className="max-w-6xl mx-auto">
 
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-8">
-              <div className="w-12 h-12 rounded-2xl bg-foreground dark:bg-card flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#a3e635]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <circle cx="12" cy="12" r="6"/>
-                  <circle cx="12" cy="12" r="2"/>
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-foreground tracking-tight">
-                  Rastreamento
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Configure pixels e UTMs para suas campanhas
-                </p>
-              </div>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button className="bg-foreground dark:bg-card text-background dark:text-foreground hover:bg-[#222] rounded-xl gap-2 px-5 h-11">
-                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="12" y1="5" x2="12" y2="19"/>
-                      <line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                    Novo Pixel
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-card border-0 shadow-2xl sm:max-w-md rounded-[24px]">
-                  <DialogHeader>
-                    <DialogTitle className="text-foreground text-lg font-bold">Adicionar Pixel</DialogTitle>
-                  </DialogHeader>
-                  <div className="flex flex-col gap-4 pt-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium text-gray-700">Nome do Pixel</label>
-                      <Input placeholder="Ex: Facebook Pixel" className="bg-muted border-gray-200 rounded-xl h-11" />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium text-gray-700">ID do Pixel</label>
-                      <Input placeholder="Ex: FB-123456789" className="bg-muted border-gray-200 rounded-xl h-11 font-mono" />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium text-gray-700">Plataforma</label>
-                      <div className="grid grid-cols-4 gap-2">
-                        {["Facebook", "TikTok", "Google", "Kwai"].map(plat => (
-                          <button key={plat} className="py-2 px-3 text-xs font-medium rounded-lg border border-gray-200 hover:border-[#a3e635] hover:bg-[#f0fdf4] transition-colors">
-                            {plat}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <Button className="bg-foreground dark:bg-card text-background dark:text-foreground hover:bg-[#222] rounded-xl h-11 mt-2">
-                      Adicionar Pixel
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-white tracking-tight">
+                Trackeamento
+              </h1>
+              <p className="text-sm text-zinc-500">
+                Gerencie perfis de rastreamento e vincule aos seus fluxos
+              </p>
             </div>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                Sincronizar
+              </Button>
+              <Button 
+                onClick={() => setShowPlatformDialog(true)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Novo Perfil
+              </Button>
+            </div>
+          </div>
 
-            {/* Pixels Section */}
-            <div className="bg-card rounded-[24px] border border-border shadow-sm overflow-hidden mb-6">
-              <div className="p-5 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#a3e635]"></div>
-                  <h2 className="font-semibold text-foreground">Pixels Instalados</h2>
-                  <span className="text-xs text-muted-foreground ml-2">({pixels.length})</span>
-                </div>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-[#111111] border border-zinc-800/50 rounded-xl p-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                <Zap className="w-5 h-5 text-blue-500" />
               </div>
-              <div className="divide-y divide-gray-50">
-                {pixels.map((pixel) => (
-                  <div key={pixel.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+              <div>
+                <p className="text-2xl font-bold text-white">{activeProfiles}</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">Perfis Ativos</p>
+              </div>
+            </div>
+            
+            <div className="bg-[#111111] border border-zinc-800/50 rounded-xl p-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                <GitBranch className="w-5 h-5 text-purple-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-white">{linkedFlowsCount}</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">Fluxos Rastreados</p>
+              </div>
+            </div>
+            
+            <div className="bg-[#111111] border border-zinc-800/50 rounded-xl p-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                <BarChart3 className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-white">{totalEvents}</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wider">Total de Eventos</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Info Banner */}
+          <div className="bg-[#111111] border border-zinc-800/50 rounded-xl p-4 mb-6 flex items-center gap-3">
+            <Globe className="w-5 h-5 text-blue-400" />
+            <p className="text-sm text-zinc-400">
+              <span className="text-white font-medium">Perfis de Trackeamento</span> permitem configurar seu Facebook Pixel, TikTok Events API, UTMify e Otimizey uma vez e reutilizar em multiplos fluxos.
+            </p>
+          </div>
+
+          {/* Profiles List or Empty State */}
+          <div className="bg-[#111111] border border-zinc-800/50 rounded-xl overflow-hidden">
+            {profiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 px-6">
+                <div className="w-16 h-16 rounded-2xl bg-zinc-800/50 flex items-center justify-center mb-4">
+                  <BarChart3 className="w-7 h-7 text-zinc-600" />
+                </div>
+                <h3 className="text-base font-semibold text-white mb-1">Nenhum perfil criado</h3>
+                <p className="text-sm text-zinc-500 mb-6 text-center max-w-sm">
+                  Crie seu primeiro perfil de trackeamento para comecar a rastrear conversoes
+                </p>
+                <Button 
+                  onClick={() => setShowPlatformDialog(true)}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Criar Perfil
+                </Button>
+              </div>
+            ) : (
+              <div className="divide-y divide-zinc-800/50">
+                {profiles.map((profile) => (
+                  <div key={profile.id} className="flex items-center justify-between p-4 hover:bg-zinc-800/30 transition-colors">
                     <div className="flex items-center gap-4">
-                      <div 
-                        className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: `${pixel.cor}15` }}
-                      >
-                        {pixel.tipo === "Facebook" && (
-                          <svg viewBox="0 0 24 24" className="w-5 h-5" style={{ color: pixel.cor }} fill="currentColor">
-                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                          </svg>
-                        )}
-                        {pixel.tipo === "TikTok" && (
-                          <svg viewBox="0 0 24 24" className="w-5 h-5" style={{ color: pixel.cor }} fill="currentColor">
-                            <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
-                          </svg>
-                        )}
-                        {pixel.tipo === "Google" && (
-                          <svg viewBox="0 0 24 24" className="w-5 h-5" style={{ color: pixel.cor }} fill="currentColor">
-                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34a853"/>
-                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#fbbc05"/>
-                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                          </svg>
-                        )}
-                        {pixel.tipo === "Kwai" && (
-                          <svg viewBox="0 0 24 24" className="w-5 h-5" style={{ color: pixel.cor }} fill="currentColor">
-                            <circle cx="12" cy="12" r="10"/>
-                          </svg>
-                        )}
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                        <Facebook className="w-5 h-5 text-blue-500" />
                       </div>
                       <div>
-                        <p className="font-medium text-foreground text-sm">{pixel.nome}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{pixel.id}</p>
+                        <p className="font-medium text-white text-sm">{profile.name}</p>
+                        <p className="text-xs text-zinc-500">
+                          {profile.events.length} eventos | {profile.linkedFlows.length} fluxos vinculados
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className={`text-xs font-medium px-2 py-1 rounded-md ${
-                        pixelStates[pixel.id] 
-                          ? "bg-[#f0fdf4] text-[#166534]" 
-                          : "bg-gray-100 text-muted-foreground"
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-md ${
+                        profile.active 
+                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                          : "bg-zinc-800 text-zinc-500 border border-zinc-700"
                       }`}>
-                        {pixelStates[pixel.id] ? "Ativo" : "Pausado"}
+                        {profile.active ? "Ativo" : "Inativo"}
                       </span>
                       <Switch 
-                        checked={pixelStates[pixel.id]} 
-                        onCheckedChange={() => togglePixel(pixel.id)}
-                        className="data-[state=checked]:bg-[#a3e635]"
+                        checked={profile.active} 
+                        onCheckedChange={() => toggleProfileActive(profile.id)}
+                        className="data-[state=checked]:bg-blue-500"
                       />
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* UTM Section */}
-            <div className="bg-card rounded-[24px] border border-border shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <h2 className="font-semibold text-foreground">Templates UTM</h2>
-                  <span className="text-xs text-muted-foreground ml-2">({utms.length})</span>
+        </div>
+      </div>
+
+      {/* Platform Selection Dialog */}
+      <Dialog open={showPlatformDialog} onOpenChange={setShowPlatformDialog}>
+        <DialogContent className="bg-[#141414] border border-zinc-800 sm:max-w-lg rounded-2xl p-0">
+          <DialogHeader className="p-6 pb-4">
+            <div className="flex items-center gap-3">
+              <Plus className="w-5 h-5 text-zinc-400" />
+              <DialogTitle className="text-white text-lg font-semibold">Novo Perfil de Trackeamento</DialogTitle>
+            </div>
+            <p className="text-sm text-zinc-500 mt-1">
+              Escolha a plataforma de anuncios para criar o perfil
+            </p>
+          </DialogHeader>
+          
+          <div className="px-6 pb-6">
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {/* Facebook - Only enabled option */}
+              <button 
+                onClick={handleSelectPlatform}
+                className="flex flex-col items-center p-6 rounded-xl border border-zinc-700 bg-zinc-800/50 hover:border-blue-500/50 hover:bg-zinc-800 transition-all group"
+              >
+                <div className="w-14 h-14 rounded-xl bg-blue-500/10 flex items-center justify-center mb-3 group-hover:bg-blue-500/20 transition-colors">
+                  <Facebook className="w-7 h-7 text-blue-500" />
                 </div>
-                <button className="text-xs font-medium text-muted-foreground hover:text-gray-700 flex items-center gap-1">
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
+                <span className="text-white font-medium text-sm">Facebook</span>
+                <span className="text-xs text-zinc-500 text-center mt-1">Pixel & Conversions API</span>
+              </button>
+              
+              {/* TikTok - Disabled */}
+              <div className="flex flex-col items-center p-6 rounded-xl border border-zinc-800 bg-zinc-900/50 opacity-40 cursor-not-allowed">
+                <div className="w-14 h-14 rounded-xl bg-pink-500/10 flex items-center justify-center mb-3">
+                  <svg viewBox="0 0 24 24" className="w-7 h-7 text-pink-500" fill="currentColor">
+                    <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
                   </svg>
-                  Novo UTM
-                </button>
+                </div>
+                <span className="text-zinc-500 font-medium text-sm">TikTok</span>
+                <span className="text-xs text-zinc-600 text-center mt-1">Events API</span>
               </div>
-              <div className="divide-y divide-gray-50">
-                {utms.map((utm) => (
-                  <div key={utm.nome} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground text-sm mb-1">{utm.nome}</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                          source={utm.source}
-                        </span>
-                        <span className="text-[11px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                          medium={utm.medium}
-                        </span>
-                        <span className="text-[11px] font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                          campaign={utm.campaign}
-                        </span>
-                      </div>
+              
+              {/* Kwai - Disabled */}
+              <div className="flex flex-col items-center p-6 rounded-xl border border-zinc-800 bg-zinc-900/50 opacity-40 cursor-not-allowed">
+                <div className="w-14 h-14 rounded-xl bg-orange-500/10 flex items-center justify-center mb-3">
+                  <svg viewBox="0 0 24 24" className="w-7 h-7 text-orange-500" fill="currentColor">
+                    <rect x="4" y="4" width="16" height="16" rx="4"/>
+                  </svg>
+                </div>
+                <span className="text-zinc-500 font-medium text-sm">Kwai</span>
+                <span className="text-xs text-zinc-600 text-center mt-1">Event API</span>
+              </div>
+            </div>
+            
+            <Button 
+              variant="ghost" 
+              onClick={() => setShowPlatformDialog(false)}
+              className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+            >
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Facebook Profile Creation Dialog */}
+      <Dialog open={showFacebookDialog} onOpenChange={setShowFacebookDialog}>
+        <DialogContent className="bg-[#141414] border border-zinc-800 sm:max-w-lg rounded-2xl p-0 max-h-[90vh] overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-zinc-800">
+            <div className="flex items-center gap-3">
+              <Facebook className="w-5 h-5 text-blue-500" />
+              <DialogTitle className="text-white text-lg font-semibold">Novo Perfil Facebook</DialogTitle>
+            </div>
+            <p className="text-sm text-zinc-500 mt-1">
+              Configure as credenciais do Facebook Pixel, UTMify e Otimizey, depois selecione os fluxos
+            </p>
+          </DialogHeader>
+          
+          <ScrollArea className="max-h-[calc(90vh-180px)]">
+            <div className="p-6 space-y-6">
+              {/* Profile Name */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-300">Nome do Perfil *</label>
+                <Input 
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  placeholder="Ex: Pixel Principal, Lancamentos..."
+                  className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 h-11 rounded-xl focus:border-blue-500 focus:ring-blue-500/20"
+                />
+              </div>
+
+              {/* Facebook Pixel Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Facebook Pixel</span>
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-zinc-400">Pixel ID</label>
+                    <Input 
+                      value={pixelId}
+                      onChange={(e) => setPixelId(e.target.value)}
+                      placeholder="Ex: 847291038475629"
+                      className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 h-11 rounded-xl focus:border-blue-500 focus:ring-blue-500/20"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-zinc-400">Access Token (CAPI)</label>
+                    <Input 
+                      value={accessToken}
+                      onChange={(e) => setAccessToken(e.target.value)}
+                      placeholder="Token para API de Conversoes"
+                      className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 h-11 rounded-xl focus:border-blue-500 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-zinc-400 uppercase tracking-wider">Pixel Extra (Aquecimento)</span>
+                  <Switch 
+                    checked={pixelExtra}
+                    onCheckedChange={setPixelExtra}
+                    className="data-[state=checked]:bg-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* UTMify Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">UTMify</span>
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">UTMify Token</label>
+                  <Input 
+                    value={utmifyToken}
+                    onChange={(e) => setUtmifyToken(e.target.value)}
+                    placeholder="Ex: utm_abc123xyz789"
+                    className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 h-11 rounded-xl focus:border-blue-500 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
+
+              {/* Otimizey Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Otimizey</span>
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">Otimizey Token</label>
+                  <Input 
+                    value={otimizeyToken}
+                    onChange={(e) => setOtimizeyToken(e.target.value)}
+                    placeholder="Credential ID da API Otimizey"
+                    className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 h-11 rounded-xl focus:border-blue-500 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
+
+              {/* Contact Capture Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Captura de Contato</span>
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                </div>
+                
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center">
+                      <Mail className="w-5 h-5 text-zinc-400" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button className="text-xs font-medium text-muted-foreground hover:text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-                        Copiar
-                      </button>
-                      <button className="text-xs font-medium text-muted-foreground hover:text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-                        Editar
-                      </button>
+                    <div>
+                      <p className="text-sm font-medium text-white">Capturar email e telefone</p>
+                      <p className="text-xs text-zinc-500">Melhora o match rate do Pixel em ate +24%</p>
                     </div>
                   </div>
-                ))}
+                  <Switch 
+                    checked={captureContact}
+                    onCheckedChange={setCaptureContact}
+                    className="data-[state=checked]:bg-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Events Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Eventos a Disparar</span>
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                  {EVENTS.map((event) => (
+                    <button
+                      key={event.id}
+                      onClick={() => toggleEvent(event.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+                        selectedEvents.includes(event.id)
+                          ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                          : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-600"
+                      }`}
+                    >
+                      <Checkbox 
+                        checked={selectedEvents.includes(event.id)}
+                        className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500 border-zinc-600"
+                      />
+                      <span className="text-sm font-medium">{event.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Linked Flows Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Fluxos Vinculados</span>
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                </div>
+                
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {AVAILABLE_FLOWS.map((flow) => (
+                    <div
+                      key={flow.id}
+                      onClick={() => toggleFlow(flow.id)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        selectedFlows.includes(flow.id)
+                          ? "bg-blue-500/5 border-blue-500/30"
+                          : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"
+                      }`}
+                    >
+                      <Checkbox 
+                        checked={selectedFlows.includes(flow.id)}
+                        className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500 border-zinc-600"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-white">{flow.name}</p>
+                        <p className="text-xs text-zinc-500">{flow.active ? "Ativo" : "Inativo"}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Checkouts Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Checkouts Vinculados</span>
+                  <div className="flex-1 h-px bg-zinc-800"></div>
+                </div>
+                
+                <p className="text-sm text-zinc-500 text-center py-4">
+                  Nenhum checkout disponivel
+                </p>
               </div>
             </div>
-
+          </ScrollArea>
+          
+          {/* Footer Buttons */}
+          <div className="p-6 pt-4 border-t border-zinc-800 flex justify-end gap-3">
+            <Button 
+              variant="ghost" 
+              onClick={() => {
+                resetForm()
+                setShowFacebookDialog(false)
+              }}
+              className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleCreateProfile}
+              disabled={!profileName.trim()}
+              className="bg-zinc-100 hover:bg-white text-zinc-900 font-medium"
+            >
+              Criar Perfil
+            </Button>
           </div>
-        </div>
-      </ScrollArea>
-    </>
+        </DialogContent>
+      </Dialog>
+    </ScrollArea>
   )
 }
