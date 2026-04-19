@@ -74,6 +74,7 @@ interface FlowConfig {
   welcomeMessage?: string
   welcomeMedias?: string[]
   ctaButtonText?: string
+  ctaButtonEnabled?: boolean // false = mostrar planos direto na boas-vindas
   redirectButton?: {
   enabled: boolean
   text: string
@@ -331,7 +332,7 @@ export default function FlowEditorPage() {
   const [welcomeMedias, setWelcomeMedias] = useState<string[]>([])
   const [secondaryMessageEnabled, setSecondaryMessageEnabled] = useState(false)
   const [secondaryMessage, setSecondaryMessage] = useState("")
-  const [ctaButtonEnabled, setCtaButtonEnabled] = useState(false)
+  const [ctaButtonEnabled, setCtaButtonEnabled] = useState(true) // true = mostra botao CTA, false = planos direto
   const [ctaButtonText, setCtaButtonText] = useState("Ver Planos")
   const [ctaButtonUrl, setCtaButtonUrl] = useState("")
   const [redirectButtonEnabled, setRedirectButtonEnabled] = useState(false)
@@ -614,6 +615,7 @@ Clique no botao abaixo para renovar com desconto especial!`)
     setSecondaryMessageEnabled(config.secondaryMessage?.enabled || false)
     setSecondaryMessage(config.secondaryMessage?.message || "")
     setWelcomeMedias(config.welcomeMedias || [])
+    setCtaButtonEnabled(config.ctaButtonEnabled !== false) // default true (mostra botao)
     setCtaButtonText(config.ctaButtonText || "Ver Planos")
 setRedirectButtonEnabled(config.redirectButton?.enabled || false)
   setRedirectButtonText(config.redirectButton?.text || "")
@@ -906,6 +908,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     const config: FlowConfig = {
       welcomeMessage: welcomeMessage,
       welcomeMedias: welcomeMedias,
+      ctaButtonEnabled: ctaButtonEnabled,
       ctaButtonText: ctaButtonText,
       redirectButton: {
         enabled: redirectButtonEnabled,
@@ -2490,38 +2493,64 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
               {/* CTA Button Section - White Card */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
                 <div className="px-6 py-5 border-b border-neutral-100">
-                  <div className="flex items-center gap-3">
-                    <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#bfff00] to-[#8fb300] flex items-center justify-center shadow-lg shadow-[#bfff00]/30">
-                      <ExternalLink className="h-5 w-5 text-neutral-900" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#bfff00] to-[#8fb300] flex items-center justify-center shadow-lg shadow-[#bfff00]/30">
+                        <ExternalLink className="h-5 w-5 text-neutral-900" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-neutral-900">Botao de Acao (CTA)</h3>
+                        <p className="text-sm text-neutral-500">
+                          {ctaButtonEnabled 
+                            ? "Botao exibido apos a mensagem para ver os planos" 
+                            : "Planos aparecem direto na mensagem de boas-vindas"}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-neutral-900">Botao de Acao (CTA)</h3>
-                      <p className="text-sm text-neutral-500">Botao exibido apos a mensagem para ver os planos</p>
-                    </div>
+                    <Switch
+                      checked={ctaButtonEnabled}
+                      onCheckedChange={(checked) => {
+                        setCtaButtonEnabled(checked)
+                        setHasChanges(true)
+                      }}
+                      className="data-[state=checked]:bg-[#bfff00]"
+                    />
                   </div>
                 </div>
-                <div className="p-6">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm text-neutral-700 font-medium">Texto do Botao</Label>
-                      <Input
-                        value={ctaButtonText}
-                        onChange={(e) => {
-                          setCtaButtonText(e.target.value)
-                          setHasChanges(true)
-                        }}
-                        placeholder="Ver Planos"
-                        className="bg-neutral-50 border-neutral-200 focus:border-[#bfff00] focus:ring-[#bfff00]/20"
-                      />
+                {ctaButtonEnabled && (
+                  <div className="p-6">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm text-neutral-700 font-medium">Texto do Botao</Label>
+                        <Input
+                          value={ctaButtonText}
+                          onChange={(e) => {
+                            setCtaButtonText(e.target.value)
+                            setHasChanges(true)
+                          }}
+                          placeholder="Ver Planos"
+                          className="bg-neutral-50 border-neutral-200 focus:border-[#bfff00] focus:ring-[#bfff00]/20"
+                        />
+                      </div>
+                      <div className="flex items-start gap-3 p-4 rounded-xl bg-[#bfff00]/10 border border-[#bfff00]/20">
+                        <HelpCircle className="h-4 w-4 text-[#8fb300] shrink-0 mt-0.5" />
+                        <p className="text-sm text-neutral-700">
+                          Este botao sera exibido ao usuario apos a mensagem de boas-vindas para que ele possa ver os planos disponiveis.
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-start gap-3 p-4 rounded-xl bg-[#bfff00]/10 border border-[#bfff00]/20">
-                      <HelpCircle className="h-4 w-4 text-[#8fb300] shrink-0 mt-0.5" />
+                  </div>
+                )}
+                {!ctaButtonEnabled && (
+                  <div className="p-6">
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50 border border-blue-200">
+                      <HelpCircle className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
                       <p className="text-sm text-neutral-700">
-                        Este botao sera exibido ao usuario apos a mensagem de boas-vindas para que ele possa ver os planos disponiveis.
+                        Os planos configurados aparecerao como botoes diretamente na mensagem de boas-vindas, sem precisar de um botao intermediario. Redirect e Packs continuam aparecendo normalmente.
                       </p>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Opcoes Avancadas - Grid */}
