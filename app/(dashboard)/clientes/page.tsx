@@ -368,24 +368,24 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              {/* Filtro por Fluxo - Botoes */}
-              {flows.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <Filter className="w-3.5 h-3.5" />
-                    <span>Filtrar por fluxo:</span>
-                  </div>
-                  <button
-                    onClick={() => { setSelectedFlowId(""); setCurrentPage(1); }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      selectedFlowId === ""
-                        ? "bg-[#1c1c1e] text-white"
-                        : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    Todos
-                  </button>
-                  {flows.map((flow) => (
+              {/* Filtro por Fluxo - Botoes (sempre visivel) */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Filtrar por fluxo:</span>
+                </div>
+                <button
+                  onClick={() => { setSelectedFlowId(""); setCurrentPage(1); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    selectedFlowId === ""
+                      ? "bg-[#1c1c1e] text-white"
+                      : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  Todos
+                </button>
+                {flows.length > 0 ? (
+                  flows.map((flow) => (
                     <button
                       key={flow.id}
                       onClick={() => { setSelectedFlowId(flow.id); setCurrentPage(1); }}
@@ -398,9 +398,11 @@ export default function ClientesPage() {
                       <GitBranch className="w-3 h-3" />
                       {flow.name}
                     </button>
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-400 italic">Nenhum fluxo cadastrado</span>
+                )}
+              </div>
             </div>
 
             {/* Table Layout */}
