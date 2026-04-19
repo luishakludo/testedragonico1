@@ -72,39 +72,6 @@ async function sendTelegramVideo(
   return res.json()
 }
 
-async function sendMediaGroup(
-  botToken: string,
-  chatId: number | string,
-  medias: string[],
-  caption?: string
-) {
-  const url = `https://api.telegram.org/bot${botToken}/sendMediaGroup`
-  
-  const mediaArray = medias.map((media, index) => {
-    const isVideo = media.includes("video") || media.includes("mp4")
-    return {
-      type: isVideo ? "video" : "photo",
-      media: media,
-      caption: index === 0 ? caption : undefined,
-      parse_mode: index === 0 && caption ? "HTML" : undefined,
-    }
-  })
-  
-  const body = {
-    chat_id: chatId,
-    media: mediaArray,
-  }
-  
-  console.log(`[CRON] sendMediaGroup com ${medias.length} midias`)
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  return res.json()
-}
-
 export async function GET(request: NextRequest) {
   console.log("[CRON] Iniciando processamento de mensagens agendadas")
   
