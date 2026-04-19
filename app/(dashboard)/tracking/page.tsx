@@ -13,7 +13,7 @@ import { useBots } from "@/lib/bot-context"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { useState, useEffect } from "react"
-import { Zap, GitBranch, BarChart3, Globe, Plus, RefreshCw, X, Facebook, Mail, Loader2 } from "lucide-react"
+import { Zap, GitBranch, BarChart3, Globe, Plus, Facebook, Loader2 } from "lucide-react"
 
 interface TrackingProfile {
   id: string
@@ -21,8 +21,6 @@ interface TrackingProfile {
   pixelId: string
   accessToken: string
   utmifyToken: string
-  otimizeyToken: string
-  captureContact: boolean
   events: string[]
   linkedFlows: string[]
   active: boolean
@@ -59,8 +57,6 @@ export default function TrackingPage() {
   const [accessToken, setAccessToken] = useState("")
   const [pixelExtra, setPixelExtra] = useState(false)
   const [utmifyToken, setUtmifyToken] = useState("")
-  const [otimizeyToken, setOtimizeyToken] = useState("")
-  const [captureContact, setCaptureContact] = useState(false)
   const [selectedEvents, setSelectedEvents] = useState<string[]>(["PageView", "ViewContent", "Lead", "InitiateCheckout", "Purchase"])
   const [selectedFlows, setSelectedFlows] = useState<string[]>([])
   
@@ -103,8 +99,6 @@ export default function TrackingPage() {
       pixelId,
       accessToken,
       utmifyToken,
-      otimizeyToken,
-      captureContact,
       events: selectedEvents,
       linkedFlows: selectedFlows,
       active: true,
@@ -121,8 +115,6 @@ export default function TrackingPage() {
     setAccessToken("")
     setPixelExtra(false)
     setUtmifyToken("")
-    setOtimizeyToken("")
-    setCaptureContact(false)
     setSelectedEvents(["PageView", "ViewContent", "Lead", "InitiateCheckout", "Purchase"])
     setSelectedFlows([])
   }
@@ -354,7 +346,7 @@ export default function TrackingPage() {
               <DialogTitle className="text-foreground text-lg font-semibold">Novo Perfil Facebook</DialogTitle>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              Configure as credenciais do Facebook Pixel, UTMify e Otimizey, depois selecione os fluxos
+              Configure as credenciais do Facebook Pixel e UTMify, depois selecione os fluxos
             </p>
           </DialogHeader>
           
@@ -425,51 +417,6 @@ export default function TrackingPage() {
                     onChange={(e) => setUtmifyToken(e.target.value)}
                     placeholder="Ex: utm_abc123xyz789"
                     className="bg-input border-border text-foreground placeholder:text-muted-foreground h-11 rounded-xl focus:border-blue-500 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Otimizey Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-px bg-border"></div>
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Otimizey</span>
-                  <div className="flex-1 h-px bg-border"></div>
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Otimizey Token</label>
-                  <Input 
-                    value={otimizeyToken}
-                    onChange={(e) => setOtimizeyToken(e.target.value)}
-                    placeholder="Credential ID da API Otimizey"
-                    className="bg-input border-border text-foreground placeholder:text-muted-foreground h-11 rounded-xl focus:border-blue-500 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Contact Capture Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-px bg-border"></div>
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Captura de Contato</span>
-                  <div className="flex-1 h-px bg-border"></div>
-                </div>
-                
-                <div className="bg-muted/30 border border-border rounded-xl p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
-                      <Mail className="w-5 h-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Capturar email e telefone</p>
-                      <p className="text-xs text-muted-foreground">Melhora o match rate do Pixel em ate +24%</p>
-                    </div>
-                  </div>
-                  <Switch 
-                    checked={captureContact}
-                    onCheckedChange={setCaptureContact}
-                    className="data-[state=checked]:bg-blue-500"
                   />
                 </div>
               </div>
