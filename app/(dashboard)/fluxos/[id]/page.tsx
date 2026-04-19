@@ -1826,14 +1826,12 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     { id: "payments", label: "Pagamentos", icon: Wallet, locked: false },
     { id: "subscription", label: "Assinatura", icon: Crown, locked: false },
     { id: "deliverables", label: "Entregaveis", icon: Gift, locked: false },
-    { id: "conversions", label: "Conversoes", icon: BarChart3, locked: false },
   ]
 
   // Tabs for n8n flows (visual flow builder)
   const n8nTabs = [
     { id: "n8n", label: "Editor de Fluxo", icon: Workflow, locked: false },
     { id: "bots", label: "Bots", icon: Bot },
-    { id: "conversions", label: "Conversoes", icon: BarChart3, locked: false },
   ]
 
   // Select tabs based on flow type
@@ -6064,130 +6062,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
             </div>
           )}
 
-          {/* Conversions Tab */}
-          {activeTab === "conversions" && (
-            <div className="space-y-6">
-              {/* Period Filter */}
-              <div className="flex gap-2">
-                {[
-                  { id: "today", label: "Hoje" },
-                  { id: "7days", label: "7 dias" },
-                  { id: "30days", label: "30 dias" },
-                  { id: "all", label: "Tudo" },
-                ].map((period) => (
-                  <button
-                    key={period.id}
-                    type="button"
-                    onClick={() => setConversionsPeriod(period.id)}
-                    className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                      conversionsPeriod === period.id
-                        ? "bg-accent text-[#8fb300]-foreground"
-                        : "bg-secondary/50 text-neutral-500 hover:bg-secondary"
-                    }`}
-                  >
-                    {period.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Stats Summary */}
-              {conversionsData.payments.length > 0 && (
-                <div className="grid grid-cols-2 gap-4">
-                  <Card className="border-neutral-200 bg-[#BEFF00]/5">
-                    <CardContent className="p-4">
-                      <p className="text-sm text-neutral-500 mb-1">Total de Vendas</p>
-                      <p className="text-2xl font-bold text-[#8fb300]">{conversionsData.stats.total}</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-neutral-200 bg-[#BEFF00]/5">
-                    <CardContent className="p-4">
-                      <p className="text-sm text-neutral-500 mb-1">Faturamento</p>
-                      <p className="text-2xl font-bold text-[#8fb300]">
-                        R$ {conversionsData.stats.totalAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-
-              {/* Loading State */}
-              {loadingConversions && (
-                <Card className="bg-white border-neutral-100 shadow-sm rounded-2xl">
-                  <CardContent className="flex flex-col items-center justify-center py-16">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#BEFF00] mb-4" />
-                    <p className="text-neutral-500">Carregando vendas...</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Empty State */}
-              {!loadingConversions && conversionsData.payments.length === 0 && (
-                <Card className="bg-white border-neutral-100 shadow-sm rounded-2xl">
-                  <CardContent className="flex flex-col items-center justify-center py-16">
-                    <BarChart3 className="h-12 w-12 text-neutral-500/30 mb-4" />
-                    <p className="text-neutral-500 font-medium mb-1">Nenhuma venda registrada neste fluxo ainda.</p>
-                    <p className="text-sm text-neutral-500">Os dados aparecerao quando houver pagamentos.</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Payments List */}
-              {!loadingConversions && conversionsData.payments.length > 0 && (
-                <Card className="bg-white border-neutral-100 shadow-sm rounded-2xl">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-[#8fb300]" />
-                      Vendas Aprovadas
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {conversionsData.payments.map((payment) => (
-                        <div
-                          key={payment.id}
-                          className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 border border-neutral-200/30"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-[#BEFF00]/10 flex items-center justify-center">
-                              <span className="text-[#8fb300] font-semibold text-sm">
-                                {(payment.payer_name || payment.payer_email || "?").charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="font-medium text-sm">
-                                {payment.payer_name || payment.payer_email || "Cliente"}
-                              </p>
-                              <div className="flex items-center gap-2 text-xs text-neutral-500">
-                                <span>{payment.bot_name}</span>
-                                <span>•</span>
-                                <span>
-                                  {new Date(payment.created_at).toLocaleDateString("pt-BR", {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "2-digit",
-                                    hour: "2-digit",
-                                    minute: "2-digit"
-                                  })}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-[#8fb300]">
-                              R$ {Number(payment.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </p>
-                            <Badge className="bg-[#BEFF00]/10 text-[#8fb300] border-[#BEFF00]/30 text-xs">
-                              Aprovado
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
+          
         </div>
         )}
       </div>
