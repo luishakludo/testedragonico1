@@ -444,8 +444,10 @@ async function sendOrderBumpOffer(params: {
   
   const obButtons = {
     inline_keyboard: [
-      [{ text: acceptText || "QUERO", callback_data: `${callbackPrefix}_accept_${mainAmountCents}_${obPriceCents}` }],
-      [{ text: rejectText || "NAO QUERO", callback_data: `${callbackPrefix}_decline_${mainAmountCents}_0` }]
+      [
+        { text: acceptText || "QUERO", callback_data: `${callbackPrefix}_accept_${mainAmountCents}_${obPriceCents}` },
+        { text: rejectText || "NAO QUERO", callback_data: `${callbackPrefix}_decline_${mainAmountCents}_0` }
+      ]
     ]
   }
   

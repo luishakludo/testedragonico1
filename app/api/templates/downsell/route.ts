@@ -154,8 +154,10 @@ Clique no botao abaixo para garantir seu desconto!`,
       parse_mode: "HTML",
       reply_markup: {
         inline_keyboard: [
-          [{ text: "QUERO POR R$ 19,90", callback_data: "plan_PLAN_ID" }],
-          [{ text: "QUERO POR R$ 29,90", callback_data: "plan_PLAN_ID_2" }]
+          [
+            { text: "QUERO POR R$ 19,90", callback_data: "plan_PLAN_ID" },
+            { text: "QUERO POR R$ 29,90", callback_data: "plan_PLAN_ID_2" }
+          ]
         ]
       }
     },
