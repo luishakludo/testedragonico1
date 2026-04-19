@@ -1322,8 +1322,8 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
   id: newPlanId,
   name: "",
   price: 0,
-  duration_days: 30,
-  duration_type: "monthly",
+duration_days: 30,
+      duration_type: "daily",
   active: true,
   delivery_type: "default",
   order_bump_custom: false,
@@ -2763,22 +2763,34 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
                                   />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label className="text-sm text-neutral-600">Duracao</Label>
-                                  <Select
-                                    value={plan.duration_type}
-                                    onValueChange={(value) => handleUpdatePlan(plan.id, "duration_type", value)}
-                                  >
-                                    <SelectTrigger className="bg-white border-neutral-200">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="daily">Diario</SelectItem>
-                                      <SelectItem value="weekly">Semanal</SelectItem>
-                                      <SelectItem value="monthly">Mensal</SelectItem>
-                                      <SelectItem value="yearly">Anual</SelectItem>
-                                      <SelectItem value="lifetime">Vitalicio</SelectItem>
-                                    </SelectContent>
-                                  </Select>
+                                  <Label className="text-sm text-neutral-600">Duracao (dias)</Label>
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max="999"
+                                      value={plan.duration_days || ""}
+                                      onChange={(e) => {
+                                        const value = parseInt(e.target.value) || 0
+                                        const clampedValue = Math.min(999, Math.max(0, value))
+                                        handleUpdatePlan(plan.id, "duration_days", clampedValue)
+                                        // Auto-set duration_type based on days
+                                        if (clampedValue === 0) {
+                                          handleUpdatePlan(plan.id, "duration_type", "lifetime")
+                                        } else {
+                                          handleUpdatePlan(plan.id, "duration_type", "daily")
+                                        }
+                                      }}
+                                      placeholder="Ex: 30"
+                                      className="bg-white border-neutral-200"
+                                    />
+                                    <span className="text-sm text-neutral-500 whitespace-nowrap">
+                                      {plan.duration_days === 0 || !plan.duration_days ? "Vitalicio" : plan.duration_days === 1 ? "dia" : "dias"}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-neutral-400">
+                                    0 = Vitalicio | Max: 999 dias
+                                  </p>
                                 </div>
                               </div>
 
