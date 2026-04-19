@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get("period") // Novo: filtro por periodo
     const startDate = searchParams.get("startDate") // Novo: data inicial customizada
     const endDateParam = searchParams.get("endDate") // Novo: data final customizada
+    const since = searchParams.get("since") // Novo: filtro desde uma data (usado para stats de fluxo)
     const limit = parseInt(searchParams.get("limit") || "50")
     const offset = parseInt(searchParams.get("offset") || "0")
 
@@ -127,6 +128,11 @@ export async function GET(request: NextRequest) {
     if (dateFilter) {
       query = query.gte("created_at", dateFilter.startDate).lte("created_at", dateFilter.endDate)
     }
+    
+    // Aplicar filtro "since" (usado para stats de fluxo - so conta a partir da data de vinculo)
+    if (since) {
+      query = query.gte("created_at", since)
+    }
 
     const { data: payments, error, count } = await query
 
@@ -167,6 +173,11 @@ export async function GET(request: NextRequest) {
     // Aplicar mesmo filtro de datas nos stats
     if (dateFilter) {
       statsQuery = statsQuery.gte("created_at", dateFilter.startDate).lte("created_at", dateFilter.endDate)
+    }
+    
+    // Aplicar filtro "since" nos stats tambem
+    if (since) {
+      statsQuery = statsQuery.gte("created_at", since)
     }
 
     const { data: allPayments } = await statsQuery

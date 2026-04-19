@@ -83,7 +83,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Buscar fluxos do usuario (para o filtro de fluxo)
-    let userFlows: { id: string; name: string; bot_id?: string }[] = []
+    // Inclui todos os fluxos do usuario + pega os bots vinculados via flow_bots
+    let userFlows: { id: string; name: string; bot_id?: string; linked_at?: string }[] = []
+    const flowBotLinks: Map<string, { bot_id: string; linked_at: string }[]> = new Map()
+    
     if (userId) {
       const { data: flows } = await supabase
         .from("flows")
@@ -91,6 +94,26 @@ export async function GET(request: NextRequest) {
         .eq("user_id", userId)
       
       userFlows = flows || []
+      
+      // Buscar vinculos flow_bots para saber quando cada bot foi vinculado
+      if (userFlows.length > 0) {
+        const flowIds = userFlows.map(f => f.id)
+        const { data: flowBots } = await supabase
+          .from("flow_bots")
+          .select("flow_id, bot_id, created_at")
+          .in("flow_id", flowIds)
+        
+        // Mapear vinculos por flow_id
+        for (const fb of flowBots || []) {
+          if (!flowBotLinks.has(fb.flow_id)) {
+            flowBotLinks.set(fb.flow_id, [])
+          }
+          flowBotLinks.get(fb.flow_id)!.push({
+            bot_id: fb.bot_id,
+            linked_at: fb.created_at
+          })
+        }
+      }
     }
 
     // Se botId especifico, usar apenas ele
@@ -107,32 +130,53 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Determinar quais bots consultar baseado no filtro de fluxo
+    let botsToQuery = botIdsToQuery
+    let flowLinkedAt: string | null = null
+    
+    // Se filtro por fluxo, pegar apenas os bots vinculados a esse fluxo
+    if (flowId && flowBotLinks.has(flowId)) {
+      const linkedBots = flowBotLinks.get(flowId)!
+      botsToQuery = linkedBots.map(lb => lb.bot_id).filter(bid => botIdsToQuery.includes(bid))
+      // Pegar a data mais antiga de vinculacao (para filtrar pagamentos a partir dessa data)
+      if (linkedBots.length > 0) {
+        const dates = linkedBots.map(lb => new Date(lb.linked_at).getTime())
+        flowLinkedAt = new Date(Math.min(...dates)).toISOString()
+      }
+    }
+    
     // Buscar todos os pagamentos aprovados dos bots
+    // Nota: flow_id pode nao existir na tabela ainda - buscar sem ele para compatibilidade
     let paymentsQuery = supabase
       .from("payments")
       .select(`
         id,
         telegram_user_id,
         bot_id,
-        flow_id,
         amount,
         status,
         product_type,
         product_name,
         plan_id,
+        duration_days,
         created_at,
         bots:bot_id (
           id,
           name
         )
       `)
-      .in("bot_id", botIdsToQuery)
+      .in("bot_id", botsToQuery.length > 0 ? botsToQuery : botIdsToQuery)
       .eq("status", "approved")
       .order("created_at", { ascending: false })
 
-    // Filtrar por fluxo se especificado
+    // Filtrar por fluxo se especificado - aceita flow_id OU pagamentos apos data de vinculo
     if (flowId) {
-      paymentsQuery = paymentsQuery.eq("flow_id", flowId)
+      // Se tem data de vinculo, filtrar pagamentos criados apos essa data
+      if (flowLinkedAt) {
+        paymentsQuery = paymentsQuery.gte("created_at", flowLinkedAt)
+      }
+      // Tambem aceita pagamentos com flow_id direto (para compatibilidade)
+      // paymentsQuery = paymentsQuery.or(`flow_id.eq.${flowId},created_at.gte.${flowLinkedAt}`)
     }
 
     const { data: payments, error: paymentsError } = await paymentsQuery
@@ -179,6 +223,33 @@ export async function GET(request: NextRequest) {
       (flowPlans || []).map(p => [p.id, p])
     )
 
+    // Buscar flows para pegar configuracao de planos (duracao do pagamento pode vir de la)
+    const flowIds = [...new Set(payments?.map(p => p.flow_id).filter(Boolean) || [])]
+    
+    interface FlowPlanConfig {
+      id: string
+      name: string
+      duration_days: number
+      price?: number | string
+    }
+    
+    const flowConfigsMap = new Map<string, FlowPlanConfig[]>()
+    
+    if (flowIds.length > 0) {
+      const { data: flows } = await supabase
+        .from("flows")
+        .select("id, config")
+        .in("id", flowIds)
+      
+      for (const flow of flows || []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const config = flow.config as any
+        if (config?.plans) {
+          flowConfigsMap.set(flow.id, config.plans)
+        }
+      }
+    }
+
     // Agrupar pagamentos por telegram_user_id + bot_id
     const clientsMap = new Map<string, Client>()
 
@@ -196,12 +267,54 @@ export async function GET(request: NextRequest) {
       // Buscar info do plano se for assinatura
       let planInfo = payment.plan_id ? flowPlansMap.get(payment.plan_id) : null
       
-      // Se nao tem plan_id, tentar pegar duration do product_type via regex
+      // Tentar pegar duracao de multiplas fontes
       let durationDays: number | null = null
       let durationType: string | undefined = undefined
       
-      if (planInfo) {
+      // 1. Primeiro, verificar se o pagamento tem duration_days diretamente
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const paymentDuration = (payment as any).duration_days
+      if (paymentDuration !== undefined && paymentDuration !== null) {
+        durationDays = paymentDuration
+      }
+      // 2. Se nao, tentar buscar do flow_plans
+      else if (planInfo?.duration_days !== undefined) {
         durationDays = planInfo.duration_days
+      }
+      // 3. Derivar flow_id a partir do bot_id (via flow_bots) se nao existir diretamente
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let derivedFlowId = (payment as any).flow_id as string | undefined
+      if (!derivedFlowId) {
+        // Encontrar o fluxo que tem esse bot vinculado
+        for (const [fid, links] of flowBotLinks.entries()) {
+          const hasBot = links.some(l => l.bot_id === payment.bot_id)
+          if (hasBot) {
+            // Verificar se o pagamento foi criado apos o bot ser vinculado
+            const link = links.find(l => l.bot_id === payment.bot_id)
+            if (link && new Date(payment.created_at) >= new Date(link.linked_at)) {
+              derivedFlowId = fid
+              break
+            }
+          }
+        }
+      }
+      
+      // Tentar buscar da configuracao do flow (plans no config)
+      if (derivedFlowId && flowConfigsMap.has(derivedFlowId)) {
+        const flowPlans = flowConfigsMap.get(derivedFlowId) || []
+        // Tentar encontrar o plano pelo plan_id ou pelo nome
+        const matchingPlan = flowPlans.find(p => 
+          p.id === payment.plan_id || 
+          p.name === payment.product_name
+        )
+        if (matchingPlan?.duration_days !== undefined) {
+          durationDays = matchingPlan.duration_days
+        }
+      }
+      
+      // Se durationDays for 0, e vitalicio
+      if (durationDays === 0) {
+        durationDays = null // null = vitalicio
       }
 
       if (!clientsMap.has(key)) {
@@ -235,8 +348,8 @@ subscription_start: isSubscription ? payment.created_at : undefined,
         total_spent: 0,
         bot_id: payment.bot_id,
         bot_name: botInfo?.name,
-        flow_id: payment.flow_id || undefined,
-        flow_name: userFlows.find(f => f.id === payment.flow_id)?.name
+        flow_id: derivedFlowId || undefined,
+        flow_name: userFlows.find(f => f.id === derivedFlowId)?.name
         })
       }
 
@@ -265,13 +378,13 @@ subscription_start: isSubscription ? payment.created_at : undefined,
         amount: Number(payment.amount),
         status: payment.status,
         created_at: payment.created_at,
-        flow_id: payment.flow_id || undefined
+        flow_id: derivedFlowId || undefined
       })
 
       // Atualizar flow_id do cliente se ainda nao tiver
-      if (payment.flow_id && !client.flow_id) {
-        client.flow_id = payment.flow_id
-        client.flow_name = userFlows.find(f => f.id === payment.flow_id)?.name
+      if (derivedFlowId && !client.flow_id) {
+        client.flow_id = derivedFlowId
+        client.flow_name = userFlows.find(f => f.id === derivedFlowId)?.name
       }
 
       client.total_spent += Number(payment.amount)
