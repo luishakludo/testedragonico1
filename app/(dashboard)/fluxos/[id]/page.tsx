@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -439,6 +439,32 @@ Voce ja tem acesso ao conteudo!`)
   const [accessButtonText, setAccessButtonText] = useState("Acessar Conteudo")
   const [accessButtonUrl, setAccessButtonUrl] = useState("")
   const [uploadingApprovedMedia, setUploadingApprovedMedia] = useState(false)
+
+  // Refs for textareas
+  const pixGeneratedMessageRef = useRef<HTMLTextAreaElement>(null)
+  const approvedMessageRef = useRef<HTMLTextAreaElement>(null)
+
+  // Insert variable at cursor position
+  const insertVariable = (variable: string, textareaRef: React.RefObject<HTMLTextAreaElement | null>, setValue: (value: string) => void, currentValue: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      setValue(currentValue + variable)
+      setHasChanges(true)
+      return
+    }
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const newValue = currentValue.substring(0, start) + variable + currentValue.substring(end)
+    setValue(newValue)
+    setHasChanges(true)
+
+    // Restore cursor position after the inserted variable
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + variable.length, start + variable.length)
+    }, 0)
+  }
 
   // Renewal System
   const [renewalDeliveryEnabled, setRenewalDeliveryEnabled] = useState(false)
@@ -5240,6 +5266,7 @@ duration_days: 30,
                 <div className="space-y-2">
                   <Label className="text-neutral-500">Mensagem Personalizada</Label>
                   <Textarea
+                    ref={pixGeneratedMessageRef}
                     value={pixGeneratedMessage}
                     onChange={(e) => { setPixGeneratedMessage(e.target.value); setHasChanges(true) }}
                     rows={6}
@@ -5254,9 +5281,17 @@ duration_days: 30,
                     <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
                     <div className="flex flex-wrap gap-2">
                       {["{nome}"].map((v) => (
-                        <span key={v} className="px-3 py-1 rounded-full bg-muted text-sm text-neutral-900 border border-neutral-200">{v}</span>
+                        <button 
+                          key={v} 
+                          type="button"
+                          onClick={() => insertVariable(v, pixGeneratedMessageRef, setPixGeneratedMessage, pixGeneratedMessage)}
+                          className="px-3 py-1 rounded-full bg-muted text-sm text-neutral-900 border border-neutral-200 hover:bg-[#BEFF00]/20 hover:border-[#BEFF00] transition-colors cursor-pointer"
+                        >
+                          {v}
+                        </button>
                       ))}
                     </div>
+                    <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
                   </CardContent>
                 </Card>
               </div>
@@ -5478,6 +5513,7 @@ duration_days: 30,
                   <div className="space-y-2">
                     <Label className="text-neutral-500">Mensagem Personalizada</Label>
                     <Textarea
+                      ref={approvedMessageRef}
                       value={approvedMessage}
                       onChange={(e) => { setApprovedMessage(e.target.value); setHasChanges(true) }}
                       rows={5}
@@ -5492,9 +5528,17 @@ duration_days: 30,
                       <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
                       <div className="flex flex-wrap gap-2">
                         {["{nome}"].map((v) => (
-                          <span key={v} className="px-3 py-1 rounded-full bg-background text-sm text-neutral-900 border border-neutral-200">{v}</span>
+                          <button 
+                            key={v} 
+                            type="button"
+                            onClick={() => insertVariable(v, approvedMessageRef, setApprovedMessage, approvedMessage)}
+                            className="px-3 py-1 rounded-full bg-background text-sm text-neutral-900 border border-neutral-200 hover:bg-[#BEFF00]/20 hover:border-[#BEFF00] transition-colors cursor-pointer"
+                          >
+                            {v}
+                          </button>
                         ))}
                       </div>
+                      <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
                     </CardContent>
                   </Card>
 
