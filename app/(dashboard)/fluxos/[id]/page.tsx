@@ -6390,56 +6390,6 @@ const handleAddUpsellPlan = (seqId: string) => {
                 </div>
 
                 <div className="p-6 space-y-6">
-                  {/* Entrega Especifica para Renovacao */}
-                  <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-100">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                          <Link2 className="h-4 w-4 text-emerald-500" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-neutral-900">Entrega Especifica para Renovacao</p>
-                          <p className="text-xs text-neutral-500">Configure um grupo/canal diferente para entregas de renovacao</p>
-                        </div>
-                      </div>
-                      <Switch checked={renewalDeliveryEnabled} onCheckedChange={(c) => { setRenewalDeliveryEnabled(c); setHasChanges(true) }} />
-                    </div>
-
-                  {renewalDeliveryEnabled && deliverables.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-neutral-200">
-                      <Label className="text-neutral-500">Entregavel para Renovacao</Label>
-                      <Select
-                        value={renewalDeliverableId || "none"}
-                        onValueChange={(v) => {
-                          setRenewalDeliverableId(v === "none" ? "" : v)
-                          setHasChanges(true)
-                        }}
-                      >
-                        <SelectTrigger className="bg-white border-neutral-200">
-                          <SelectValue placeholder="Selecione um entregavel..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Nenhum (usar mesmo da compra)</SelectItem>
-                          {deliverables.map((d) => (
-                            <SelectItem key={d.id} value={d.id}>
-                              {d.name} ({d.type === "media" ? "Midia" : d.type === "link" ? "Link" : "Grupo VIP"})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-neutral-500">Este entregavel sera usado nas renovacoes em vez do entregavel principal.</p>
-                    </div>
-                  )}
-
-                  {renewalDeliveryEnabled && deliverables.length === 0 && (
-                    <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4 mt-3">
-                      <p className="text-sm text-amber-500">
-                        Nenhum entregavel cadastrado. Crie entregaveis na aba "Entregaveis" para poder selecionar aqui.
-                      </p>
-                    </div>
-                  )}
-                  </div>
-
                   {/* Notificacoes Antes de Expirar */}
                   <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-100">
                     <div className="flex items-center justify-between">
