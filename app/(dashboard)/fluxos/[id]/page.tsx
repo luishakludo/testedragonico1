@@ -2044,7 +2044,6 @@ duration_days: 30,
     { id: "plans", label: "Planos", icon: CreditCard, locked: false },
     { id: "upsell", label: "Upsell", icon: TrendingUp, locked: false },
     { id: "downsell", label: "Downsell", icon: TrendingDown, locked: false },
-    { id: "downsellpix", label: "Downsell PIX", icon: TrendingDown, locked: false },
     { id: "orderbump", label: "Order Bump", icon: Package, locked: false },
     { id: "packs", label: "Packs", icon: Package, locked: false },
     { id: "payments", label: "Pagamentos", icon: Wallet, locked: false },
@@ -4305,13 +4304,8 @@ duration_days: 30,
                   )}
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Downsell PIX Gerado Tab */}
-          {activeTab === "downsellpix" && (
-            <div className="space-y-6">
-              {/* Downsell PIX Main Card */}
+              {/* Downsell PIX Gerado Section */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
                 <div className="px-6 py-5 border-b border-neutral-100">
                   <div className="flex items-center justify-between">
