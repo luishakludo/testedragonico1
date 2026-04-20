@@ -155,6 +155,8 @@ interface UpsellPlan {
   id: string
   buttonText: string
   price: number
+  duration_days?: number
+  duration_type?: "daily" | "weekly" | "monthly" | "yearly" | "lifetime"
 }
 
 interface UpsellSequence {
@@ -1480,16 +1482,18 @@ duration_days: 30,
     setHasChanges(true)
   }
 
-  // Add plan to upsell sequence
-  const handleAddUpsellPlan = (seqId: string) => {
-    const seq = upsellSequences.find(s => s.id === seqId)
-    if (!seq || (seq.plans?.length || 0) >= 5) return
-    const newPlan: UpsellPlan = {
-      id: `plan-${Date.now()}`,
-      buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
-      price: 0
-    }
-    handleUpdateUpsellSequence(seqId, "plans", [...(seq.plans || []), newPlan])
+// Add plan to upsell sequence
+const handleAddUpsellPlan = (seqId: string) => {
+  const seq = upsellSequences.find(s => s.id === seqId)
+  if (!seq || (seq.plans?.length || 0) >= 5) return
+  const newPlan: UpsellPlan = {
+  id: `plan-${Date.now()}`,
+  buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
+  price: 0,
+  duration_days: 30,
+  duration_type: "daily"
+  }
+  handleUpdateUpsellSequence(seqId, "plans", [...(seq.plans || []), newPlan])
   }
 
   // Remove plan from upsell sequence
