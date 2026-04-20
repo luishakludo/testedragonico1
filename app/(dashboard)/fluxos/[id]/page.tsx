@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -2677,70 +2678,32 @@ const handleAddUpsellPlan = (seqId: string) => {
               {/* Message Section - White Card */}
               <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
                 <div className="px-6 py-5 border-b border-neutral-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
-                        <MessageSquare className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-neutral-900">Mensagem de Boas-vindas</h3>
-                        <p className="text-sm text-neutral-500">Primeira mensagem enviada ao usuario</p>
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                      <MessageSquare className="h-5 w-5 text-white" />
                     </div>
-                    {/* Formatting toolbar */}
-                    <div className="flex items-center gap-0.5 bg-neutral-100 rounded-lg p-1">
-                      <button className="h-7 w-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-900 hover:bg-white transition-colors">
-                        <Bold className="h-3.5 w-3.5" />
-                      </button>
-                      <button className="h-7 w-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-900 hover:bg-white transition-colors">
-                        <Italic className="h-3.5 w-3.5" />
-                      </button>
-                      <button className="h-7 w-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-900 hover:bg-white transition-colors">
-                        <Code className="h-3.5 w-3.5" />
-                      </button>
-                      <button className="h-7 w-7 rounded flex items-center justify-center text-neutral-500 hover:text-neutral-900 hover:bg-white transition-colors">
-                        <LinkIcon className="h-3.5 w-3.5" />
-                      </button>
+                    <div>
+                      <h3 className="font-bold text-neutral-900">Mensagem de Boas-vindas <span className="text-red-500">*</span></h3>
+                      <p className="text-sm text-neutral-500">Primeira mensagem enviada ao usuario</p>
                     </div>
                   </div>
                 </div>
-                <div className="p-6 space-y-4">
-                  <Textarea
+                <div className="p-6">
+                  <RichTextEditor
                     value={welcomeMessage}
-                    onChange={(e) => {
-                      setWelcomeMessage(e.target.value)
+                    onChange={(value) => {
+                      setWelcomeMessage(value)
                       setHasChanges(true)
                     }}
                     placeholder="Ola {nome}! Bem-vindo ao @{bot.username}"
                     rows={6}
-                    className="bg-neutral-50 border-neutral-200 font-mono text-sm resize-none focus:border-[#bfff00] focus:ring-[#bfff00]/20"
+                    maxLength={4000}
+                    className="bg-neutral-50 border-neutral-200 font-mono text-sm"
+                    variables={[
+                      { label: "{nome}", value: "{nome}" },
+                      { label: "{username}", value: "{username}" }
+                    ]}
                   />
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-neutral-400">
-                      {welcomeMessage.length}/4000 caracteres
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-400">Variaveis:</span>
-                      <button 
-                        className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#bfff00]/20 hover:text-[#8fb300] transition-colors"
-                        onClick={() => {
-                          setWelcomeMessage(welcomeMessage + "{nome}")
-                          setHasChanges(true)
-                        }}
-                      >
-                        {"{nome}"}
-                      </button>
-                      <button 
-                        className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#bfff00]/20 hover:text-[#8fb300] transition-colors"
-                        onClick={() => {
-                          setWelcomeMessage(welcomeMessage + "{username}")
-                          setHasChanges(true)
-                        }}
-                      >
-                        {"{username}"}
-                      </button>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -2833,15 +2796,20 @@ const handleAddUpsellPlan = (seqId: string) => {
                     </div>
                     {secondaryMessageEnabled && (
                       <div className="mt-4">
-                        <Textarea
+                        <RichTextEditor
                           value={secondaryMessage}
-                          onChange={(e) => {
-                            setSecondaryMessage(e.target.value)
+                          onChange={(value) => {
+                            setSecondaryMessage(value)
                             setHasChanges(true)
                           }}
                           placeholder="Digite a mensagem secundaria..."
                           rows={3}
-                          className="bg-neutral-50 border-neutral-200 text-sm focus:border-[#bfff00] focus:ring-[#bfff00]"
+                          maxLength={4000}
+                          className="bg-neutral-50 border-neutral-200 text-sm"
+                          variables={[
+                            { label: "{nome}", value: "{nome}" },
+                            { label: "{username}", value: "{username}" }
+                          ]}
                         />
                       </div>
                     )}
@@ -3251,16 +3219,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           
                                           <div className="mt-3 space-y-1">
                                             <Label className="text-xs text-neutral-500">Descricao</Label>
-                                            <Textarea
-                                              value={bump.description}
-                                              onChange={(e) => {
+                                            <RichTextEditor
+                                              value={bump.description || ""}
+                                              onChange={(value) => {
                                                 const updatedBumps = [...(plan.order_bumps || [])]
-                                                updatedBumps[bumpIndex] = { ...bump, description: e.target.value }
+                                                updatedBumps[bumpIndex] = { ...bump, description: value }
                                                 handleUpdatePlan(plan.id, "order_bumps", updatedBumps)
                                               }}
                                               placeholder="Descricao do order bump..."
                                               rows={2}
+                                              maxLength={4000}
                                               className="text-sm bg-secondary/30"
+                                              showCharCount={false}
                                             />
                                           </div>
                                           
@@ -3918,41 +3888,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                             {/* Mensagem */}
                             <div className="space-y-2">
                               <Label>Mensagem <span className="text-destructive">*</span></Label>
-                              <div className="flex items-center gap-1 border-b border-neutral-200 pb-2">
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Bold className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Italic className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Underline className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Strikethrough className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Code className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <LinkIcon className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Quote className="h-4 w-4" />
-                                </Button>
-                                <div className="w-px h-4 bg-border/50 mx-1" />
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Smile className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <Textarea
+                              <RichTextEditor
                                 value={seq.message}
-                                onChange={(e) => handleUpdateUpsellSequence(seq.id, "message", e.target.value)}
+                                onChange={(value) => handleUpdateUpsellSequence(seq.id, "message", value)}
                                 placeholder="Oferta especial para voce! Aproveite esse bonus exclusivo..."
                                 rows={4}
+                                maxLength={4000}
                                 className="bg-neutral-50 border-neutral-200"
+                                variables={[
+                                  { label: "{nome}", value: "{nome}" },
+                                  { label: "{username}", value: "{username}" }
+                                ]}
                               />
-                              <p className="text-xs text-neutral-500 text-right">{seq.message.length}/4000 caracteres</p>
                             </div>
 
                             <div className="border-t border-neutral-200 pt-4" />
@@ -4459,41 +4406,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                               {/* Mensagem */}
                               <div className="space-y-2">
                                 <Label>Mensagem <span className="text-destructive">*</span></Label>
-                                <div className="flex items-center gap-1 border-b border-neutral-200 pb-2">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Bold className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Italic className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Underline className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Strikethrough className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Code className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <LinkIcon className="h-4 w-4" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Quote className="h-4 w-4" />
-                                  </Button>
-                                  <div className="w-px h-4 bg-border/50 mx-1" />
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Smile className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                                <Textarea
+                                <RichTextEditor
                                   value={seq.message}
-                                  onChange={(e) => handleUpdateDownsellSequence(seq.id, "message", e.target.value)}
+                                  onChange={(value) => handleUpdateDownsellSequence(seq.id, "message", value)}
                                   placeholder="Nao conseguiu pagar? Temos uma oferta especial..."
                                   rows={4}
+                                  maxLength={4000}
                                   className="bg-neutral-50 border-neutral-200"
+                                  variables={[
+                                    { label: "{nome}", value: "{nome}" },
+                                    { label: "{username}", value: "{username}" }
+                                  ]}
                                 />
-                                <p className="text-xs text-neutral-500 text-right">{seq.message.length}/4000 caracteres</p>
                               </div>
 
                               <div className="border-t border-neutral-200 pt-4" />
@@ -4754,29 +4678,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                               {/* Mensagem */}
                               <div className="space-y-3">
                                 <Label className="text-sm text-neutral-500">Mensagem</Label>
-                                <Textarea
+                                <RichTextEditor
                                   value={seq.message}
-                                  onChange={(e) => handleUpdateDownsellPixSequence(seq.id, "message", e.target.value)}
+                                  onChange={(value) => handleUpdateDownsellPixSequence(seq.id, "message", value)}
                                   rows={4}
+                                  maxLength={4000}
                                   placeholder="Digite a mensagem de downsell..."
                                   className="bg-secondary/50 border-neutral-200"
+                                  variables={[
+                                    { label: "{nome}", value: "{nome}" },
+                                    { label: "{username}", value: "{username}" }
+                                  ]}
                                 />
-                                <div className="flex items-center justify-end gap-2">
-                                  <span className="text-xs text-neutral-400">Variaveis:</span>
-                                  {["{nome}", "{username}"].map((v) => (
-                                    <button 
-                                      key={v} 
-                                      type="button"
-                                      onClick={() => {
-                                        const newMessage = seq.message + v
-                                        handleUpdateDownsellPixSequence(seq.id, "message", newMessage)
-                                      }}
-                                      className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-orange-500/20 hover:text-orange-600 transition-colors cursor-pointer"
-                                    >
-                                      {v}
-                                    </button>
-                                  ))}
-                                </div>
                               </div>
 
                               {/* Tempo de envio */}
@@ -5181,17 +5094,21 @@ const handleAddUpsellPlan = (seqId: string) => {
                       {/* Descricao */}
                       <div className="space-y-2">
                         <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
-                        <Textarea
+                        <RichTextEditor
                           value={orderBumpInicial.description}
-                          onChange={(e) => {
-                            setOrderBumpInicial({...orderBumpInicial, description: e.target.value})
+                          onChange={(value) => {
+                            setOrderBumpInicial({...orderBumpInicial, description: value})
                             setHasChanges(true)
                           }}
                           placeholder="Descricao completa do produto adicional que sera enviada ao cliente..."
                           rows={4}
+                          maxLength={4000}
                           className="bg-secondary/50 border-neutral-200"
+                          variables={[
+                            { label: "{nome}", value: "{nome}" },
+                            { label: "{username}", value: "{username}" }
+                          ]}
                         />
-                        <p className="text-xs text-neutral-500 text-right">{orderBumpInicial.description.length}/4000 caracteres</p>
                       </div>
 
                       {/* Botoes */}
@@ -5364,10 +5281,20 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <Input type="text" inputMode="decimal" value={orderBumpUpsell.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpUpsell({...orderBumpUpsell, price: val === "" ? 0 : val as unknown as number}); setHasChanges(true) }} onBlur={() => { const num = parseFloat(String(orderBumpUpsell.price).replace(",", ".")) || 0; setOrderBumpUpsell({...orderBumpUpsell, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
-                        <Textarea value={orderBumpUpsell.description} onChange={(e) => { setOrderBumpUpsell({...orderBumpUpsell, description: e.target.value}); setHasChanges(true) }} placeholder="Descricao do order bump..." rows={3} className="bg-white border-neutral-200" maxLength={4000} />
-                        <p className="text-xs text-neutral-500 text-right">{orderBumpUpsell.description?.length || 0}/4000 caracteres</p>
+<div className="space-y-2">
+                      <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
+                      <RichTextEditor
+                        value={orderBumpUpsell.description || ""}
+                        onChange={(value) => { setOrderBumpUpsell({...orderBumpUpsell, description: value}); setHasChanges(true) }}
+                        placeholder="Descricao completa do produto adicional que sera enviada ao cliente..."
+                        rows={3}
+                        maxLength={4000}
+                        className="bg-white border-neutral-200"
+                        variables={[
+                          { label: "{nome}", value: "{nome}" },
+                          { label: "{username}", value: "{username}" }
+                        ]}
+                      />
                       </div>
 
                       {/* Botoes */}
@@ -5523,10 +5450,20 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <Input type="text" inputMode="decimal" value={orderBumpDownsell.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpDownsell({...orderBumpDownsell, price: val === "" ? 0 : val as unknown as number}); setHasChanges(true) }} onBlur={() => { const num = parseFloat(String(orderBumpDownsell.price).replace(",", ".")) || 0; setOrderBumpDownsell({...orderBumpDownsell, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
-                        <Textarea value={orderBumpDownsell.description} onChange={(e) => { setOrderBumpDownsell({...orderBumpDownsell, description: e.target.value}); setHasChanges(true) }} placeholder="Descricao do order bump..." rows={3} className="bg-white border-neutral-200" maxLength={4000} />
-                        <p className="text-xs text-neutral-500 text-right">{orderBumpDownsell.description?.length || 0}/4000 caracteres</p>
+<div className="space-y-2">
+                      <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
+                      <RichTextEditor
+                        value={orderBumpDownsell.description || ""}
+                        onChange={(value) => { setOrderBumpDownsell({...orderBumpDownsell, description: value}); setHasChanges(true) }}
+                        placeholder="Descricao completa do produto adicional que sera enviada ao cliente..."
+                        rows={3}
+                        maxLength={4000}
+                        className="bg-white border-neutral-200"
+                        variables={[
+                          { label: "{nome}", value: "{nome}" },
+                          { label: "{username}", value: "{username}" }
+                        ]}
+                      />
                       </div>
 
                       {/* Botoes */}
@@ -5682,9 +5619,20 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <Input type="text" inputMode="decimal" value={orderBumpPacks.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpPacks({...orderBumpPacks, price: val === "" ? 0 : val as unknown as number}); setHasChanges(true) }} onBlur={() => { const num = parseFloat(String(orderBumpPacks.price).replace(",", ".")) || 0; setOrderBumpPacks({...orderBumpPacks, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label className="text-neutral-500">Descricao</Label>
-                        <Textarea value={orderBumpPacks.description} onChange={(e) => { setOrderBumpPacks({...orderBumpPacks, description: e.target.value}); setHasChanges(true) }} placeholder="Descricao do order bump..." rows={3} className="bg-white border-neutral-200" />
+<div className="space-y-2">
+                      <Label className="text-neutral-500">Descricao</Label>
+                      <RichTextEditor
+                        value={orderBumpPacks.description || ""}
+                        onChange={(value) => { setOrderBumpPacks({...orderBumpPacks, description: value}); setHasChanges(true) }}
+                        placeholder="Descricao do pack que sera exibida na previa..."
+                        rows={3}
+                        maxLength={4000}
+                        className="bg-white border-neutral-200"
+                        variables={[
+                          { label: "{nome}", value: "{nome}" },
+                          { label: "{username}", value: "{username}" }
+                        ]}
+                      />
                       </div>
                       
                       {/* Botoes */}
@@ -5955,12 +5903,14 @@ const handleAddUpsellPlan = (seqId: string) => {
                             {/* Descricao */}
                             <div className="space-y-2">
                               <Label className="text-neutral-500">Descricao</Label>
-                              <Textarea
+                              <RichTextEditor
                                 value={pack.description}
-                                onChange={(e) => handleUpdatePack(pack.id, "description", e.target.value)}
+                                onChange={(value) => handleUpdatePack(pack.id, "description", value)}
                                 placeholder="Descricao do pack que sera exibida na previa..."
                                 rows={3}
+                                maxLength={4000}
                                 className="bg-secondary/50 border-neutral-200"
+                                showCharCount={false}
                               />
                             </div>
 
@@ -6142,32 +6092,20 @@ const handleAddUpsellPlan = (seqId: string) => {
                 <h3 className="font-semibold">1. Mensagem do PIX Gerado</h3>
 
 {/* Mensagem Personalizada */}
-  <div className="space-y-3">
-  <Label className="text-neutral-500">Mensagem Personalizada</Label>
-  <Textarea
-  ref={pixGeneratedMessageRef}
-  value={pixGeneratedMessage}
-  onChange={(e) => { setPixGeneratedMessage(e.target.value); setHasChanges(true) }}
-  rows={6}
-  className="bg-white border border-neutral-200 font-mono text-sm"
-  />
-  <div className="flex items-center justify-between">
-  <p className="text-xs text-neutral-500">{pixGeneratedMessage.length}/4000 caracteres</p>
-  <div className="flex items-center gap-2">
-  <span className="text-xs text-neutral-400">Variaveis:</span>
-  {["{nome}", "{username}"].map((v) => (
-  <button
-  key={v}
-  type="button"
-  onClick={() => insertVariable(v, pixGeneratedMessageRef, setPixGeneratedMessage, pixGeneratedMessage)}
-  className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#BEFF00]/20 hover:text-[#8fb300] transition-colors cursor-pointer"
-  >
-  {v}
-  </button>
-  ))}
-  </div>
-  </div>
-  </div>
+                <div className="space-y-3">
+                  <Label className="text-neutral-500">Mensagem Personalizada</Label>
+                  <RichTextEditor
+                    value={pixGeneratedMessage}
+                    onChange={(value) => { setPixGeneratedMessage(value); setHasChanges(true) }}
+                    rows={6}
+                    maxLength={4000}
+                    className="bg-white border border-neutral-200 font-mono text-sm"
+                    variables={[
+                      { label: "{nome}", value: "{nome}" },
+                      { label: "{username}", value: "{username}" }
+                    ]}
+                  />
+                </div>
               </div>
 
               {/* 2. Configuracoes do QR Code e Codigo PIX */}
@@ -6386,29 +6324,17 @@ const handleAddUpsellPlan = (seqId: string) => {
                   {/* Mensagem */}
                   <div className="space-y-3">
                     <Label className="text-neutral-500">Mensagem Personalizada</Label>
-                    <Textarea
-                      ref={approvedMessageRef}
+                    <RichTextEditor
                       value={approvedMessage}
-                      onChange={(e) => { setApprovedMessage(e.target.value); setHasChanges(true) }}
+                      onChange={(value) => { setApprovedMessage(value); setHasChanges(true) }}
                       rows={5}
+                      maxLength={4000}
                       className="bg-white border border-neutral-200 font-mono text-sm"
+                      variables={[
+                        { label: "{nome}", value: "{nome}" },
+                        { label: "{username}", value: "{username}" }
+                      ]}
                     />
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-neutral-500">{approvedMessage.length}/4000 caracteres</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-neutral-400">Variaveis:</span>
-                        {["{nome}", "{username}"].map((v) => (
-                          <button 
-                            key={v} 
-                            type="button"
-                            onClick={() => insertVariable(v, approvedMessageRef, setApprovedMessage, approvedMessage)}
-                            className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#BEFF00]/20 hover:text-[#8fb300] transition-colors cursor-pointer"
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
 
                   {/* Botao de Acesso ao Entregavel */}
@@ -6682,17 +6608,21 @@ const handleAddUpsellPlan = (seqId: string) => {
                       {/* Mensagem */}
                       <div className="space-y-2 mt-4">
                         <Label className="text-neutral-500">Mensagem de Renovacao</Label>
-                        <Textarea
+                        <RichTextEditor
                           value={renewalMessage}
-                          onChange={(e) => { setRenewalMessage(e.target.value); setHasChanges(true) }}
+                          onChange={(value) => { setRenewalMessage(value); setHasChanges(true) }}
                           rows={5}
+                          maxLength={4000}
                           className="bg-secondary/50 border-neutral-200 font-mono text-sm"
+                          variables={[
+                            { label: "{nome}", value: "{nome}" },
+                            { label: "{plano}", value: "{plano}" },
+                            { label: "{dias}", value: "{dias}" },
+                            { label: "{data_expiracao}", value: "{data_expiracao}" },
+                            { label: "{saudacao}", value: "{saudacao}" },
+                            { label: "{uf}", value: "{uf}" }
+                          ]}
                         />
-                        <div className="flex flex-wrap gap-2">
-                          {["{nome}", "{plano}", "{dias}", "{data_expiracao}", "{saudacao}", "{uf}"].map((v) => (
-                            <span key={v} className="px-3 py-1 rounded-full bg-secondary/50 text-sm text-neutral-500 border border-neutral-200">{v}</span>
-                          ))}
-                        </div>
                       </div>
                     </>
                   )}
@@ -6928,17 +6858,19 @@ const handleAddUpsellPlan = (seqId: string) => {
                       {/* Mensagem de Expiracao */}
                       <div className="space-y-2 mt-4">
                         <Label className="text-neutral-500">Mensagem de Expiracao</Label>
-                        <Textarea
+                        <RichTextEditor
                           value={expireMessage}
-                          onChange={(e) => { setExpireMessage(e.target.value); setHasChanges(true) }}
+                          onChange={(value) => { setExpireMessage(value); setHasChanges(true) }}
                           rows={5}
+                          maxLength={4000}
                           className="bg-secondary/50 border-neutral-200 font-mono text-sm"
+                          variables={[
+                            { label: "{nome}", value: "{nome}" },
+                            { label: "{plano}", value: "{plano}" },
+                            { label: "{saudacao}", value: "{saudacao}" },
+                            { label: "{uf}", value: "{uf}" }
+                          ]}
                         />
-                        <div className="flex flex-wrap gap-2">
-                          {["{nome}", "{plano}", "{saudacao}", "{uf}"].map((v) => (
-                            <span key={v} className="px-3 py-1 rounded-full bg-secondary/50 text-sm text-neutral-500 border border-neutral-200">{v}</span>
-                          ))}
-                        </div>
                       </div>
                     </>
                   )}
