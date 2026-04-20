@@ -1212,22 +1212,23 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           console.log("[v0] ====== ORDER BUMP SERA MOSTRADO! ======")
           console.log("[v0] Enviando Order Bump para Pack - name:", orderBumpPacks.name, "price:", orderBumpPacks.price)
           
-          // Salvar estado
-          await supabase.from("user_flow_state").upsert({
-            bot_id: botUuid,
-            telegram_user_id: String(telegramUserId),
-            flow_id: flowForPack?.id,
-            status: "waiting_order_bump",
-            metadata: {
-              type: "pack",
-              pack_id: packId,
-              main_amount: packPrice,
-              order_bump_name: orderBumpPacks.name || "Oferta Especial",
-              order_bump_price: orderBumpPacks.price,
-              main_description: `Pack`
-            },
-            updated_at: new Date().toISOString()
-          }, { onConflict: "bot_id,telegram_user_id" })
+// Salvar estado
+  await supabase.from("user_flow_state").upsert({
+  bot_id: botUuid,
+  telegram_user_id: String(telegramUserId),
+  flow_id: flowForPack?.id,
+  status: "waiting_order_bump",
+  metadata: {
+  type: "pack",
+  pack_id: packId,
+  main_amount: packPrice,
+  order_bump_name: orderBumpPacks.name || "Oferta Especial",
+  order_bump_price: orderBumpPacks.price,
+  order_bump_deliverable_id: orderBumpPacks.deliverableId || "",
+  main_description: `Pack`
+  },
+  updated_at: new Date().toISOString()
+  }, { onConflict: "bot_id,telegram_user_id" })
           
           // Enviar order bump no formato correto (imagem + caption + botões juntos)
           await sendOrderBumpOffer({
@@ -1601,7 +1602,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           }
           
           // Save payment - IMPORTANTE: usar ownerUserId que foi encontrado corretamente
-          console.log("[v0] Saving OB payment - user_id:", ownerUserId, "bot_id:", botUuid, "amount:", totalAmount, "productType:", productType, "telegram_user_id:", telegramUserId, "telegram_username:", userUsername)
+          // Incluir deliverableId do order bump no metadata se aceito
+          const orderBumpDeliverableId = isAccept ? (metadata?.order_bump_deliverable_id || "") : ""
+          console.log("[v0] Saving OB payment - user_id:", ownerUserId, "bot_id:", botUuid, "amount:", totalAmount, "productType:", productType, "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "order_bump_deliverable_id:", orderBumpDeliverableId)
           const { error: obPaymentError } = await supabase.from("payments").insert({
             bot_id: botUuid,
             user_id: ownerUserId,
@@ -1614,7 +1617,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             payment_method: "pix",
             gateway: "mercadopago",
             external_payment_id: String(pixResultOB.paymentId),
-            product_type: productType
+            product_type: productType,
+            metadata: isAccept && orderBumpDeliverableId ? { order_bump_deliverable_id: orderBumpDeliverableId } : null
           })
           if (obPaymentError) {
             console.error("[v0] Error saving OB payment:", obPaymentError)
@@ -1846,20 +1850,21 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           console.log("[v0] Downsell tem Order Bump ativo - mostrando oferta")
           await answerCallback(botToken, callbackQueryId, "Preparando oferta especial...")
           
-          // Salvar estado para saber que esta esperando resposta do order bump
-          await supabase.from("user_flow_state").upsert({
-            bot_id: botUuid,
-            telegram_user_id: String(telegramUserId),
-            flow_id: flowId || flowDs?.id,
-            status: "waiting_order_bump_downsell",
-            metadata: {
-              main_price: price,
-              main_plan_name: planName,
-              order_bump_price: orderBumpDownsell.price,
-              order_bump_name: orderBumpDownsell.name,
-            },
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "bot_id,telegram_user_id" })
+// Salvar estado para saber que esta esperando resposta do order bump
+  await supabase.from("user_flow_state").upsert({
+  bot_id: botUuid,
+  telegram_user_id: String(telegramUserId),
+  flow_id: flowId || flowDs?.id,
+  status: "waiting_order_bump_downsell",
+  metadata: {
+  main_price: price,
+  main_plan_name: planName,
+  order_bump_price: orderBumpDownsell.price,
+  order_bump_name: orderBumpDownsell.name,
+  order_bump_deliverable_id: (orderBumpDownsell as { deliverableId?: string })?.deliverableId || "",
+  },
+  updated_at: new Date().toISOString(),
+  }, { onConflict: "bot_id,telegram_user_id" })
           
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
@@ -2208,20 +2213,21 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           console.log("[v0] Upsell tem Order Bump ativo - mostrando oferta")
           await answerCallback(botToken, callbackQueryId, "Preparando oferta especial...")
           
-          // Salvar estado para saber que esta esperando resposta do order bump
-          await supabase.from("user_flow_state").upsert({
-            bot_id: botUuid,
-            telegram_user_id: String(telegramUserId),
-            flow_id: flowId || flowUp?.id,
-            status: "waiting_order_bump_upsell",
-            metadata: {
-              main_price: price,
-              main_plan_name: planName,
-              order_bump_price: orderBumpUpsell.price,
-              order_bump_name: orderBumpUpsell.name,
-            },
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "bot_id,telegram_user_id" })
+// Salvar estado para saber que esta esperando resposta do order bump
+  await supabase.from("user_flow_state").upsert({
+  bot_id: botUuid,
+  telegram_user_id: String(telegramUserId),
+  flow_id: flowId || flowUp?.id,
+  status: "waiting_order_bump_upsell",
+  metadata: {
+  main_price: price,
+  main_plan_name: planName,
+  order_bump_price: orderBumpUpsell.price,
+  order_bump_name: orderBumpUpsell.name,
+  order_bump_deliverable_id: (orderBumpUpsell as { deliverableId?: string })?.deliverableId || "",
+  },
+  updated_at: new Date().toISOString(),
+  }, { onConflict: "bot_id,telegram_user_id" })
           
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
@@ -2604,6 +2610,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 type: "plan",
                 order_bump_name: activePlanOrderBumps[0].name || "Order Bump",
                 order_bump_price: activePlanOrderBumps[0].price,
+                order_bump_deliverable_id: activePlanOrderBumps[0].deliverableId || "",
                 main_amount: planPrice,
                 main_description: planName,
                 order_bump_source: "plan_specific"
@@ -2665,6 +2672,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 type: "plan",
                 order_bump_name: orderBumpInicial.name || "Order Bump",
                 order_bump_price: orderBumpInicial.price,
+                order_bump_deliverable_id: orderBumpInicial.deliverableId || "",
                 main_amount: planPrice,
                 main_description: planName,
                 order_bump_source: "global_inicial"

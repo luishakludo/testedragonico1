@@ -121,6 +121,7 @@ interface PlanOrderBump {
   rejectText: string
   ctaMessage: string
   deliveryType: "same" | "custom"
+  deliverableId?: string // ID do entregavel especifico para este order bump
   medias: string[]
 }
 
@@ -226,7 +227,8 @@ interface OrderBumpItem {
   acceptText: string
   rejectText: string
   ctaMessage: string
-  deliveryType: "same" | "channel" | "link" | "message" | "video"
+  deliveryType: "same" | "custom"
+  deliverableId?: string // ID do entregavel especifico para este order bump
   medias: string[]
 }
 
@@ -388,16 +390,17 @@ export default function FlowEditorPage() {
   const [orderBumpName, setOrderBumpName] = useState("")
   const [orderBumpPrice, setOrderBumpPrice] = useState("")
   
-  const defaultOrderBumpItem: OrderBumpItem = {
-    enabled: false,
-    name: "",
-    price: 0,
-    description: "",
-    acceptText: "QUERO",
-    rejectText: "NAO QUERO",
-    ctaMessage: "",
-    deliveryType: "same",
-    medias: [],
+const defaultOrderBumpItem: OrderBumpItem = {
+  enabled: false,
+  name: "",
+  price: 0,
+  description: "",
+  acceptText: "QUERO",
+  rejectText: "NAO QUERO",
+  ctaMessage: "",
+  deliveryType: "same",
+  deliverableId: "",
+  medias: [],
   }
   
   const [orderBumpInicial, setOrderBumpInicial] = useState<OrderBumpItem>(defaultOrderBumpItem)
@@ -2787,38 +2790,29 @@ duration_days: 30,
                                   />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label className="text-sm text-neutral-600">Duracao (dias)</Label>
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      pattern="[0-9]*"
-                                      defaultValue={plan.duration_days ?? 30}
-                                      key={`duration-${plan.id}`}
-                                      onBlur={(e) => {
-                                        const rawValue = e.target.value.replace(/[^0-9]/g, "")
-                                        if (rawValue === "") {
-                                          handleUpdatePlan(plan.id, "duration_days", 0)
-                                          handleUpdatePlan(plan.id, "duration_type", "lifetime")
-                                          e.target.value = "0"
-                                        } else {
-                                          const numValue = parseInt(rawValue, 10)
-                                          const clampedValue = Math.min(999, Math.max(0, numValue))
-                                          handleUpdatePlan(plan.id, "duration_days", clampedValue)
-                                          handleUpdatePlan(plan.id, "duration_type", clampedValue === 0 ? "lifetime" : "daily")
-                                          e.target.value = String(clampedValue)
-                                        }
-                                      }}
-                                      placeholder="Ex: 30"
-                                      className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    />
-                                    <span className="text-sm text-neutral-500 whitespace-nowrap">
-                                      dias
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-neutral-400">
-                                    0 = Vitalicio | Max: 999 dias
-                                  </p>
+                                  <Label className="text-sm text-neutral-600">Duracao do Acesso</Label>
+                                  <Select
+                                    value={String(plan.duration_days ?? 30)}
+                                    onValueChange={(value) => {
+                                      const days = parseInt(value, 10)
+                                      handleUpdatePlan(plan.id, "duration_days", days)
+                                      handleUpdatePlan(plan.id, "duration_type", days === 0 ? "lifetime" : "daily")
+                                    }}
+                                  >
+                                    <SelectTrigger className="bg-white border-neutral-200">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="7">Semanal (7 dias)</SelectItem>
+                                      <SelectItem value="15">Quinzenal (15 dias)</SelectItem>
+                                      <SelectItem value="30">Mensal (30 dias)</SelectItem>
+                                      <SelectItem value="60">Bimestral (60 dias)</SelectItem>
+                                      <SelectItem value="90">Trimestral (90 dias)</SelectItem>
+                                      <SelectItem value="180">Semestral (180 dias)</SelectItem>
+                                      <SelectItem value="365">Anual (365 dias)</SelectItem>
+                                      <SelectItem value="0">Vitalicio (sem expiracao)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                               </div>
 
@@ -3080,6 +3074,51 @@ duration_days: 30,
                                             </div>
                                           )}
                                           
+                                          {/* Entregavel do Order Bump */}
+                                          <div className="mt-3 space-y-2 p-3 rounded-lg bg-emerald-50/50 border border-emerald-200/50">
+                                            <div className="flex items-center gap-2">
+                                              <Gift className="h-4 w-4 text-emerald-600" />
+                                              <Label className="text-xs text-neutral-700 font-medium">Entregavel do Order Bump</Label>
+                                            </div>
+                                            <p className="text-[10px] text-neutral-500">
+                                              Selecione qual conteudo sera entregue quando este order bump for comprado
+                                            </p>
+                                            {deliverables.length === 0 ? (
+                                              <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2">
+                                                <div className="flex items-start gap-2">
+                                                  <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5" />
+                                                  <p className="text-[10px] text-amber-600">Nenhum entregavel. Crie na aba Entregaveis.</p>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <Select
+                                                value={bump.deliverableId || "none"}
+                                                onValueChange={(value) => {
+                                                  const updatedBumps = [...(plan.order_bumps || [])]
+                                                  updatedBumps[bumpIndex] = { ...bump, deliverableId: value === "none" ? "" : value }
+                                                  handleUpdatePlan(plan.id, "order_bumps", updatedBumps)
+                                                }}
+                                              >
+                                                <SelectTrigger className="h-8 text-sm bg-white border-neutral-200">
+                                                  <SelectValue placeholder="Selecione um entregavel..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="none">Nenhum (nao entrega nada)</SelectItem>
+                                                  {deliverables.map((d) => (
+                                                    <SelectItem key={d.id} value={d.id}>
+                                                      <div className="flex items-center gap-2">
+                                                        {d.type === "media" && <ImageIcon className="h-3 w-3 text-purple-500" />}
+                                                        {d.type === "link" && <Link2 className="h-3 w-3 text-blue-500" />}
+                                                        {d.type === "vip_group" && <Users className="h-3 w-3 text-emerald-500" />}
+                                                        {d.name}
+                                                      </div>
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            )}
+                                          </div>
+
                                           {/* Midias do Order Bump (ate 3) */}
                                           <div className="mt-3 space-y-2">
                                             <div className="flex items-center justify-between">
@@ -4255,30 +4294,71 @@ duration_days: 30,
                         </div>
                       </div>
 
-                      {/* Entrega */}
-                      <div className="space-y-2">
-                        <Label className="text-neutral-500">Entrega do Order Bump</Label>
+                      {/* Entregavel do Order Bump */}
+                      <div className="space-y-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                        <div className="flex items-center gap-2">
+                          <Gift className="h-5 w-5 text-emerald-600" />
+                          <Label className="text-neutral-700 font-medium">Entregavel do Order Bump</Label>
+                        </div>
+                        <p className="text-xs text-neutral-500">
+                          Selecione qual conteudo sera entregue quando este order bump for comprado (junto com o entregavel principal do plano)
+                        </p>
                         <Select
                           value={orderBumpInicial.deliveryType}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
-                            setOrderBumpInicial({...orderBumpInicial, deliveryType: value})
+                            setOrderBumpInicial({...orderBumpInicial, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpInicial.deliverableId})
                             setHasChanges(true)
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200">
-                            <div className="flex items-center gap-2">
-                              <Check className="h-4 w-4 text-emerald-500" />
-                              <SelectValue />
-                            </div>
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
-                            <SelectItem value="channel">Canal especifico</SelectItem>
-                            <SelectItem value="link">Link Externo</SelectItem>
-                            <SelectItem value="message">Apenas Mensagem</SelectItem>
-                            <SelectItem value="video">Chamada de Video (+R$ 0,50)</SelectItem>
+                            <SelectItem value="same">Usar mesmo do plano principal</SelectItem>
+                            <SelectItem value="custom">Selecionar entregavel especifico</SelectItem>
                           </SelectContent>
                         </Select>
+                        
+                        {orderBumpInicial.deliveryType === "custom" && (
+                          <div className="pt-2">
+                            {deliverables.length === 0 ? (
+                              <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3">
+                                <div className="flex items-start gap-2">
+                                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5" />
+                                  <div className="text-xs">
+                                    <p className="font-medium text-amber-500">Nenhum entregavel configurado</p>
+                                    <p className="text-neutral-500">Crie entregaveis na aba &quot;Entregaveis&quot; para poder selecionar aqui</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <Select
+                                value={orderBumpInicial.deliverableId || "none"}
+                                onValueChange={(value) => {
+                                  setOrderBumpInicial({...orderBumpInicial, deliverableId: value === "none" ? "" : value})
+                                  setHasChanges(true)
+                                }}
+                              >
+                                <SelectTrigger className="bg-white border-neutral-200">
+                                  <SelectValue placeholder="Selecione um entregavel..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Nenhum selecionado</SelectItem>
+                                  {deliverables.map((d) => (
+                                    <SelectItem key={d.id} value={d.id}>
+                                      <div className="flex items-center gap-2">
+                                        {d.type === "media" && <ImageIcon className="h-3 w-3 text-purple-500" />}
+                                        {d.type === "link" && <Link2 className="h-3 w-3 text-blue-500" />}
+                                        {d.type === "vip_group" && <Users className="h-3 w-3 text-emerald-500" />}
+                                        {d.name}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Midias do Order Bump inicial */}
@@ -4390,30 +4470,54 @@ duration_days: 30,
                         </div>
                       </div>
 
-                      {/* Entrega */}
-                      <div className="space-y-2">
-                        <Label className="text-neutral-500">Entrega do Order Bump</Label>
+                      {/* Entregavel do Order Bump Upsell */}
+                      <div className="space-y-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                        <div className="flex items-center gap-2">
+                          <Gift className="h-5 w-5 text-emerald-600" />
+                          <Label className="text-neutral-700 font-medium">Entregavel</Label>
+                        </div>
                         <Select
                           value={orderBumpUpsell.deliveryType}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
-                            setOrderBumpUpsell({...orderBumpUpsell, deliveryType: value})
+                            setOrderBumpUpsell({...orderBumpUpsell, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpUpsell.deliverableId})
                             setHasChanges(true)
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200">
-                            <div className="flex items-center gap-2">
-                              <Check className="h-4 w-4 text-emerald-500" />
-                              <SelectValue />
-                            </div>
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
-                            <SelectItem value="channel">Canal especifico</SelectItem>
-                            <SelectItem value="link">Link Externo</SelectItem>
-                            <SelectItem value="message">Apenas Mensagem</SelectItem>
-                            <SelectItem value="video">Chamada de Video (+R$ 0,50)</SelectItem>
+                            <SelectItem value="same">Usar mesmo do plano principal</SelectItem>
+                            <SelectItem value="custom">Selecionar entregavel especifico</SelectItem>
                           </SelectContent>
                         </Select>
+                        
+                        {orderBumpUpsell.deliveryType === "custom" && (
+                          <Select
+                            value={orderBumpUpsell.deliverableId || "none"}
+                            onValueChange={(value) => {
+                              setOrderBumpUpsell({...orderBumpUpsell, deliverableId: value === "none" ? "" : value})
+                              setHasChanges(true)
+                            }}
+                          >
+                            <SelectTrigger className="bg-white border-neutral-200">
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum</SelectItem>
+                              {deliverables.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  <div className="flex items-center gap-2">
+                                    {d.type === "media" && <ImageIcon className="h-3 w-3" />}
+                                    {d.type === "link" && <Link2 className="h-3 w-3" />}
+                                    {d.type === "vip_group" && <Users className="h-3 w-3" />}
+                                    {d.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                       
                       {/* Midias do Order Bump Upsell */}
@@ -4525,30 +4629,54 @@ duration_days: 30,
                         </div>
                       </div>
 
-                      {/* Entrega */}
-                      <div className="space-y-2">
-                        <Label className="text-neutral-500">Entrega do Order Bump</Label>
+                      {/* Entregavel do Order Bump Downsell */}
+                      <div className="space-y-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                        <div className="flex items-center gap-2">
+                          <Gift className="h-5 w-5 text-emerald-600" />
+                          <Label className="text-neutral-700 font-medium">Entregavel</Label>
+                        </div>
                         <Select
                           value={orderBumpDownsell.deliveryType}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
-                            setOrderBumpDownsell({...orderBumpDownsell, deliveryType: value})
+                            setOrderBumpDownsell({...orderBumpDownsell, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpDownsell.deliverableId})
                             setHasChanges(true)
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200">
-                            <div className="flex items-center gap-2">
-                              <Check className="h-4 w-4 text-emerald-500" />
-                              <SelectValue />
-                            </div>
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
-                            <SelectItem value="channel">Canal especifico</SelectItem>
-                            <SelectItem value="link">Link Externo</SelectItem>
-                            <SelectItem value="message">Apenas Mensagem</SelectItem>
-                            <SelectItem value="video">Chamada de Video (+R$ 0,50)</SelectItem>
+                            <SelectItem value="same">Usar mesmo do plano principal</SelectItem>
+                            <SelectItem value="custom">Selecionar entregavel especifico</SelectItem>
                           </SelectContent>
                         </Select>
+                        
+                        {orderBumpDownsell.deliveryType === "custom" && (
+                          <Select
+                            value={orderBumpDownsell.deliverableId || "none"}
+                            onValueChange={(value) => {
+                              setOrderBumpDownsell({...orderBumpDownsell, deliverableId: value === "none" ? "" : value})
+                              setHasChanges(true)
+                            }}
+                          >
+                            <SelectTrigger className="bg-white border-neutral-200">
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum</SelectItem>
+                              {deliverables.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  <div className="flex items-center gap-2">
+                                    {d.type === "media" && <ImageIcon className="h-3 w-3" />}
+                                    {d.type === "link" && <Link2 className="h-3 w-3" />}
+                                    {d.type === "vip_group" && <Users className="h-3 w-3" />}
+                                    {d.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                       
                       {/* Midias do Order Bump Downsell */}
@@ -4640,12 +4768,16 @@ duration_days: 30,
                       </div>
                       
                       {/* Entrega */}
-                      <div className="space-y-2">
-                        <Label className="text-neutral-500">Entrega do Order Bump</Label>
+                      {/* Entregavel do Order Bump Packs */}
+                      <div className="space-y-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                        <div className="flex items-center gap-2">
+                          <Gift className="h-5 w-5 text-emerald-600" />
+                          <Label className="text-neutral-700 font-medium">Entregavel</Label>
+                        </div>
                         <Select
                           value={orderBumpPacks.deliveryType}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
-                            setOrderBumpPacks({...orderBumpPacks, deliveryType: value})
+                            setOrderBumpPacks({...orderBumpPacks, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpPacks.deliverableId})
                             setHasChanges(true)
                           }}
                         >
@@ -4653,12 +4785,37 @@ duration_days: 30,
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
-                            <SelectItem value="channel">Canal especifico</SelectItem>
-                            <SelectItem value="link">Link Externo</SelectItem>
-                            <SelectItem value="message">Apenas Mensagem</SelectItem>
+                            <SelectItem value="same">Usar mesmo do plano principal</SelectItem>
+                            <SelectItem value="custom">Selecionar entregavel especifico</SelectItem>
                           </SelectContent>
                         </Select>
+                        
+                        {orderBumpPacks.deliveryType === "custom" && (
+                          <Select
+                            value={orderBumpPacks.deliverableId || "none"}
+                            onValueChange={(value) => {
+                              setOrderBumpPacks({...orderBumpPacks, deliverableId: value === "none" ? "" : value})
+                              setHasChanges(true)
+                            }}
+                          >
+                            <SelectTrigger className="bg-white border-neutral-200">
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum</SelectItem>
+                              {deliverables.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  <div className="flex items-center gap-2">
+                                    {d.type === "media" && <ImageIcon className="h-3 w-3" />}
+                                    {d.type === "link" && <Link2 className="h-3 w-3" />}
+                                    {d.type === "vip_group" && <Users className="h-3 w-3" />}
+                                    {d.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                       
                       {/* Midias do Order Bump Packs */}
