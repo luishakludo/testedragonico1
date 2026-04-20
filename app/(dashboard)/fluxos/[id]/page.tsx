@@ -385,6 +385,7 @@ export default function FlowEditorPage() {
   const [uploadingDownsellMedia, setUploadingDownsellMedia] = useState<string | null>(null)
 
   // Downsell PIX Gerado - dispara quando o cliente gera um PIX
+  const [downsellSubTab, setDownsellSubTab] = useState<"normal" | "pix">("normal")
   const [downsellPixEnabled, setDownsellPixEnabled] = useState(false)
   const [downsellPixSequences, setDownsellPixSequences] = useState<DownsellPixSequence[]>([])
   const [downsellPixDeliveryType, setDownsellPixDeliveryType] = useState<"same" | "custom">("same")
@@ -3862,45 +3863,80 @@ duration_days: 30,
             </div>
           )}
 
-          {/* Downsell Tab */}
-          {activeTab === "downsell" && (
-            <div className="space-y-6">
-              {/* Downsell Main Card */}
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
-                <div className="px-6 py-5 border-b border-neutral-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-pink-500 to-pink-600 flex items-center justify-center shadow-lg shadow-pink-500/25">
-                        <TrendingDown className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-neutral-900">Downsell</h3>
-                        <p className="text-sm text-neutral-500">Recupere vendas com ofertas alternativas</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-<span className="text-sm font-bold text-neutral-900 bg-[#bfff00] px-3 py-1 rounded-full">
-  {downsellSequences.length}/20
+{/* Downsell Tab */}
+  {activeTab === "downsell" && (
+  <div className="space-y-6">
+  {/* Downsell Main Card */}
+  <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
+  <div className="px-6 py-5 border-b border-neutral-100">
+  <div className="flex items-center justify-between">
+  <div className="flex items-center gap-3">
+  <div className={`h-11 w-11 rounded-xl bg-gradient-to-br ${downsellSubTab === "normal" ? "from-pink-500 to-pink-600 shadow-pink-500/25" : "from-orange-500 to-orange-600 shadow-orange-500/25"} flex items-center justify-center shadow-lg`}>
+  <TrendingDown className="h-5 w-5 text-white" />
+  </div>
+  <div>
+  <h3 className="font-bold text-neutral-900">Downsell</h3>
+  <p className="text-sm text-neutral-500">Recupere vendas com ofertas alternativas</p>
+  </div>
+  </div>
+  <div className="flex items-center gap-3">
+  <span className="text-sm font-bold text-neutral-900 bg-[#bfff00] px-3 py-1 rounded-full">
+  {downsellSubTab === "normal" ? downsellSequences.length : downsellPixSequences.length}/20
   </span>
-                      <Switch
-                        checked={downsellEnabled}
-                        onCheckedChange={(checked) => {
-                          setDownsellEnabled(checked)
-                          setHasChanges(true)
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
+  <Switch
+  checked={downsellSubTab === "normal" ? downsellEnabled : downsellPixEnabled}
+  onCheckedChange={(checked) => {
+  if (downsellSubTab === "normal") {
+    setDownsellEnabled(checked)
+  } else {
+    setDownsellPixEnabled(checked)
+  }
+  setHasChanges(true)
+  }}
+  />
+  </div>
+  </div>
+  </div>
 
-                {/* Info sobre downsell */}
-                <div className="px-6 py-3 bg-neutral-50 border-b border-neutral-100 flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-pink-500" />
-                  <span className="text-xs text-neutral-500">
-                    Sequencias enviadas automaticamente apos o /start para quem nao pagou
-                  </span>
-                </div>
+  {/* Sub-tabs Normal / PIX Gerado */}
+  <div className="px-6 py-3 bg-neutral-50 border-b border-neutral-100 flex items-center gap-3">
+  <button
+    type="button"
+    onClick={() => setDownsellSubTab("normal")}
+    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+      downsellSubTab === "normal"
+        ? "bg-pink-500 text-white shadow-sm"
+        : "bg-white text-neutral-600 border border-neutral-200 hover:border-pink-300"
+    }`}
+  >
+    Normal
+  </button>
+  <button
+    type="button"
+    onClick={() => setDownsellSubTab("pix")}
+    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+      downsellSubTab === "pix"
+        ? "bg-orange-500 text-white shadow-sm"
+        : "bg-white text-neutral-600 border border-neutral-200 hover:border-orange-300"
+    }`}
+  >
+    PIX Gerado
+  </button>
+  </div>
+  
+  {/* Info sobre downsell */}
+  <div className="px-6 py-3 bg-neutral-50 border-b border-neutral-100 flex items-center gap-2">
+  <Clock className={`h-4 w-4 ${downsellSubTab === "normal" ? "text-pink-500" : "text-orange-500"}`} />
+  <span className="text-xs text-neutral-500">
+  {downsellSubTab === "normal" 
+    ? "Sequencias enviadas automaticamente apos o /start para quem nao pagou"
+    : "Sequencias enviadas quando o cliente gera um PIX mas ainda nao pagou"}
+  </span>
+  </div>
 
+                {/* ===== DOWNSELL NORMAL ===== */}
+                {downsellSubTab === "normal" && (
+                  <>
                 {downsellEnabled && (
                   <div className="px-6 py-4 bg-neutral-50 border-b border-neutral-100">
                     <div className="flex items-center gap-6">
@@ -4303,46 +4339,12 @@ duration_days: 30,
                     </div>
                   )}
                 </div>
-              </div>
+                  </>
+                )}
 
-              {/* Downsell PIX Gerado Section */}
-              <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
-                <div className="px-6 py-5 border-b border-neutral-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
-                        <TrendingDown className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-neutral-900">Downsell PIX Gerado</h3>
-                        <p className="text-sm text-neutral-500">Recupere vendas quando o cliente gera PIX mas nao paga</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-neutral-900 bg-[#bfff00] px-3 py-1 rounded-full">
-                        {downsellPixSequences.length}/20
-                      </span>
-                      <Switch
-                        checked={downsellPixEnabled}
-                        onCheckedChange={(checked) => {
-                          setDownsellPixEnabled(checked)
-                          setHasChanges(true)
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info sobre downsell PIX */}
-                <div className="px-6 py-3 bg-orange-50 border-b border-orange-100 flex items-start gap-2">
-                  <Clock className="h-4 w-4 text-orange-500 mt-0.5" />
-                  <div className="text-xs text-neutral-600">
-                    <p className="font-medium text-orange-700 mb-1">Como funciona?</p>
-                    <p>Quando o cliente gera um PIX, o downsell normal para de ser enviado e estas sequencias comecam a disparar ate ele pagar.</p>
-                    <p className="mt-1">Apos o pagamento, apenas o Upsell sera enviado.</p>
-                  </div>
-                </div>
-
+                {/* ===== DOWNSELL PIX GERADO ===== */}
+                {downsellSubTab === "pix" && (
+                  <>
                 {downsellPixEnabled && (
                   <div className="px-6 py-4 bg-neutral-50 border-b border-neutral-100">
                     <div className="flex items-center gap-6">
@@ -4671,6 +4673,8 @@ duration_days: 30,
                     </div>
                   )}
                 </div>
+                  </>
+                )}
               </div>
             </div>
           )}
