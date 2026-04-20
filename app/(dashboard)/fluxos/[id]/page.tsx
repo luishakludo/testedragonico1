@@ -5675,9 +5675,9 @@ duration_days: 30,
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2 text-sm">
                                     <ImageIcon className="h-4 w-4 text-neutral-500" />
-                                    <span>Midias de Preview (ate 10 - exibidas antes da compra)</span>
+                                    <span>Midias de Preview (ate 3 - exibidas antes da compra)</span>
                                   </div>
-                                  <span className="text-xs text-neutral-500">{(pack.previewMedias?.length || 0)}/10</span>
+                                  <span className="text-xs text-neutral-500">{(pack.previewMedias?.length || 0)}/3</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   {/* Midias existentes */}
@@ -5699,7 +5699,7 @@ duration_days: 30,
                                   ))}
                                   
                                   {/* Botao de adicionar */}
-                                  {(pack.previewMedias?.length || 0) < 10 && (
+                                  {(pack.previewMedias?.length || 0) < 3 && (
                                     <label className="w-24 h-20 border-2 border-dashed border-neutral-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/50 transition-colors">
                                       {uploadingPackMedia === pack.id ? (
                                         <div className="animate-spin h-5 w-5 border-2 border-emerald-500 border-t-transparent rounded-full" />
@@ -5726,34 +5726,7 @@ duration_days: 30,
                               </CardContent>
                             </Card>
 
-                            {/* Entrega do Pack */}
-                            <Card className="border-neutral-200 bg-secondary/10">
-                              <CardContent className="pt-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Package className="h-4 w-4 text-emerald-500" />
-                                    <span className="font-medium">Entrega do Pack</span>
-                                  </div>
-                                  <Button variant="ghost" size="sm" className="text-neutral-500">
-                                    <RefreshCw className="h-3 w-3 mr-1" />
-                                    Atualizar
-                                  </Button>
-                                </div>
-                                <Select
-                                  value={pack.deliveryDestination}
-                                  onValueChange={(value) => handleUpdatePack(pack.id, "deliveryDestination", value)}
-                                >
-                                  <SelectTrigger className="bg-white border-neutral-200">
-                                    <SelectValue placeholder="Selecione o destino" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="channel1">Canal VIP</SelectItem>
-                                    <SelectItem value="channel2">Grupo Premium</SelectItem>
-                                    <SelectItem value="link">Link Externo</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </CardContent>
-                            </Card>
+                            
                           </CardContent>
                         )}
                       </Card>
