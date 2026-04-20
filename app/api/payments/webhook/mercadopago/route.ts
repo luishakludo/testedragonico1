@@ -744,6 +744,26 @@ export async function POST(request: NextRequest) {
                   // SEMPRE enviar entregavel inicial primeiro (produto principal)
                   console.log(`[v0] DELIVERY: Enviando entregavel inicial para usuario ${chatId}`)
                   await sendDelivery(supabase, bot.token, chatId, flowConfig)
+                  
+                  // ========== ENTREGAR ORDER BUMP SE HOUVER ==========
+                  // Verifica se o pagamento inclui order bump e entrega o entregavel do order bump tambem
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const paymentMetadata = payment.metadata as Record<string, any> | null
+                  const orderBumpDeliverableId = paymentMetadata?.order_bump_deliverable_id
+                  
+                  if (orderBumpDeliverableId && orderBumpDeliverableId !== "") {
+                    console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump com deliverableId: ${orderBumpDeliverableId}`)
+                    await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpDeliverableId)
+                  } else if (payment.product_type === "plan_order_bump" || payment.product_type === "order_bump") {
+                    // Se for order_bump mas nao tem deliverableId especifico, verificar no config
+                    const orderBumpConfig = flowConfig?.orderBump?.inicial
+                    if (orderBumpConfig?.deliverableId && orderBumpConfig.deliverableId !== "" && orderBumpConfig.deliveryType === "custom") {
+                      console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump global com deliverableId: ${orderBumpConfig.deliverableId}`)
+                      await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpConfig.deliverableId)
+                    } else {
+                      console.log(`[v0] ORDER BUMP DELIVERY: Order bump sem entregavel especifico configurado`)
+                    }
+                  }
 
                   // ========== MARCAR USUARIO COMO VIP ==========
                   // Apenas para produtos principais (plan, main_product), NAO para order_bump ou pack
