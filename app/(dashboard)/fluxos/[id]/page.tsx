@@ -2790,38 +2790,29 @@ duration_days: 30,
                                   />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label className="text-sm text-neutral-600">Duracao (dias)</Label>
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      pattern="[0-9]*"
-                                      defaultValue={plan.duration_days ?? 30}
-                                      key={`duration-${plan.id}`}
-                                      onBlur={(e) => {
-                                        const rawValue = e.target.value.replace(/[^0-9]/g, "")
-                                        if (rawValue === "") {
-                                          handleUpdatePlan(plan.id, "duration_days", 0)
-                                          handleUpdatePlan(plan.id, "duration_type", "lifetime")
-                                          e.target.value = "0"
-                                        } else {
-                                          const numValue = parseInt(rawValue, 10)
-                                          const clampedValue = Math.min(999, Math.max(0, numValue))
-                                          handleUpdatePlan(plan.id, "duration_days", clampedValue)
-                                          handleUpdatePlan(plan.id, "duration_type", clampedValue === 0 ? "lifetime" : "daily")
-                                          e.target.value = String(clampedValue)
-                                        }
-                                      }}
-                                      placeholder="Ex: 30"
-                                      className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    />
-                                    <span className="text-sm text-neutral-500 whitespace-nowrap">
-                                      dias
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-neutral-400">
-                                    0 = Vitalicio | Max: 999 dias
-                                  </p>
+                                  <Label className="text-sm text-neutral-600">Duracao do Acesso</Label>
+                                  <Select
+                                    value={String(plan.duration_days ?? 30)}
+                                    onValueChange={(value) => {
+                                      const days = parseInt(value, 10)
+                                      handleUpdatePlan(plan.id, "duration_days", days)
+                                      handleUpdatePlan(plan.id, "duration_type", days === 0 ? "lifetime" : "daily")
+                                    }}
+                                  >
+                                    <SelectTrigger className="bg-white border-neutral-200">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="7">Semanal (7 dias)</SelectItem>
+                                      <SelectItem value="15">Quinzenal (15 dias)</SelectItem>
+                                      <SelectItem value="30">Mensal (30 dias)</SelectItem>
+                                      <SelectItem value="60">Bimestral (60 dias)</SelectItem>
+                                      <SelectItem value="90">Trimestral (90 dias)</SelectItem>
+                                      <SelectItem value="180">Semestral (180 dias)</SelectItem>
+                                      <SelectItem value="365">Anual (365 dias)</SelectItem>
+                                      <SelectItem value="0">Vitalicio (sem expiracao)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                 </div>
                               </div>
 
