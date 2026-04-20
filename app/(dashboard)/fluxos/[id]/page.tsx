@@ -87,6 +87,7 @@ interface FlowConfig {
   plans?: FlowPlan[]
   upsell?: UpsellConfig
   downsell?: DownsellConfig
+  downsellPix?: DownsellPixConfig
   orderBump?: OrderBumpConfig
   packs?: PackConfig[]
   payments?: PaymentConfig
@@ -202,6 +203,27 @@ interface DownsellConfig {
   enabled: boolean
   message?: string
   sequences?: DownsellSequence[]
+  deliveryType?: "same" | "custom"
+  customDelivery?: string
+}
+
+// Downsell PIX Gerado - dispara quando o cliente gera um PIX mas ainda não pagou
+interface DownsellPixSequence {
+  id: string
+  message: string
+  medias: string[]
+  sendTiming: "immediate" | "custom"
+  sendDelayValue?: number
+  sendDelayUnit?: "minutes" | "hours" | "days"
+  plans: DownsellPlan[]
+  deliveryType: "global" | "custom"
+  deliverableId?: string
+  customDelivery?: string
+}
+
+interface DownsellPixConfig {
+  enabled: boolean
+  sequences?: DownsellPixSequence[]
   deliveryType?: "same" | "custom"
   customDelivery?: string
 }
@@ -361,6 +383,13 @@ export default function FlowEditorPage() {
   const [downsellDeliveryType, setDownsellDeliveryType] = useState<"same" | "custom">("same")
   const [expandedDownsellSequence, setExpandedDownsellSequence] = useState<string | null>(null)
   const [uploadingDownsellMedia, setUploadingDownsellMedia] = useState<string | null>(null)
+
+  // Downsell PIX Gerado - dispara quando o cliente gera um PIX
+  const [downsellPixEnabled, setDownsellPixEnabled] = useState(false)
+  const [downsellPixSequences, setDownsellPixSequences] = useState<DownsellPixSequence[]>([])
+  const [downsellPixDeliveryType, setDownsellPixDeliveryType] = useState<"same" | "custom">("same")
+  const [expandedDownsellPixSequence, setExpandedDownsellPixSequence] = useState<string | null>(null)
+  const [uploadingDownsellPixMedia, setUploadingDownsellPixMedia] = useState<string | null>(null)
 
   // Entregaveis
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
@@ -597,6 +626,10 @@ Clique no botao abaixo para renovar com desconto especial!`)
   setDownsellMessage(config.downsell?.message || "")
   setDownsellSequences(config.downsell?.sequences || [])
   setDownsellDeliveryType(config.downsell?.deliveryType || "same")
+  // Downsell PIX Gerado
+  setDownsellPixEnabled(config.downsellPix?.enabled || false)
+  setDownsellPixSequences(config.downsellPix?.sequences || [])
+  setDownsellPixDeliveryType(config.downsellPix?.deliveryType || "same")
   // Entregaveis
   setDeliverables(config.deliverables || [])
   setMainDeliverableId(config.mainDeliverableId || "")
@@ -981,6 +1014,11 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
   sequences: downsellSequences,
   deliveryType: downsellDeliveryType,
   },
+      downsellPix: {
+        enabled: downsellPixEnabled,
+        sequences: downsellPixSequences,
+        deliveryType: downsellPixDeliveryType,
+      },
       orderBump: {
         enabled: orderBumpEnabled,
         name: orderBumpName,
@@ -1668,6 +1706,138 @@ duration_days: 30,
     const updatedMedias = (currentSeq.medias || []).filter((_, i) => i !== mediaIndex)
     handleUpdateDownsellSequence(seqId, "medias", updatedMedias)
   }
+
+  // ========== DOWNSELL PIX GERADO ==========
+  
+  // Add downsell PIX sequence
+  const handleAddDownsellPixSequence = () => {
+    if (downsellPixSequences.length >= 20) return
+    const newSequence: DownsellPixSequence = {
+      id: `dspix-seq-${Date.now()}`,
+      message: "",
+      medias: [],
+      sendTiming: "custom",
+      sendDelayValue: 5,
+      sendDelayUnit: "minutes",
+      plans: [{ id: `plan-${Date.now()}`, buttonText: "Plano 1", price: 0 }],
+      deliveryType: "global",
+    }
+    setDownsellPixSequences([...downsellPixSequences, newSequence])
+    setExpandedDownsellPixSequence(newSequence.id)
+    setHasChanges(true)
+  }
+
+  // Add plan to downsell PIX sequence
+  const handleAddDownsellPixPlan = (seqId: string) => {
+    const seq = downsellPixSequences.find(s => s.id === seqId)
+    if (!seq || (seq.plans?.length || 0) >= 5) return
+    const newPlan: DownsellPlan = {
+      id: `plan-${Date.now()}`,
+      buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
+      price: 0
+    }
+    handleUpdateDownsellPixSequence(seqId, "plans", [...(seq.plans || []), newPlan])
+  }
+
+  // Remove plan from downsell PIX sequence
+  const handleRemoveDownsellPixPlan = (seqId: string, planId: string) => {
+    const seq = downsellPixSequences.find(s => s.id === seqId)
+    if (!seq) return
+    handleUpdateDownsellPixSequence(seqId, "plans", (seq.plans || []).filter(p => p.id !== planId))
+  }
+
+  // Update plan in downsell PIX sequence
+  const handleUpdateDownsellPixPlan = (seqId: string, planId: string, field: keyof DownsellPlan, value: string | number) => {
+    const seq = downsellPixSequences.find(s => s.id === seqId)
+    if (!seq) return
+    const updatedPlans = (seq.plans || []).map(p => p.id === planId ? { ...p, [field]: value } : p)
+    handleUpdateDownsellPixSequence(seqId, "plans", updatedPlans)
+  }
+
+  // Remove downsell PIX sequence
+  const handleRemoveDownsellPixSequence = (id: string) => {
+    setDownsellPixSequences(downsellPixSequences.filter(s => s.id !== id))
+    if (expandedDownsellPixSequence === id) setExpandedDownsellPixSequence(null)
+    setHasChanges(true)
+  }
+
+  // Update downsell PIX sequence
+  const handleUpdateDownsellPixSequence = (id: string, field: keyof DownsellPixSequence, value: unknown) => {
+    setDownsellPixSequences(downsellPixSequences.map(s => s.id === id ? { ...s, [field]: value } : s))
+    setHasChanges(true)
+  }
+
+  // Duplicate downsell PIX sequence
+  const handleDuplicateDownsellPixSequence = (seq: DownsellPixSequence) => {
+    if (downsellPixSequences.length >= 20) return
+    const newSequence = { ...seq, id: `dspix-seq-${Date.now()}` }
+    setDownsellPixSequences([...downsellPixSequences, newSequence])
+    setHasChanges(true)
+  }
+
+  // Upload media for downsell PIX sequence
+  const handleUploadDownsellPixMedia = async (seqId: string, file: File) => {
+    if (!file || !flow) return
+    
+    const currentSeq = downsellPixSequences.find(s => s.id === seqId)
+    if (!currentSeq || (currentSeq.medias?.length || 0) >= 3) {
+      toast({
+        title: "Limite atingido",
+        description: "Maximo de 3 midias permitido",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setUploadingDownsellPixMedia(seqId)
+    
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${flow.id}/downsellpix_${seqId}_${Date.now()}.${fileExt}`
+      
+      const { error } = await supabase.storage
+        .from('flow-medias')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+      
+      if (error) {
+        toast({
+          title: "Erro no upload",
+          description: error.message,
+          variant: "destructive",
+        })
+        return
+      }
+      
+      const { data: urlData } = supabase.storage
+        .from('flow-medias')
+        .getPublicUrl(fileName)
+
+      const updatedMedias = [...(currentSeq.medias || []), urlData.publicUrl]
+      handleUpdateDownsellPixSequence(seqId, "medias", updatedMedias)
+    } catch (error) {
+      console.error("Erro ao fazer upload:", error)
+      toast({
+        title: "Erro",
+        description: "Falha ao fazer upload da midia",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingDownsellPixMedia(null)
+    }
+  }
+
+  // Remove media from downsell PIX sequence
+  const handleRemoveDownsellPixMedia = (seqId: string, mediaIndex: number) => {
+    const currentSeq = downsellPixSequences.find(s => s.id === seqId)
+    if (!currentSeq) return
+    
+    const updatedMedias = (currentSeq.medias || []).filter((_, i) => i !== mediaIndex)
+    handleUpdateDownsellPixSequence(seqId, "medias", updatedMedias)
+  }
+
   // Upload media for order bump (inicial, upsell, downsell, packs)
   const handleUploadOrderBumpMedia = async (bumpType: "inicial" | "upsell" | "downsell" | "packs", file: File) => {
     if (!file || !flow) return
@@ -1874,6 +2044,7 @@ duration_days: 30,
     { id: "plans", label: "Planos", icon: CreditCard, locked: false },
     { id: "upsell", label: "Upsell", icon: TrendingUp, locked: false },
     { id: "downsell", label: "Downsell", icon: TrendingDown, locked: false },
+    { id: "downsellpix", label: "Downsell PIX", icon: TrendingDown, locked: false },
     { id: "orderbump", label: "Order Bump", icon: Package, locked: false },
     { id: "packs", label: "Packs", icon: Package, locked: false },
     { id: "payments", label: "Pagamentos", icon: Wallet, locked: false },
@@ -4126,6 +4297,379 @@ duration_days: 30,
                           className="w-full border-dashed"
                           onClick={handleAddDownsellSequence}
                         >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Adicionar Sequencia
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Downsell PIX Gerado Tab */}
+          {activeTab === "downsellpix" && (
+            <div className="space-y-6">
+              {/* Downsell PIX Main Card */}
+              <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
+                <div className="px-6 py-5 border-b border-neutral-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                        <TrendingDown className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-neutral-900">Downsell PIX Gerado</h3>
+                        <p className="text-sm text-neutral-500">Recupere vendas quando o cliente gera PIX mas nao paga</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold text-neutral-900 bg-[#bfff00] px-3 py-1 rounded-full">
+                        {downsellPixSequences.length}/20
+                      </span>
+                      <Switch
+                        checked={downsellPixEnabled}
+                        onCheckedChange={(checked) => {
+                          setDownsellPixEnabled(checked)
+                          setHasChanges(true)
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info sobre downsell PIX */}
+                <div className="px-6 py-3 bg-orange-50 border-b border-orange-100 flex items-start gap-2">
+                  <Clock className="h-4 w-4 text-orange-500 mt-0.5" />
+                  <div className="text-xs text-neutral-600">
+                    <p className="font-medium text-orange-700 mb-1">Como funciona?</p>
+                    <p>Quando o cliente gera um PIX, o downsell normal para de ser enviado e estas sequencias comecam a disparar ate ele pagar.</p>
+                    <p className="mt-1">Apos o pagamento, apenas o Upsell sera enviado.</p>
+                  </div>
+                </div>
+
+                {downsellPixEnabled && (
+                  <div className="px-6 py-4 bg-neutral-50 border-b border-neutral-100">
+                    <div className="flex items-center gap-6">
+                      <div className="flex-1">
+                        <Label className="text-sm font-medium text-neutral-700">Entrega do Downsell PIX</Label>
+                        <Select
+                          value={downsellPixDeliveryType}
+                          onValueChange={(value: "same" | "custom") => {
+                            setDownsellPixDeliveryType(value)
+                            setHasChanges(true)
+                          }}
+                        >
+                          <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
+                            <div className="flex items-center gap-2">
+                              <RefreshCw className="h-4 w-4 text-neutral-500" />
+                              <SelectValue />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
+                            <SelectItem value="custom">Entrega personalizada</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sequences Section */}
+                <div className="p-6">
+                  {!downsellPixEnabled ? (
+                    <Card className="bg-white border-neutral-100 shadow-sm rounded-2xl">
+                      <CardContent className="flex flex-col items-center justify-center py-16">
+                        <TrendingDown className="h-10 w-10 text-neutral-500/30 mb-4" />
+                        <p className="text-neutral-500">Ative o Downsell PIX para configurar sequencias</p>
+                      </CardContent>
+                    </Card>
+                  ) : downsellPixSequences.length === 0 ? (
+                    <Card className="bg-white border-neutral-100 shadow-sm rounded-2xl">
+                      <CardContent className="flex flex-col items-center justify-center py-16">
+                        <Plus className="h-10 w-10 text-neutral-500/30 mb-4" />
+                        <p className="text-neutral-500 mb-4">
+                          Nenhuma sequencia de downsell PIX configurada
+                        </p>
+                        <Button onClick={handleAddDownsellPixSequence} className="bg-orange-500 hover:bg-orange-600">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Adicionar Sequencia
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="space-y-4">
+                      {downsellPixSequences.map((seq, index) => (
+                        <Card key={seq.id} className="border-neutral-200">
+                          {/* Sequence Header */}
+                          <div
+                            className="flex items-center justify-between p-4 cursor-pointer"
+                            onClick={() => setExpandedDownsellPixSequence(expandedDownsellPixSequence === seq.id ? null : seq.id)}
+                          >
+                            <div className="flex items-center gap-2">
+                              {expandedDownsellPixSequence === seq.id ? (
+                                <ChevronDown className="h-4 w-4 text-neutral-500" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-neutral-500" />
+                              )}
+                              <span className="font-medium">Sequencia {index + 1}</span>
+                              {(seq.plans?.length || 0) > 0 && (
+                                <span className="text-xs text-neutral-500 bg-secondary/50 px-2 py-0.5 rounded">
+                                  {seq.plans?.length} {seq.plans?.length === 1 ? "plano" : "planos"}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDuplicateDownsellPixSequence(seq)
+                                }}
+                              >
+                                <Copy className="h-4 w-4 text-neutral-500" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleRemoveDownsellPixSequence(seq.id)
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Expanded Content */}
+                          {expandedDownsellPixSequence === seq.id && (
+                            <CardContent className="pt-0 space-y-6">
+                              {/* Midias */}
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-sm text-neutral-500">
+                                  <ImageIcon className="h-4 w-4" />
+                                  <span>Midias (ate 3)</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {(seq.medias || []).map((media, mediaIndex) => (
+                                    <div key={mediaIndex} className="relative w-24 h-20 rounded-lg overflow-hidden group">
+                                      {media.includes("video") || media.includes("mp4") ? (
+                                        <video src={media} className="w-full h-full object-cover" muted />
+                                      ) : (
+                                        <img src={media} alt={`Midia ${mediaIndex + 1}`} className="w-full h-full object-cover" />
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveDownsellPixMedia(seq.id, mediaIndex)}
+                                        className="absolute top-1 right-1 w-5 h-5 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <X className="h-3 w-3 text-white" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  
+                                  {(seq.medias?.length || 0) < 3 && (
+                                    <label className="w-24 h-20 border-2 border-dashed border-neutral-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-orange-500/50 transition-colors">
+                                      {uploadingDownsellPixMedia === seq.id ? (
+                                        <div className="animate-spin h-5 w-5 border-2 border-orange-500 border-t-transparent rounded-full" />
+                                      ) : (
+                                        <>
+                                          <Plus className="h-5 w-5 text-neutral-500" />
+                                          <span className="text-xs text-neutral-500 mt-1">Adicionar</span>
+                                        </>
+                                      )}
+                                      <input
+                                        type="file"
+                                        accept="image/*,video/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0]
+                                          if (file) handleUploadDownsellPixMedia(seq.id, file)
+                                          e.target.value = ""
+                                        }}
+                                        disabled={uploadingDownsellPixMedia === seq.id}
+                                      />
+                                    </label>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Mensagem */}
+                              <div className="space-y-2">
+                                <Label className="text-sm text-neutral-500">Mensagem</Label>
+                                <Textarea
+                                  value={seq.message}
+                                  onChange={(e) => handleUpdateDownsellPixSequence(seq.id, "message", e.target.value)}
+                                  rows={4}
+                                  placeholder="Digite a mensagem de downsell..."
+                                  className="bg-secondary/50 border-neutral-200"
+                                />
+                                <Card className="border border-neutral-200 bg-muted/50">
+                                  <CardContent className="pt-4">
+                                    <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {["{nome}"].map((v) => (
+                                        <button 
+                                          key={v} 
+                                          type="button"
+                                          onClick={() => {
+                                            const newMessage = seq.message + v
+                                            handleUpdateDownsellPixSequence(seq.id, "message", newMessage)
+                                          }}
+                                          className="px-3 py-1 rounded-full bg-background text-sm text-neutral-900 border border-neutral-200 hover:bg-orange-500/20 hover:border-orange-500 transition-colors cursor-pointer"
+                                        >
+                                          {v}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
+                                  </CardContent>
+                                </Card>
+                              </div>
+
+                              {/* Tempo de envio */}
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-sm text-neutral-500">
+                                  <Clock className="h-4 w-4" />
+                                  <span>Enviar apos gerar PIX:</span>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Input
+                                    type="number"
+                                    value={seq.sendDelayValue || 5}
+                                    onChange={(e) => handleUpdateDownsellPixSequence(seq.id, "sendDelayValue", parseInt(e.target.value) || 1)}
+                                    className="w-20 bg-secondary/50 border-neutral-200"
+                                    min={1}
+                                  />
+                                  <Select
+                                    value={seq.sendDelayUnit || "minutes"}
+                                    onValueChange={(value: "minutes" | "hours" | "days") => handleUpdateDownsellPixSequence(seq.id, "sendDelayUnit", value)}
+                                  >
+                                    <SelectTrigger className="w-28 bg-secondary/50 border-neutral-200">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="minutes">Minutos</SelectItem>
+                                      <SelectItem value="hours">Horas</SelectItem>
+                                      <SelectItem value="days">Dias</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+
+                              {/* Planos */}
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Crown className="h-4 w-4 text-amber-500" />
+                                    <h4 className="font-medium">Planos</h4>
+                                  </div>
+                                  <span className="text-xs text-neutral-500">{(seq.plans?.length || 0)}/5</span>
+                                </div>
+                                <p className="text-sm text-neutral-500">
+                                  Configure os planos que aparecerao como botoes para o cliente escolher.
+                                </p>
+                                
+                                <div className="space-y-2">
+                                  {(seq.plans || []).map((plan) => (
+                                    <div key={plan.id} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-3">
+                                      <div className="flex-1 grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                          <Label className="text-xs text-neutral-500">Texto do Botao</Label>
+                                          <Input
+                                            value={plan.buttonText}
+                                            onChange={(e) => handleUpdateDownsellPixPlan(seq.id, plan.id, "buttonText", e.target.value)}
+                                            placeholder="Ex: Mensal"
+                                            className="bg-secondary/50 border-neutral-200 h-8 text-sm"
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-xs text-neutral-500">Preco (R$)</Label>
+                                          <Input
+                                            type="number"
+                                            value={plan.price}
+                                            onChange={(e) => handleUpdateDownsellPixPlan(seq.id, plan.id, "price", parseFloat(e.target.value) || 0)}
+                                            placeholder="0.00"
+                                            className="bg-secondary/50 border-neutral-200 h-8 text-sm"
+                                            min={0}
+                                            step={0.01}
+                                          />
+                                        </div>
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleRemoveDownsellPixPlan(seq.id, plan.id)}
+                                        disabled={(seq.plans?.length || 0) <= 1}
+                                      >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                  
+                                  {(seq.plans?.length || 0) < 5 && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleAddDownsellPixPlan(seq.id)}
+                                      className="w-full"
+                                    >
+                                      <Plus className="h-4 w-4 mr-2" />
+                                      Adicionar Plano
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Entrega */}
+                              <div className="space-y-2">
+                                <Label className="text-sm text-neutral-500">Entrega desta sequencia</Label>
+                                <Select
+                                  value={seq.deliveryType || "global"}
+                                  onValueChange={(value: "global" | "custom") => handleUpdateDownsellPixSequence(seq.id, "deliveryType", value)}
+                                >
+                                  <SelectTrigger className="bg-secondary/50 border-neutral-200">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="global">Usar entrega global</SelectItem>
+                                    <SelectItem value="custom">Entrega personalizada</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                
+                                {seq.deliveryType === "custom" && (
+                                  <div className="space-y-2">
+                                    <Label className="text-xs text-neutral-500">Selecione um entregavel</Label>
+                                    <Select
+                                      value={seq.deliverableId || ""}
+                                      onValueChange={(value) => handleUpdateDownsellPixSequence(seq.id, "deliverableId", value)}
+                                    >
+                                      <SelectTrigger className="bg-secondary/50 border-neutral-200">
+                                        <SelectValue placeholder="Selecione um entregavel" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {deliverables.map((d) => (
+                                          <SelectItem key={d.id} value={d.id}>
+                                            {d.name} ({d.type === "media" ? "Midia" : d.type === "link" ? "Link" : "Grupo VIP"})
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          )}
+                        </Card>
+                      ))}
+
+                      {/* Add Sequence Button */}
+                      {downsellPixSequences.length < 20 && (
+                        <Button onClick={handleAddDownsellPixSequence} className="w-full bg-orange-500 hover:bg-orange-600 text-white">
                           <Plus className="h-4 w-4 mr-2" />
                           Adicionar Sequencia
                         </Button>
