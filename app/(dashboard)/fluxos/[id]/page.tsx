@@ -165,6 +165,7 @@ interface UpsellSequence {
   sendDelayValue?: number
   sendDelayUnit?: "minutes" | "hours" | "days"
   plans: UpsellPlan[]
+  showPriceInButton?: boolean // Mostrar preco no botao (ex: "Mensal por R$ 20,00")
   deliveryType: "global" | "custom"
   deliverableId?: string // ID do entregavel selecionado (se custom)
   customDelivery?: string
@@ -202,6 +203,7 @@ interface DownsellSequence {
   plans: DownsellPlan[]
   useDefaultPlans: boolean // Se true, usa os planos do boas vindas com desconto
   discountPercent?: number // Desconto padrao para todos os planos
+  showPriceInButton?: boolean // Mostrar preco no botao (ex: "Mensal por R$ 20,00")
   deliveryType: "global" | "custom"
   deliverableId?: string // ID do entregavel selecionado (se custom)
   customDelivery?: string
@@ -226,6 +228,7 @@ interface DownsellPixSequence {
   plans: DownsellPlan[]
   useDefaultPlans: boolean // Se true, usa os planos do boas vindas com desconto
   discountPercent?: number // Desconto padrao para todos os planos
+  showPriceInButton?: boolean // Mostrar preco no botao (ex: "Mensal por R$ 20,00")
   deliveryType: "global" | "custom"
   deliverableId?: string
   customDelivery?: string
@@ -373,9 +376,10 @@ export default function FlowEditorPage() {
   const [redirectButtonText, setRedirectButtonText] = useState("")
   const [redirectButtonUrl, setRedirectButtonUrl] = useState("")
 
-  // Plans
-  const [plans, setPlans] = useState<FlowPlan[]>([])
-  const [expandedPlan, setExpandedPlan] = useState<string | null>(null)
+// Plans
+const [plans, setPlans] = useState<FlowPlan[]>([])
+const [showPriceInButton, setShowPriceInButton] = useState(false)
+const [expandedPlan, setExpandedPlan] = useState<string | null>(null)
 
   // Upsell
   const [upsellEnabled, setUpsellEnabled] = useState(false)
@@ -627,10 +631,11 @@ Clique no botao abaixo para renovar com desconto especial!`)
       setActiveTab("bots")
     }
 
-    // Parse config
-    const config = flowData.config || {}
-    setPlans(config.plans || [])
-  setUpsellEnabled(config.upsell?.enabled || false)
+// Parse config
+  const config = flowData.config || {}
+setPlans(config.plans || [])
+setShowPriceInButton(config.showPriceInButton || false)
+setUpsellEnabled(config.upsell?.enabled || false)
   setUpsellMessage(config.upsell?.message || "")
   setUpsellSequences(config.upsell?.sequences || [])
   setDownsellEnabled(config.downsell?.enabled || false)
@@ -1013,12 +1018,13 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
         enabled: secondaryMessageEnabled,
         message: secondaryMessage,
       },
-      plans,
-      upsell: {
-        enabled: upsellEnabled,
-        message: upsellMessage,
-        sequences: upsellSequences,
-      },
+plans,
+  showPriceInButton,
+  upsell: {
+  enabled: upsellEnabled,
+  message: upsellMessage,
+  sequences: upsellSequences,
+  },
   downsell: {
   enabled: downsellEnabled,
   message: downsellMessage,
@@ -2914,7 +2920,21 @@ duration_days: 30,
                     </div>
                   </div>
                 </div>
-                <div className="p-6">
+                <div className="p-6 space-y-4">
+                  {/* Opcao mostrar preco no botao */}
+                  {plans.length > 0 && (
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 border border-neutral-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-neutral-600">Mostrar preco no botao</span>
+                        <span className="text-xs text-neutral-400">(ex: &quot;Mensal por R$ 20,00&quot;)</span>
+                      </div>
+                      <Switch
+                        checked={showPriceInButton}
+                        onCheckedChange={(checked) => { setShowPriceInButton(checked); setHasChanges(true) }}
+                      />
+                    </div>
+                  )}
+                  
                   {plans.length === 0 ? (
                     <div className="text-center py-12">
                       <div className="h-16 w-16 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto mb-4">
@@ -3721,8 +3741,19 @@ duration_days: 30,
                                 Configure os planos que aparecerao como botoes para o cliente escolher.
                               </p>
                               
+                              {/* Switch mostrar preco no botao */}
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-violet-50 border border-violet-100">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-violet-600">Mostrar preco no botao</span>
+                                </div>
+                                <Switch
+                                  checked={seq.showPriceInButton || false}
+                                  onCheckedChange={(checked) => handleUpdateUpsellSequence(seq.id, "showPriceInButton", checked)}
+                                />
+                              </div>
+                              
                               <div className="space-y-2">
-                                {(seq.plans || []).map((plan, planIndex) => (
+                                {(seq.plans || []).map((plan) => (
                                   <div key={plan.id} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-3">
                                     <div className="flex-1 grid grid-cols-2 gap-3">
                                       <div className="space-y-1">
@@ -3733,6 +3764,9 @@ duration_days: 30,
                                           placeholder="Ex: Mensal"
                                           className="bg-secondary/50 border-neutral-200 h-8 text-sm"
                                         />
+                                        {seq.showPriceInButton && plan.price > 0 && (
+                                          <p className="text-xs text-violet-500">Preview: {plan.buttonText} por R$ {Number(plan.price).toFixed(2)}</p>
+                                        )}
                                       </div>
                                       <div className="space-y-1">
                                         <Label className="text-xs text-neutral-500">Valor (R$)</Label>
@@ -4159,6 +4193,17 @@ duration_days: 30,
                                       onCheckedChange={(checked) => handleUpdateDownsellSequence(seq.id, "useDefaultPlans", checked)}
                                     />
                                   </div>
+                                </div>
+                                
+                                {/* Switch mostrar preco no botao */}
+                                <div className="flex items-center justify-between p-2 rounded-lg bg-pink-50 border border-pink-100">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-pink-600">Mostrar preco no botao</span>
+                                  </div>
+                                  <Switch
+                                    checked={seq.showPriceInButton || false}
+                                    onCheckedChange={(checked) => handleUpdateDownsellSequence(seq.id, "showPriceInButton", checked)}
+                                  />
                                 </div>
                                 
                                 {seq.useDefaultPlans !== false ? (
@@ -4663,28 +4708,39 @@ duration_days: 30,
                                 </div>
                               </div>
 
-                              {/* Planos */}
-                              <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Crown className="h-4 w-4 text-amber-500" />
-                                    <h4 className="font-medium">Planos</h4>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Label className="text-xs text-neutral-500">Usar planos padrao</Label>
-                                    <Switch
-                                      checked={seq.useDefaultPlans !== false}
-                                      onCheckedChange={(checked) => handleUpdateDownsellPixSequence(seq.id, "useDefaultPlans", checked)}
-                                    />
-                                  </div>
-                                </div>
-                                
-                                {seq.useDefaultPlans !== false ? (
-                                  // Modo planos padrao - usa planos do boas vindas com desconto
-                                  <div className="space-y-3">
-                                    <p className="text-sm text-neutral-500">
-                                      Os planos do Boas Vindas serao exibidos com desconto automatico.
-                                    </p>
+{/* Planos */}
+  <div className="space-y-3">
+  <div className="flex items-center justify-between">
+  <div className="flex items-center gap-2">
+  <Crown className="h-4 w-4 text-amber-500" />
+  <h4 className="font-medium">Planos</h4>
+  </div>
+  <div className="flex items-center gap-2">
+  <Label className="text-xs text-neutral-500">Usar planos padrao</Label>
+  <Switch
+  checked={seq.useDefaultPlans !== false}
+  onCheckedChange={(checked) => handleUpdateDownsellPixSequence(seq.id, "useDefaultPlans", checked)}
+  />
+  </div>
+  </div>
+  
+  {/* Switch mostrar preco no botao */}
+  <div className="flex items-center justify-between p-2 rounded-lg bg-orange-50 border border-orange-100">
+  <div className="flex items-center gap-2">
+  <span className="text-xs text-orange-600">Mostrar preco no botao</span>
+  </div>
+  <Switch
+  checked={seq.showPriceInButton || false}
+  onCheckedChange={(checked) => handleUpdateDownsellPixSequence(seq.id, "showPriceInButton", checked)}
+  />
+  </div>
+  
+  {seq.useDefaultPlans !== false ? (
+  // Modo planos padrao - usa planos do boas vindas com desconto
+  <div className="space-y-3">
+  <p className="text-sm text-neutral-500">
+  Os planos do Boas Vindas serao exibidos com desconto automatico.
+  </p>
                                     
                                     {/* Campo de desconto */}
                                     <div className="flex items-center gap-3 p-3 rounded-lg bg-orange-50 border border-orange-200">
