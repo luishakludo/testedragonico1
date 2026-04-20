@@ -75,10 +75,10 @@ export function CreateBotWizard({
       // Criar o bot diretamente apos validar o token
       setIsSubmitting(true)
       await onCreateBot({
-        name: data.bot.first_name,
+        name: data.bot.name || data.bot.username || "Bot",
         token: token.trim(),
         username: data.bot.username,
-        telegram_bot_id: String(data.bot.id),
+        telegram_bot_id: String(data.bot.telegram_bot_id),
         photo_url: data.bot.photo_url,
       })
       onOpenChange(false)
