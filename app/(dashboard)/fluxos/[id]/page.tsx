@@ -121,8 +121,9 @@ interface PlanOrderBump {
   rejectText: string
   ctaMessage: string
   deliveryType: "same" | "custom"
+  deliverableId?: string // ID do entregavel especifico para este order bump
   medias: string[]
-}
+  }
 
 interface FlowPlan {
   id: string
