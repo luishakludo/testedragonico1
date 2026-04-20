@@ -4495,7 +4495,7 @@ duration_days: 30,
                               </div>
 
                               {/* Mensagem */}
-                              <div className="space-y-2">
+                              <div className="space-y-3">
                                 <Label className="text-sm text-neutral-500">Mensagem</Label>
                                 <Textarea
                                   value={seq.message}
@@ -4504,27 +4504,22 @@ duration_days: 30,
                                   placeholder="Digite a mensagem de downsell..."
                                   className="bg-secondary/50 border-neutral-200"
                                 />
-                                <Card className="border border-neutral-200 bg-muted/50">
-                                  <CardContent className="pt-4">
-                                    <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
-                                    <div className="flex flex-wrap gap-2">
-                                      {["{nome}"].map((v) => (
-                                        <button 
-                                          key={v} 
-                                          type="button"
-                                          onClick={() => {
-                                            const newMessage = seq.message + v
-                                            handleUpdateDownsellPixSequence(seq.id, "message", newMessage)
-                                          }}
-                                          className="px-3 py-1 rounded-full bg-background text-sm text-neutral-900 border border-neutral-200 hover:bg-orange-500/20 hover:border-orange-500 transition-colors cursor-pointer"
-                                        >
-                                          {v}
-                                        </button>
-                                      ))}
-                                    </div>
-                                    <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
-                                  </CardContent>
-                                </Card>
+                                <div className="flex items-center justify-end gap-2">
+                                  <span className="text-xs text-neutral-400">Variaveis:</span>
+                                  {["{nome}", "{username}"].map((v) => (
+                                    <button 
+                                      key={v} 
+                                      type="button"
+                                      onClick={() => {
+                                        const newMessage = seq.message + v
+                                        handleUpdateDownsellPixSequence(seq.id, "message", newMessage)
+                                      }}
+                                      className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-orange-500/20 hover:text-orange-600 transition-colors cursor-pointer"
+                                    >
+                                      {v}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
 
                               {/* Tempo de envio */}
@@ -5804,38 +5799,33 @@ duration_days: 30,
               <div className="space-y-4">
                 <h3 className="font-semibold">1. Mensagem do PIX Gerado</h3>
 
-                {/* Mensagem Personalizada */}
-                <div className="space-y-2">
-                  <Label className="text-neutral-500">Mensagem Personalizada</Label>
-                  <Textarea
-                    ref={pixGeneratedMessageRef}
-                    value={pixGeneratedMessage}
-                    onChange={(e) => { setPixGeneratedMessage(e.target.value); setHasChanges(true) }}
-                    rows={6}
-                    className="bg-white border border-neutral-200 font-mono text-sm"
-                  />
-                  <p className="text-xs text-neutral-500 text-right">{pixGeneratedMessage.length}/4000 caracteres</p>
-                </div>
-
-                {/* Variaveis */}
-                <Card className="border border-neutral-200 bg-white">
-                  <CardContent className="pt-4">
-                    <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {["{nome}"].map((v) => (
-                        <button 
-                          key={v} 
-                          type="button"
-                          onClick={() => insertVariable(v, pixGeneratedMessageRef, setPixGeneratedMessage, pixGeneratedMessage)}
-                          className="px-3 py-1 rounded-full bg-muted text-sm text-neutral-900 border border-neutral-200 hover:bg-[#BEFF00]/20 hover:border-[#BEFF00] transition-colors cursor-pointer"
-                        >
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
-                  </CardContent>
-                </Card>
+{/* Mensagem Personalizada */}
+  <div className="space-y-3">
+  <Label className="text-neutral-500">Mensagem Personalizada</Label>
+  <Textarea
+  ref={pixGeneratedMessageRef}
+  value={pixGeneratedMessage}
+  onChange={(e) => { setPixGeneratedMessage(e.target.value); setHasChanges(true) }}
+  rows={6}
+  className="bg-white border border-neutral-200 font-mono text-sm"
+  />
+  <div className="flex items-center justify-between">
+  <p className="text-xs text-neutral-500">{pixGeneratedMessage.length}/4000 caracteres</p>
+  <div className="flex items-center gap-2">
+  <span className="text-xs text-neutral-400">Variaveis:</span>
+  {["{nome}", "{username}"].map((v) => (
+  <button
+  key={v}
+  type="button"
+  onClick={() => insertVariable(v, pixGeneratedMessageRef, setPixGeneratedMessage, pixGeneratedMessage)}
+  className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#BEFF00]/20 hover:text-[#8fb300] transition-colors cursor-pointer"
+  >
+  {v}
+  </button>
+  ))}
+  </div>
+  </div>
+  </div>
               </div>
 
               {/* 2. Configuracoes do QR Code e Codigo PIX */}
@@ -6052,7 +6042,7 @@ duration_days: 30,
                   </div>
 
                   {/* Mensagem */}
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label className="text-neutral-500">Mensagem Personalizada</Label>
                     <Textarea
                       ref={approvedMessageRef}
@@ -6061,28 +6051,23 @@ duration_days: 30,
                       rows={5}
                       className="bg-white border border-neutral-200 font-mono text-sm"
                     />
-                    <p className="text-xs text-neutral-500 text-right">{approvedMessage.length}/4000 caracteres</p>
-                  </div>
-
-                  {/* Variaveis */}
-                  <Card className="border border-neutral-200 bg-muted/50">
-                    <CardContent className="pt-4">
-                      <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {["{nome}"].map((v) => (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-neutral-500">{approvedMessage.length}/4000 caracteres</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-400">Variaveis:</span>
+                        {["{nome}", "{username}"].map((v) => (
                           <button 
                             key={v} 
                             type="button"
                             onClick={() => insertVariable(v, approvedMessageRef, setApprovedMessage, approvedMessage)}
-                            className="px-3 py-1 rounded-full bg-background text-sm text-neutral-900 border border-neutral-200 hover:bg-[#BEFF00]/20 hover:border-[#BEFF00] transition-colors cursor-pointer"
+                            className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#BEFF00]/20 hover:text-[#8fb300] transition-colors cursor-pointer"
                           >
                             {v}
                           </button>
                         ))}
                       </div>
-                      <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
 
                   {/* Botao de Acesso ao Entregavel */}
                   <div className="border-t border-neutral-200 pt-4 space-y-4">
