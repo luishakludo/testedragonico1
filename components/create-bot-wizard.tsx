@@ -92,11 +92,9 @@ export function CreateBotWizard({
   }
 
   return (
-    <Dialog open={open} onOpenChange={isNewUser ? undefined : onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="bg-[#1c1c1e] border-[#2c2c2e] sm:max-w-md p-0 gap-0 overflow-hidden"
-        onInteractOutside={isNewUser ? (e) => e.preventDefault() : undefined}
-        onEscapeKeyDown={isNewUser ? (e) => e.preventDefault() : undefined}
       >
         <div className="p-6 flex flex-col gap-6">
           <div className="flex flex-col items-center gap-4 text-center">
