@@ -155,6 +155,8 @@ interface UpsellPlan {
   id: string
   buttonText: string
   price: number
+  duration_days?: number
+  duration_type?: "daily" | "weekly" | "monthly" | "yearly" | "lifetime"
 }
 
 interface UpsellSequence {
@@ -165,6 +167,7 @@ interface UpsellSequence {
   sendDelayValue?: number
   sendDelayUnit?: "minutes" | "hours" | "days"
   plans: UpsellPlan[]
+  showPriceInButton?: boolean // Mostrar preco no botao (ex: "Mensal por R$ 20,00")
   deliveryType: "global" | "custom"
   deliverableId?: string // ID do entregavel selecionado (se custom)
   customDelivery?: string
@@ -184,6 +187,12 @@ interface DownsellPlan {
   id: string
   buttonText: string
   price: number
+  // Campos completos para planos personalizados
+  duration_days?: number
+  duration_type?: "daily" | "weekly" | "monthly" | "yearly" | "lifetime"
+  // Referencia ao plano original (quando usando planos padrao)
+  originalPlanId?: string
+  discountPercent?: number
 }
 
 interface DownsellSequence {
@@ -194,6 +203,9 @@ interface DownsellSequence {
   sendDelayValue?: number
   sendDelayUnit?: "minutes" | "hours" | "days"
   plans: DownsellPlan[]
+  useDefaultPlans: boolean // Se true, usa os planos do boas vindas com desconto
+  discountPercent?: number // Desconto padrao para todos os planos
+  showPriceInButton?: boolean // Mostrar preco no botao (ex: "Mensal por R$ 20,00")
   deliveryType: "global" | "custom"
   deliverableId?: string // ID do entregavel selecionado (se custom)
   customDelivery?: string
@@ -216,6 +228,9 @@ interface DownsellPixSequence {
   sendDelayValue?: number
   sendDelayUnit?: "minutes" | "hours" | "days"
   plans: DownsellPlan[]
+  useDefaultPlans: boolean // Se true, usa os planos do boas vindas com desconto
+  discountPercent?: number // Desconto padrao para todos os planos
+  showPriceInButton?: boolean // Mostrar preco no botao (ex: "Mensal por R$ 20,00")
   deliveryType: "global" | "custom"
   deliverableId?: string
   customDelivery?: string
@@ -363,9 +378,10 @@ export default function FlowEditorPage() {
   const [redirectButtonText, setRedirectButtonText] = useState("")
   const [redirectButtonUrl, setRedirectButtonUrl] = useState("")
 
-  // Plans
-  const [plans, setPlans] = useState<FlowPlan[]>([])
-  const [expandedPlan, setExpandedPlan] = useState<string | null>(null)
+// Plans
+const [plans, setPlans] = useState<FlowPlan[]>([])
+const [showPriceInButton, setShowPriceInButton] = useState(false)
+const [expandedPlan, setExpandedPlan] = useState<string | null>(null)
 
   // Upsell
   const [upsellEnabled, setUpsellEnabled] = useState(false)
@@ -617,10 +633,11 @@ Clique no botao abaixo para renovar com desconto especial!`)
       setActiveTab("bots")
     }
 
-    // Parse config
-    const config = flowData.config || {}
-    setPlans(config.plans || [])
-  setUpsellEnabled(config.upsell?.enabled || false)
+// Parse config
+  const config = flowData.config || {}
+setPlans(config.plans || [])
+setShowPriceInButton(config.showPriceInButton || false)
+setUpsellEnabled(config.upsell?.enabled || false)
   setUpsellMessage(config.upsell?.message || "")
   setUpsellSequences(config.upsell?.sequences || [])
   setDownsellEnabled(config.downsell?.enabled || false)
@@ -1003,12 +1020,13 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
         enabled: secondaryMessageEnabled,
         message: secondaryMessage,
       },
-      plans,
-      upsell: {
-        enabled: upsellEnabled,
-        message: upsellMessage,
-        sequences: upsellSequences,
-      },
+plans,
+  showPriceInButton,
+  upsell: {
+  enabled: upsellEnabled,
+  message: upsellMessage,
+  sequences: upsellSequences,
+  },
   downsell: {
   enabled: downsellEnabled,
   message: downsellMessage,
@@ -1464,16 +1482,18 @@ duration_days: 30,
     setHasChanges(true)
   }
 
-  // Add plan to upsell sequence
-  const handleAddUpsellPlan = (seqId: string) => {
-    const seq = upsellSequences.find(s => s.id === seqId)
-    if (!seq || (seq.plans?.length || 0) >= 5) return
-    const newPlan: UpsellPlan = {
-      id: `plan-${Date.now()}`,
-      buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
-      price: 0
-    }
-    handleUpdateUpsellSequence(seqId, "plans", [...(seq.plans || []), newPlan])
+// Add plan to upsell sequence
+const handleAddUpsellPlan = (seqId: string) => {
+  const seq = upsellSequences.find(s => s.id === seqId)
+  if (!seq || (seq.plans?.length || 0) >= 5) return
+  const newPlan: UpsellPlan = {
+  id: `plan-${Date.now()}`,
+  buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
+  price: 0,
+  duration_days: 30,
+  duration_type: "daily"
+  }
+  handleUpdateUpsellSequence(seqId, "plans", [...(seq.plans || []), newPlan])
   }
 
   // Remove plan from upsell sequence
@@ -1589,7 +1609,9 @@ duration_days: 30,
   sendTiming: "custom",
   sendDelayValue: 1,
   sendDelayUnit: "minutes",
-  plans: [{ id: `plan-${Date.now()}`, buttonText: "Plano 1", price: 0 }],
+  plans: [],
+  useDefaultPlans: true,
+  discountPercent: 20,
   deliveryType: "global",
   }
   setDownsellSequences([...downsellSequences, newSequence])
@@ -1604,7 +1626,9 @@ duration_days: 30,
     const newPlan: DownsellPlan = {
       id: `plan-${Date.now()}`,
       buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
-      price: 0
+      price: 0,
+      duration_days: 30,
+      duration_type: "daily"
     }
     handleUpdateDownsellSequence(seqId, "plans", [...(seq.plans || []), newPlan])
   }
@@ -1710,34 +1734,38 @@ duration_days: 30,
 
   // ========== DOWNSELL PIX GERADO ==========
   
-  // Add downsell PIX sequence
+// Add downsell PIX sequence
   const handleAddDownsellPixSequence = () => {
-    if (downsellPixSequences.length >= 20) return
-    const newSequence: DownsellPixSequence = {
-      id: `dspix-seq-${Date.now()}`,
-      message: "",
-      medias: [],
-      sendTiming: "custom",
-      sendDelayValue: 5,
-      sendDelayUnit: "minutes",
-      plans: [{ id: `plan-${Date.now()}`, buttonText: "Plano 1", price: 0 }],
-      deliveryType: "global",
-    }
-    setDownsellPixSequences([...downsellPixSequences, newSequence])
-    setExpandedDownsellPixSequence(newSequence.id)
-    setHasChanges(true)
+  if (downsellPixSequences.length >= 20) return
+  const newSequence: DownsellPixSequence = {
+  id: `dspix-seq-${Date.now()}`,
+  message: "",
+  medias: [],
+  sendTiming: "custom",
+  sendDelayValue: 5,
+  sendDelayUnit: "minutes",
+  plans: [],
+  useDefaultPlans: true,
+  discountPercent: 20,
+  deliveryType: "global",
+  }
+  setDownsellPixSequences([...downsellPixSequences, newSequence])
+  setExpandedDownsellPixSequence(newSequence.id)
+  setHasChanges(true)
   }
 
-  // Add plan to downsell PIX sequence
+// Add plan to downsell PIX sequence
   const handleAddDownsellPixPlan = (seqId: string) => {
-    const seq = downsellPixSequences.find(s => s.id === seqId)
-    if (!seq || (seq.plans?.length || 0) >= 5) return
-    const newPlan: DownsellPlan = {
-      id: `plan-${Date.now()}`,
-      buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
-      price: 0
-    }
-    handleUpdateDownsellPixSequence(seqId, "plans", [...(seq.plans || []), newPlan])
+  const seq = downsellPixSequences.find(s => s.id === seqId)
+  if (!seq || (seq.plans?.length || 0) >= 5) return
+  const newPlan: DownsellPlan = {
+  id: `plan-${Date.now()}`,
+  buttonText: `Plano ${(seq.plans?.length || 0) + 1}`,
+  price: 0,
+  duration_days: 30,
+  duration_type: "daily"
+  }
+  handleUpdateDownsellPixSequence(seqId, "plans", [...(seq.plans || []), newPlan])
   }
 
   // Remove plan from downsell PIX sequence
@@ -2896,7 +2924,21 @@ duration_days: 30,
                     </div>
                   </div>
                 </div>
-                <div className="p-6">
+                <div className="p-6 space-y-4">
+                  {/* Opcao mostrar preco no botao */}
+                  {plans.length > 0 && (
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 border border-neutral-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-neutral-600">Mostrar preco no botao</span>
+                        <span className="text-xs text-neutral-400">(ex: &quot;Mensal por R$ 20,00&quot;)</span>
+                      </div>
+                      <Switch
+                        checked={showPriceInButton}
+                        onCheckedChange={(checked) => { setShowPriceInButton(checked); setHasChanges(true) }}
+                      />
+                    </div>
+                  )}
+                  
                   {plans.length === 0 ? (
                     <div className="text-center py-12">
                       <div className="h-16 w-16 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto mb-4">
@@ -3703,8 +3745,19 @@ duration_days: 30,
                                 Configure os planos que aparecerao como botoes para o cliente escolher.
                               </p>
                               
+                              {/* Switch mostrar preco no botao */}
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-violet-50 border border-violet-100">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-violet-600">Mostrar preco no botao</span>
+                                </div>
+                                <Switch
+                                  checked={seq.showPriceInButton || false}
+                                  onCheckedChange={(checked) => handleUpdateUpsellSequence(seq.id, "showPriceInButton", checked)}
+                                />
+                              </div>
+                              
                               <div className="space-y-2">
-                                {(seq.plans || []).map((plan, planIndex) => (
+                                {(seq.plans || []).map((plan) => (
                                   <div key={plan.id} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-3">
                                     <div className="flex-1 grid grid-cols-2 gap-3">
                                       <div className="space-y-1">
@@ -3715,6 +3768,9 @@ duration_days: 30,
                                           placeholder="Ex: Mensal"
                                           className="bg-secondary/50 border-neutral-200 h-8 text-sm"
                                         />
+                                        {seq.showPriceInButton && plan.price > 0 && (
+                                          <p className="text-xs text-violet-500">Preview: {plan.buttonText} por R$ {Number(plan.price).toFixed(2)}</p>
+                                        )}
                                       </div>
                                       <div className="space-y-1">
                                         <Label className="text-xs text-neutral-500">Valor (R$)</Label>
@@ -4134,68 +4190,172 @@ duration_days: 30,
                                     <Crown className="h-4 w-4 text-amber-500" />
                                     <h4 className="font-medium">Planos</h4>
                                   </div>
-                                  <span className="text-xs text-neutral-500">{(seq.plans?.length || 0)}/5</span>
+                                  <div className="flex items-center gap-2">
+                                    <Label className="text-xs text-neutral-500">Usar planos padrao</Label>
+                                    <Switch
+                                      checked={seq.useDefaultPlans !== false}
+                                      onCheckedChange={(checked) => handleUpdateDownsellSequence(seq.id, "useDefaultPlans", checked)}
+                                    />
+                                  </div>
                                 </div>
-                                <p className="text-sm text-neutral-500">
-                                  Configure os planos que aparecerao como botoes para o cliente escolher.
-                                </p>
                                 
-                                <div className="space-y-2">
-                                  {(seq.plans || []).map((plan, planIndex) => (
-                                    <div key={plan.id} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-3">
-                                      <div className="flex-1 grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                          <Label className="text-xs text-neutral-500">Texto do Botao</Label>
+                                {/* Switch mostrar preco no botao */}
+                                <div className="flex items-center justify-between p-2 rounded-lg bg-pink-50 border border-pink-100">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-pink-600">Mostrar preco no botao</span>
+                                  </div>
+                                  <Switch
+                                    checked={seq.showPriceInButton || false}
+                                    onCheckedChange={(checked) => handleUpdateDownsellSequence(seq.id, "showPriceInButton", checked)}
+                                  />
+                                </div>
+                                
+                                {seq.useDefaultPlans !== false ? (
+                                  // Modo planos padrao - usa planos do boas vindas com desconto
+                                  <div className="space-y-3">
+                                    <p className="text-sm text-neutral-500">
+                                      Os planos do Boas Vindas serao exibidos com desconto automatico.
+                                    </p>
+                                    
+                                    {/* Campo de desconto */}
+                                    <div className="flex items-center gap-3 p-3 rounded-lg bg-pink-50 border border-pink-200">
+                                      <div className="flex-1">
+                                        <Label className="text-xs text-pink-700">Desconto aplicado (%)</Label>
+                                        <div className="flex items-center gap-2 mt-1">
                                           <Input
-                                            value={plan.buttonText}
-                                            onChange={(e) => handleUpdateDownsellPlan(seq.id, plan.id, "buttonText", e.target.value)}
-                                            placeholder="Ex: Mensal"
-                                            className="bg-secondary/50 border-neutral-200 h-8 text-sm"
+                                            type="number"
+                                            value={seq.discountPercent || 20}
+                                            onChange={(e) => handleUpdateDownsellSequence(seq.id, "discountPercent", parseInt(e.target.value) || 0)}
+                                            className="w-24 bg-white border-pink-200 h-8 text-sm"
+                                            min={1}
+                                            max={99}
                                           />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-xs text-neutral-500">Valor (R$)</Label>
-<Input
-                                                  type="text"
-                                                  inputMode="decimal"
-                                                  value={plan.price || ""}
-                                                  onChange={(e) => {
-                                                    const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")
-                                                    handleUpdateDownsellPlan(seq.id, plan.id, "price", val === "" ? 0 : val)
-                                                  }}
-                                                  onBlur={() => {
-                                                    const num = parseFloat(String(plan.price).replace(",", ".")) || 0
-                                                    handleUpdateDownsellPlan(seq.id, plan.id, "price", num)
-                                                  }}
-                                                  placeholder="0.00"
-                                  className="bg-secondary/50 border-neutral-200 h-8 text-sm"
-                                />
+                                          <span className="text-sm text-pink-600 font-medium">%</span>
                                         </div>
                                       </div>
-                                      {(seq.plans?.length || 0) > 1 && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8 shrink-0"
-                                          onClick={() => handleRemoveDownsellPlan(seq.id, plan.id)}
-                                        >
-                                          <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                      )}
                                     </div>
-                                  ))}
-                                </div>
+                                    
+                                    {/* Preview dos planos com desconto */}
+                                    {plans.length > 0 ? (
+                                      <div className="space-y-2">
+                                        <Label className="text-xs text-neutral-500">Preview dos planos:</Label>
+                                        {plans.map((plan) => {
+                                          const originalPrice = Number(plan.price) || 0
+                                          const discount = seq.discountPercent || 20
+                                          const discountedPrice = originalPrice * (1 - discount / 100)
+                                          return (
+                                            <div key={plan.id} className="flex items-center justify-between p-2 rounded bg-secondary/30 text-sm">
+                                              <span>{plan.name || "Plano"}</span>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-neutral-400 line-through">R$ {originalPrice.toFixed(2)}</span>
+                                                <span className="text-pink-600 font-medium">R$ {discountedPrice.toFixed(2)}</span>
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                                        Nenhum plano configurado em Boas Vindas. Configure os planos primeiro.
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  // Modo planos personalizados
+                                  <div className="space-y-3">
+                                    <p className="text-sm text-neutral-500">
+                                      Configure planos personalizados para esta sequencia de downsell.
+                                    </p>
+                                    
+                                    <div className="space-y-2">
+                                      {(seq.plans || []).map((plan) => (
+                                        <div key={plan.id} className="rounded-lg bg-secondary/30 p-3 space-y-3">
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <Label className="text-xs text-neutral-500">Nome do Plano</Label>
+                                              <Input
+                                                value={plan.buttonText}
+                                                onChange={(e) => handleUpdateDownsellPlan(seq.id, plan.id, "buttonText", e.target.value)}
+                                                placeholder="Ex: Mensal"
+                                                className="bg-secondary/50 border-neutral-200 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-xs text-neutral-500">Valor (R$)</Label>
+                                              <Input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={plan.price || ""}
+                                                onChange={(e) => {
+                                                  const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")
+                                                  handleUpdateDownsellPlan(seq.id, plan.id, "price", val === "" ? 0 : val)
+                                                }}
+                                                onBlur={() => {
+                                                  const num = parseFloat(String(plan.price).replace(",", ".")) || 0
+                                                  handleUpdateDownsellPlan(seq.id, plan.id, "price", num)
+                                                }}
+                                                placeholder="0.00"
+                                                className="bg-secondary/50 border-neutral-200 h-8 text-sm"
+                                              />
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
+                                              <Select
+                                                value={String(plan.duration_days ?? 30)}
+                                                onValueChange={(value) => {
+                                                  const days = parseInt(value, 10)
+                                                  handleUpdateDownsellPlan(seq.id, plan.id, "duration_days", days)
+                                                  handleUpdateDownsellPlan(seq.id, plan.id, "duration_type", days === 0 ? "lifetime" : "daily")
+                                                }}
+                                              >
+                                                <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
+                                                  <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="1">1 dia</SelectItem>
+                                                  <SelectItem value="7">7 dias</SelectItem>
+                                                  <SelectItem value="15">15 dias</SelectItem>
+                                                  <SelectItem value="30">30 dias</SelectItem>
+                                                  <SelectItem value="60">60 dias</SelectItem>
+                                                  <SelectItem value="90">90 dias</SelectItem>
+                                                  <SelectItem value="180">180 dias</SelectItem>
+                                                  <SelectItem value="365">365 dias</SelectItem>
+                                                  <SelectItem value="0">Vitalicio</SelectItem>
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+                                            <div className="flex items-end">
+                                              {(seq.plans?.length || 0) > 1 && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="text-destructive hover:text-destructive"
+                                                  onClick={() => handleRemoveDownsellPlan(seq.id, plan.id)}
+                                                >
+                                                  <Trash2 className="h-4 w-4 mr-1" />
+                                                  Remover
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
 
-                                {(seq.plans?.length || 0) < 5 && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full border-dashed"
-                                    onClick={() => handleAddDownsellPlan(seq.id)}
-                                  >
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Adicionar Plano
-                                  </Button>
+                                    {(seq.plans?.length || 0) < 5 && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full border-dashed"
+                                        onClick={() => handleAddDownsellPlan(seq.id)}
+                                      >
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Adicionar Plano
+                                      </Button>
+                                    )}
+                                  </div>
                                 )}
                               </div>
 
@@ -4495,7 +4655,7 @@ duration_days: 30,
                               </div>
 
                               {/* Mensagem */}
-                              <div className="space-y-2">
+                              <div className="space-y-3">
                                 <Label className="text-sm text-neutral-500">Mensagem</Label>
                                 <Textarea
                                   value={seq.message}
@@ -4504,27 +4664,22 @@ duration_days: 30,
                                   placeholder="Digite a mensagem de downsell..."
                                   className="bg-secondary/50 border-neutral-200"
                                 />
-                                <Card className="border border-neutral-200 bg-muted/50">
-                                  <CardContent className="pt-4">
-                                    <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
-                                    <div className="flex flex-wrap gap-2">
-                                      {["{nome}"].map((v) => (
-                                        <button 
-                                          key={v} 
-                                          type="button"
-                                          onClick={() => {
-                                            const newMessage = seq.message + v
-                                            handleUpdateDownsellPixSequence(seq.id, "message", newMessage)
-                                          }}
-                                          className="px-3 py-1 rounded-full bg-background text-sm text-neutral-900 border border-neutral-200 hover:bg-orange-500/20 hover:border-orange-500 transition-colors cursor-pointer"
-                                        >
-                                          {v}
-                                        </button>
-                                      ))}
-                                    </div>
-                                    <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
-                                  </CardContent>
-                                </Card>
+                                <div className="flex items-center justify-end gap-2">
+                                  <span className="text-xs text-neutral-400">Variaveis:</span>
+                                  {["{nome}", "{username}"].map((v) => (
+                                    <button 
+                                      key={v} 
+                                      type="button"
+                                      onClick={() => {
+                                        const newMessage = seq.message + v
+                                        handleUpdateDownsellPixSequence(seq.id, "message", newMessage)
+                                      }}
+                                      className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-orange-500/20 hover:text-orange-600 transition-colors cursor-pointer"
+                                    >
+                                      {v}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
 
                               {/* Tempo de envio */}
@@ -4557,68 +4712,180 @@ duration_days: 30,
                                 </div>
                               </div>
 
-                              {/* Planos */}
-                              <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Crown className="h-4 w-4 text-amber-500" />
-                                    <h4 className="font-medium">Planos</h4>
-                                  </div>
-                                  <span className="text-xs text-neutral-500">{(seq.plans?.length || 0)}/5</span>
-                                </div>
-                                <p className="text-sm text-neutral-500">
-                                  Configure os planos que aparecerao como botoes para o cliente escolher.
-                                </p>
-                                
-                                <div className="space-y-2">
-                                  {(seq.plans || []).map((plan) => (
-                                    <div key={plan.id} className="flex items-center gap-2 rounded-lg bg-secondary/30 p-3">
-                                      <div className="flex-1 grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                          <Label className="text-xs text-neutral-500">Texto do Botao</Label>
-                                          <Input
-                                            value={plan.buttonText}
-                                            onChange={(e) => handleUpdateDownsellPixPlan(seq.id, plan.id, "buttonText", e.target.value)}
-                                            placeholder="Ex: Mensal"
-                                            className="bg-secondary/50 border-neutral-200 h-8 text-sm"
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <Label className="text-xs text-neutral-500">Preco (R$)</Label>
+{/* Planos */}
+  <div className="space-y-3">
+  <div className="flex items-center justify-between">
+  <div className="flex items-center gap-2">
+  <Crown className="h-4 w-4 text-amber-500" />
+  <h4 className="font-medium">Planos</h4>
+  </div>
+  <div className="flex items-center gap-2">
+  <Label className="text-xs text-neutral-500">Usar planos padrao</Label>
+  <Switch
+  checked={seq.useDefaultPlans !== false}
+  onCheckedChange={(checked) => handleUpdateDownsellPixSequence(seq.id, "useDefaultPlans", checked)}
+  />
+  </div>
+  </div>
+  
+  {/* Switch mostrar preco no botao */}
+  <div className="flex items-center justify-between p-2 rounded-lg bg-orange-50 border border-orange-100">
+  <div className="flex items-center gap-2">
+  <span className="text-xs text-orange-600">Mostrar preco no botao</span>
+  </div>
+  <Switch
+  checked={seq.showPriceInButton || false}
+  onCheckedChange={(checked) => handleUpdateDownsellPixSequence(seq.id, "showPriceInButton", checked)}
+  />
+  </div>
+  
+  {seq.useDefaultPlans !== false ? (
+  // Modo planos padrao - usa planos do boas vindas com desconto
+  <div className="space-y-3">
+  <p className="text-sm text-neutral-500">
+  Os planos do Boas Vindas serao exibidos com desconto automatico.
+  </p>
+                                    
+                                    {/* Campo de desconto */}
+                                    <div className="flex items-center gap-3 p-3 rounded-lg bg-orange-50 border border-orange-200">
+                                      <div className="flex-1">
+                                        <Label className="text-xs text-orange-700">Desconto aplicado (%)</Label>
+                                        <div className="flex items-center gap-2 mt-1">
                                           <Input
                                             type="number"
-                                            value={plan.price}
-                                            onChange={(e) => handleUpdateDownsellPixPlan(seq.id, plan.id, "price", parseFloat(e.target.value) || 0)}
-                                            placeholder="0.00"
-                                            className="bg-secondary/50 border-neutral-200 h-8 text-sm"
-                                            min={0}
-                                            step={0.01}
+                                            value={seq.discountPercent || 20}
+                                            onChange={(e) => handleUpdateDownsellPixSequence(seq.id, "discountPercent", parseInt(e.target.value) || 0)}
+                                            className="w-24 bg-white border-orange-200 h-8 text-sm"
+                                            min={1}
+                                            max={99}
                                           />
+                                          <span className="text-sm text-orange-600 font-medium">%</span>
                                         </div>
                                       </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => handleRemoveDownsellPixPlan(seq.id, plan.id)}
-                                        disabled={(seq.plans?.length || 0) <= 1}
-                                      >
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                      </Button>
                                     </div>
-                                  ))}
-                                  
-                                  {(seq.plans?.length || 0) < 5 && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => handleAddDownsellPixPlan(seq.id)}
-                                      className="w-full"
-                                    >
-                                      <Plus className="h-4 w-4 mr-2" />
-                                      Adicionar Plano
-                                    </Button>
-                                  )}
-                                </div>
+                                    
+                                    {/* Preview dos planos com desconto */}
+                                    {plans.length > 0 ? (
+                                      <div className="space-y-2">
+                                        <Label className="text-xs text-neutral-500">Preview dos planos:</Label>
+                                        {plans.map((plan) => {
+                                          const originalPrice = Number(plan.price) || 0
+                                          const discount = seq.discountPercent || 20
+                                          const discountedPrice = originalPrice * (1 - discount / 100)
+                                          return (
+                                            <div key={plan.id} className="flex items-center justify-between p-2 rounded bg-secondary/30 text-sm">
+                                              <span>{plan.name || "Plano"}</span>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-neutral-400 line-through">R$ {originalPrice.toFixed(2)}</span>
+                                                <span className="text-orange-600 font-medium">R$ {discountedPrice.toFixed(2)}</span>
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                                        Nenhum plano configurado em Boas Vindas. Configure os planos primeiro.
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  // Modo planos personalizados
+                                  <div className="space-y-3">
+                                    <p className="text-sm text-neutral-500">
+                                      Configure planos personalizados para esta sequencia de downsell.
+                                    </p>
+                                    
+                                    <div className="space-y-2">
+                                      {(seq.plans || []).map((plan) => (
+                                        <div key={plan.id} className="rounded-lg bg-secondary/30 p-3 space-y-3">
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <Label className="text-xs text-neutral-500">Nome do Plano</Label>
+                                              <Input
+                                                value={plan.buttonText}
+                                                onChange={(e) => handleUpdateDownsellPixPlan(seq.id, plan.id, "buttonText", e.target.value)}
+                                                placeholder="Ex: Mensal"
+                                                className="bg-secondary/50 border-neutral-200 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-xs text-neutral-500">Valor (R$)</Label>
+                                              <Input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={plan.price || ""}
+                                                onChange={(e) => {
+                                                  const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")
+                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "price", val === "" ? 0 : val)
+                                                }}
+                                                onBlur={() => {
+                                                  const num = parseFloat(String(plan.price).replace(",", ".")) || 0
+                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "price", num)
+                                                }}
+                                                placeholder="0.00"
+                                                className="bg-secondary/50 border-neutral-200 h-8 text-sm"
+                                              />
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
+                                              <Select
+                                                value={String(plan.duration_days ?? 30)}
+                                                onValueChange={(value) => {
+                                                  const days = parseInt(value, 10)
+                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_days", days)
+                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_type", days === 0 ? "lifetime" : "daily")
+                                                }}
+                                              >
+                                                <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
+                                                  <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="1">1 dia</SelectItem>
+                                                  <SelectItem value="7">7 dias</SelectItem>
+                                                  <SelectItem value="15">15 dias</SelectItem>
+                                                  <SelectItem value="30">30 dias</SelectItem>
+                                                  <SelectItem value="60">60 dias</SelectItem>
+                                                  <SelectItem value="90">90 dias</SelectItem>
+                                                  <SelectItem value="180">180 dias</SelectItem>
+                                                  <SelectItem value="365">365 dias</SelectItem>
+                                                  <SelectItem value="0">Vitalicio</SelectItem>
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+                                            <div className="flex items-end">
+                                              {(seq.plans?.length || 0) > 1 && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="text-destructive hover:text-destructive"
+                                                  onClick={() => handleRemoveDownsellPixPlan(seq.id, plan.id)}
+                                                >
+                                                  <Trash2 className="h-4 w-4 mr-1" />
+                                                  Remover
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {(seq.plans?.length || 0) < 5 && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full border-dashed"
+                                        onClick={() => handleAddDownsellPixPlan(seq.id)}
+                                      >
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Adicionar Plano
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
                               {/* Entrega */}
@@ -5680,9 +5947,9 @@ duration_days: 30,
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2 text-sm">
                                     <ImageIcon className="h-4 w-4 text-neutral-500" />
-                                    <span>Midias de Preview (ate 10 - exibidas antes da compra)</span>
+                                    <span>Midias de Preview (ate 3 - exibidas antes da compra)</span>
                                   </div>
-                                  <span className="text-xs text-neutral-500">{(pack.previewMedias?.length || 0)}/10</span>
+                                  <span className="text-xs text-neutral-500">{(pack.previewMedias?.length || 0)}/3</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   {/* Midias existentes */}
@@ -5704,7 +5971,7 @@ duration_days: 30,
                                   ))}
                                   
                                   {/* Botao de adicionar */}
-                                  {(pack.previewMedias?.length || 0) < 10 && (
+                                  {(pack.previewMedias?.length || 0) < 3 && (
                                     <label className="w-24 h-20 border-2 border-dashed border-neutral-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/50 transition-colors">
                                       {uploadingPackMedia === pack.id ? (
                                         <div className="animate-spin h-5 w-5 border-2 border-emerald-500 border-t-transparent rounded-full" />
@@ -5731,34 +5998,7 @@ duration_days: 30,
                               </CardContent>
                             </Card>
 
-                            {/* Entrega do Pack */}
-                            <Card className="border-neutral-200 bg-secondary/10">
-                              <CardContent className="pt-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Package className="h-4 w-4 text-emerald-500" />
-                                    <span className="font-medium">Entrega do Pack</span>
-                                  </div>
-                                  <Button variant="ghost" size="sm" className="text-neutral-500">
-                                    <RefreshCw className="h-3 w-3 mr-1" />
-                                    Atualizar
-                                  </Button>
-                                </div>
-                                <Select
-                                  value={pack.deliveryDestination}
-                                  onValueChange={(value) => handleUpdatePack(pack.id, "deliveryDestination", value)}
-                                >
-                                  <SelectTrigger className="bg-white border-neutral-200">
-                                    <SelectValue placeholder="Selecione o destino" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="channel1">Canal VIP</SelectItem>
-                                    <SelectItem value="channel2">Grupo Premium</SelectItem>
-                                    <SelectItem value="link">Link Externo</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </CardContent>
-                            </Card>
+                            
                           </CardContent>
                         )}
                       </Card>
@@ -5804,38 +6044,33 @@ duration_days: 30,
               <div className="space-y-4">
                 <h3 className="font-semibold">1. Mensagem do PIX Gerado</h3>
 
-                {/* Mensagem Personalizada */}
-                <div className="space-y-2">
-                  <Label className="text-neutral-500">Mensagem Personalizada</Label>
-                  <Textarea
-                    ref={pixGeneratedMessageRef}
-                    value={pixGeneratedMessage}
-                    onChange={(e) => { setPixGeneratedMessage(e.target.value); setHasChanges(true) }}
-                    rows={6}
-                    className="bg-white border border-neutral-200 font-mono text-sm"
-                  />
-                  <p className="text-xs text-neutral-500 text-right">{pixGeneratedMessage.length}/4000 caracteres</p>
-                </div>
-
-                {/* Variaveis */}
-                <Card className="border border-neutral-200 bg-white">
-                  <CardContent className="pt-4">
-                    <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {["{nome}"].map((v) => (
-                        <button 
-                          key={v} 
-                          type="button"
-                          onClick={() => insertVariable(v, pixGeneratedMessageRef, setPixGeneratedMessage, pixGeneratedMessage)}
-                          className="px-3 py-1 rounded-full bg-muted text-sm text-neutral-900 border border-neutral-200 hover:bg-[#BEFF00]/20 hover:border-[#BEFF00] transition-colors cursor-pointer"
-                        >
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
-                  </CardContent>
-                </Card>
+{/* Mensagem Personalizada */}
+  <div className="space-y-3">
+  <Label className="text-neutral-500">Mensagem Personalizada</Label>
+  <Textarea
+  ref={pixGeneratedMessageRef}
+  value={pixGeneratedMessage}
+  onChange={(e) => { setPixGeneratedMessage(e.target.value); setHasChanges(true) }}
+  rows={6}
+  className="bg-white border border-neutral-200 font-mono text-sm"
+  />
+  <div className="flex items-center justify-between">
+  <p className="text-xs text-neutral-500">{pixGeneratedMessage.length}/4000 caracteres</p>
+  <div className="flex items-center gap-2">
+  <span className="text-xs text-neutral-400">Variaveis:</span>
+  {["{nome}", "{username}"].map((v) => (
+  <button
+  key={v}
+  type="button"
+  onClick={() => insertVariable(v, pixGeneratedMessageRef, setPixGeneratedMessage, pixGeneratedMessage)}
+  className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#BEFF00]/20 hover:text-[#8fb300] transition-colors cursor-pointer"
+  >
+  {v}
+  </button>
+  ))}
+  </div>
+  </div>
+  </div>
               </div>
 
               {/* 2. Configuracoes do QR Code e Codigo PIX */}
@@ -6052,7 +6287,7 @@ duration_days: 30,
                   </div>
 
                   {/* Mensagem */}
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label className="text-neutral-500">Mensagem Personalizada</Label>
                     <Textarea
                       ref={approvedMessageRef}
@@ -6061,28 +6296,23 @@ duration_days: 30,
                       rows={5}
                       className="bg-white border border-neutral-200 font-mono text-sm"
                     />
-                    <p className="text-xs text-neutral-500 text-right">{approvedMessage.length}/4000 caracteres</p>
-                  </div>
-
-                  {/* Variaveis */}
-                  <Card className="border border-neutral-200 bg-muted/50">
-                    <CardContent className="pt-4">
-                      <p className="text-sm font-medium mb-3">Variaveis disponiveis:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {["{nome}"].map((v) => (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-neutral-500">{approvedMessage.length}/4000 caracteres</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-400">Variaveis:</span>
+                        {["{nome}", "{username}"].map((v) => (
                           <button 
                             key={v} 
                             type="button"
                             onClick={() => insertVariable(v, approvedMessageRef, setApprovedMessage, approvedMessage)}
-                            className="px-3 py-1 rounded-full bg-background text-sm text-neutral-900 border border-neutral-200 hover:bg-[#BEFF00]/20 hover:border-[#BEFF00] transition-colors cursor-pointer"
+                            className="px-2 py-1 rounded bg-neutral-100 text-xs font-mono text-neutral-600 hover:bg-[#BEFF00]/20 hover:text-[#8fb300] transition-colors cursor-pointer"
                           >
                             {v}
                           </button>
                         ))}
                       </div>
-                      <p className="text-xs text-neutral-500 mt-2">Clique para inserir na mensagem</p>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
 
                   {/* Botao de Acesso ao Entregavel */}
                   <div className="border-t border-neutral-200 pt-4 space-y-4">
