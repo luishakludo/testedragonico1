@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabase } from "@/lib/supabase"
+import { 
+  sendTelegramMessageSafe, 
+  sendTelegramPhotoSafe, 
+  sendTelegramVideoSafe 
+} from "@/lib/telegram-utils"
 
 // ---------------------------------------------------------------------------
 // Telegram helpers (same as webhook)
@@ -54,20 +59,17 @@ function buildInlineKeyboard(buttons: InlineButton[], botUsername?: string) {
 }
 
 async function sendTelegramMessage(botToken: string, chatId: number, text: string, replyMarkup?: object) {
-  const url = `https://api.telegram.org/bot${botToken}/sendMessage`
-  const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: "HTML" }
-  if (replyMarkup) body.reply_markup = replyMarkup
   console.log("[sendTelegramMessage] Sending to chat_id:", chatId, "text:", text.substring(0, 50))
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-  const result = await res.json()
+  const result = await sendTelegramMessageSafe(botToken, chatId, text, replyMarkup)
   console.log("[sendTelegramMessage] Response:", JSON.stringify(result))
-  return result
+  return { ok: result.ok, description: result.error, result: { message_id: result.messageId } }
 }
 
 async function sendTelegramPhoto(botToken: string, chatId: number, photoUrl: string, caption: string, replyMarkup?: object) {
-  const url = `https://api.telegram.org/bot${botToken}/sendPhoto`
   console.log("[sendTelegramPhoto] Sending to chat_id:", chatId, "caption:", caption?.substring(0, 50), "photoUrl:", photoUrl?.substring(0, 50))
+  // Base64 handling (still need special handling for FormData)
   if (photoUrl.startsWith("data:")) {
+    const url = `https://api.telegram.org/bot${botToken}/sendPhoto`
     const formData = new FormData()
     formData.append("chat_id", String(chatId))
     if (caption) formData.append("caption", caption)
@@ -85,17 +87,15 @@ async function sendTelegramPhoto(botToken: string, chatId: number, photoUrl: str
     console.log("[sendTelegramPhoto] Base64 Response:", JSON.stringify(result))
     return result
   }
-  const body: Record<string, unknown> = { chat_id: chatId, photo: photoUrl, caption, parse_mode: "HTML" }
-  if (replyMarkup) body.reply_markup = replyMarkup
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-  const result = await res.json()
+  const result = await sendTelegramPhotoSafe(botToken, chatId, photoUrl, caption, replyMarkup)
   console.log("[sendTelegramPhoto] URL Response:", JSON.stringify(result))
-  return result
+  return { ok: result.ok, description: result.error, result: { message_id: result.messageId } }
 }
 
 async function sendTelegramVideo(botToken: string, chatId: number, videoUrl: string, caption: string, replyMarkup?: object) {
-  const url = `https://api.telegram.org/bot${botToken}/sendVideo`
+  // Base64 handling (still need special handling for FormData)
   if (videoUrl.startsWith("data:")) {
+    const url = `https://api.telegram.org/bot${botToken}/sendVideo`
     const formData = new FormData()
     formData.append("chat_id", String(chatId))
     if (caption) formData.append("caption", caption)
@@ -111,10 +111,8 @@ async function sendTelegramVideo(botToken: string, chatId: number, videoUrl: str
     const res = await fetch(url, { method: "POST", body: formData })
     return res.json()
   }
-  const body: Record<string, unknown> = { chat_id: chatId, video: videoUrl, caption, parse_mode: "HTML" }
-  if (replyMarkup) body.reply_markup = replyMarkup
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-  return res.json()
+  const result = await sendTelegramVideoSafe(botToken, chatId, videoUrl, caption, replyMarkup)
+  return { ok: result.ok, description: result.error, result: { message_id: result.messageId } }
 }
 
 // ---------------------------------------------------------------------------

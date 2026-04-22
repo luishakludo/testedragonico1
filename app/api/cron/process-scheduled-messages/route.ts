@@ -1,27 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/supabase"
+import { 
+  sendTelegramMessageSafe, 
+  sendTelegramPhotoSafe, 
+  sendTelegramVideoSafe, 
+  sendTelegramMediaGroupSafe 
+} from "@/lib/telegram-utils"
 
-// Funcoes de envio do Telegram (copiadas do webhook)
+// Wrappers para manter compatibilidade com o codigo existente
 async function sendTelegramMessage(
   botToken: string,
   chatId: number | string,
   text: string,
   replyMarkup?: unknown
 ) {
-  const url = `https://api.telegram.org/bot${botToken}/sendMessage`
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-  }
-  if (replyMarkup) body.reply_markup = replyMarkup
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  return res.json()
+  const result = await sendTelegramMessageSafe(botToken, chatId, text, replyMarkup as object)
+  return { ok: result.ok, description: result.error, result: { message_id: result.messageId } }
 }
 
 async function sendTelegramPhoto(
@@ -31,21 +25,8 @@ async function sendTelegramPhoto(
   caption?: string,
   replyMarkup?: unknown
 ) {
-  const url = `https://api.telegram.org/bot${botToken}/sendPhoto`
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    photo: photoUrl,
-    parse_mode: "HTML",
-  }
-  if (caption) body.caption = caption
-  if (replyMarkup) body.reply_markup = replyMarkup
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  return res.json()
+  const result = await sendTelegramPhotoSafe(botToken, chatId, photoUrl, caption, replyMarkup as object)
+  return { ok: result.ok, description: result.error, result: { message_id: result.messageId } }
 }
 
 async function sendTelegramVideo(
@@ -55,21 +36,8 @@ async function sendTelegramVideo(
   caption?: string,
   replyMarkup?: unknown
 ) {
-  const url = `https://api.telegram.org/bot${botToken}/sendVideo`
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    video: videoUrl,
-    parse_mode: "HTML",
-  }
-  if (caption) body.caption = caption
-  if (replyMarkup) body.reply_markup = replyMarkup
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  return res.json()
+  const result = await sendTelegramVideoSafe(botToken, chatId, videoUrl, caption, replyMarkup as object)
+  return { ok: result.ok, description: result.error, result: { message_id: result.messageId } }
 }
 
 async function sendTelegramMediaGroup(
@@ -78,33 +46,9 @@ async function sendTelegramMediaGroup(
   medias: string[],
   caption?: string
 ) {
-  const url = `https://api.telegram.org/bot${botToken}/sendMediaGroup`
-  
-  // Montar array de InputMedia - caption apenas na primeira midia
-  const mediaArray = medias.map((mediaUrl, index) => {
-    const isVideo = mediaUrl.includes("video") || mediaUrl.includes("mp4") || mediaUrl.includes(".mp4")
-    return {
-      type: isVideo ? "video" : "photo",
-      media: mediaUrl,
-      // Caption e parse_mode apenas na primeira midia
-      ...(index === 0 && caption ? { caption, parse_mode: "HTML" } : {})
-    }
-  })
-  
-  const body = {
-    chat_id: chatId,
-    media: mediaArray,
-  }
-  
   console.log(`[CRON] Enviando sendMediaGroup com ${medias.length} midias`)
-  console.log(`[CRON] Media array:`, JSON.stringify(mediaArray))
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  return res.json()
+  const result = await sendTelegramMediaGroupSafe(botToken, chatId, medias, caption)
+  return { ok: result.ok, description: result.error }
 }
 
 export async function GET(request: NextRequest) {
