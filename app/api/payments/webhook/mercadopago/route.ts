@@ -68,6 +68,54 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Envia grupo de midias (fotos/videos) via Telegram
+async function sendMediaGroup(
+  botToken: string,
+  chatId: number,
+  mediaUrls: string[],
+  caption: string
+) {
+  if (!mediaUrls || mediaUrls.length === 0) return null
+  
+  // Se for apenas 1 midia, envia individualmente
+  if (mediaUrls.length === 1) {
+    const url = mediaUrls[0]
+    const isVideo = url.includes("/videos/") || url.match(/\.(mp4|webm|mov)($|\?)/i)
+    if (isVideo) {
+      return sendTelegramVideo(botToken, chatId, url, caption)
+    } else {
+      return sendTelegramPhoto(botToken, chatId, url, caption)
+    }
+  }
+  
+  // Preparar array de midias para sendMediaGroup
+  const media = mediaUrls.map((url, index) => {
+    const isVideo = url.includes("/videos/") || url.match(/\.(mp4|webm|mov)($|\?)/i)
+    return {
+      type: isVideo ? "video" : "photo",
+      media: url,
+      // Apenas a primeira midia pode ter caption
+      ...(index === 0 && caption ? { caption, parse_mode: "HTML" } : {})
+    }
+  })
+  
+  const apiUrl = `https://api.telegram.org/bot${botToken}/sendMediaGroup`
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      media
+    }),
+  })
+  
+  const data = await res.json()
+  if (!data.ok) {
+    console.error("[v0] sendMediaGroup error:", data)
+  }
+  return data
+}
+
 // Criar link de convite unico para grupo VIP (limite de 1 uso)
 async function createVipInviteLink(botToken: string, chatId: string): Promise<string | null> {
   console.log(`[v0] VIP: ========== createVipInviteLink INICIO ==========`)

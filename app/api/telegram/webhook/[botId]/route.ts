@@ -399,10 +399,24 @@ async function sendMediaGroup(
   mediaUrls: string[],
   caption?: string,
 ) {
+  if (!mediaUrls || mediaUrls.length === 0) return null
+  
+  // Se for apenas 1 midia, envia individualmente
+  if (mediaUrls.length === 1) {
+    const url = mediaUrls[0]
+    const isVideo = url.includes("/videos/") || url.match(/\.(mp4|webm|mov)($|\?)/i)
+    if (isVideo) {
+      return sendTelegramVideo(botToken, chatId, url, caption)
+    } else {
+      return sendTelegramPhoto(botToken, chatId, url, caption)
+    }
+  }
+  
   const url = `https://api.telegram.org/bot${botToken}/sendMediaGroup`
   
   const media = mediaUrls.map((mediaUrl, index) => {
-    const isVideo = mediaUrl.includes(".mp4") || mediaUrl.includes("video")
+    // Melhor deteccao de video (incluindo Supabase Storage paths)
+    const isVideo = mediaUrl.includes("/videos/") || mediaUrl.match(/\.(mp4|webm|mov)($|\?)/i)
     const item: Record<string, unknown> = {
       type: isVideo ? "video" : "photo",
       media: mediaUrl,
@@ -415,11 +429,17 @@ async function sendMediaGroup(
     return item
   })
   
-  await fetch(url, {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, media }),
   })
+  
+  const data = await res.json()
+  if (!data.ok) {
+    console.error("[v0] sendMediaGroup error:", data)
+  }
+  return data
 }
 
 // Helper: Enviar Order Bump (mídias em grupo + mensagem com botões)

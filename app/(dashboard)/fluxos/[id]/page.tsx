@@ -775,7 +775,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     }
   }, [flowId])
 
-  // Fetch available bots (bots that are not already linked to THIS flow)
+  // Fetch available bots (bots that are not linked to ANY flow)
   const fetchAvailableBots = useCallback(async () => {
     if (!session?.userId) return
 
@@ -793,13 +793,29 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
       return
     }
     
-    // Get bots linked to THIS flow only
-    const linkedBotIds = flowBots.map(fb => fb.bot_id)
+    // Get ALL bots linked to ANY flow (from flow_bots table)
+    const { data: allLinkedBots } = await supabase
+      .from("flow_bots")
+      .select("bot_id")
     
-    // Filter: exclude only bots already in THIS flow (allow bots to be in multiple flows)
+    const linkedBotIds = new Set((allLinkedBots || []).map(fb => fb.bot_id))
+    
+    // Also check bots linked via bot_id column in flows table
+    const { data: flowsWithBots } = await supabase
+      .from("flows")
+      .select("bot_id")
+      .not("bot_id", "is", null)
+    
+    if (flowsWithBots) {
+      flowsWithBots.forEach(f => {
+        if (f.bot_id) linkedBotIds.add(f.bot_id)
+      })
+    }
+    
+    // Filter: exclude bots already linked to ANY flow
     // Map to AvailableBot format
     const available = userBotsData
-      .filter(b => !linkedBotIds.includes(b.id))
+      .filter(b => !linkedBotIds.has(b.id))
       .map(b => ({
         id: b.id,
         username: b.name,
@@ -809,7 +825,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     
     setAvailableBots(available)
     setIsLoadingBots(false)
-  }, [session?.userId, flowBots])
+  }, [session?.userId])
 
   useEffect(() => {
     if (!isAuthLoading && session?.userId) {
@@ -7153,7 +7169,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                 <p className="text-sm text-gray-400 mb-4">
                   {userBots.length === 0
                     ? "Voce ainda nao tem bots cadastrados"
-                    : "Todos os seus bots ja estao neste fluxo"}
+                    : "Todos os seus bots ja estao vinculados a outros fluxos. Cada bot so pode estar em um fluxo por vez."}
                 </p>
                 <button
                   onClick={() => {
@@ -7341,27 +7357,49 @@ const handleAddUpsellPlan = (seqId: string) => {
                       <span className="text-[10px] text-neutral-500">{(tempDeliverable.medias || []).length}/20</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {(tempDeliverable.medias || []).map((media, mediaIndex) => (
-                        <div key={mediaIndex} className="relative group">
-                          <img
-                            src={media}
-                            alt={`Media ${mediaIndex + 1}`}
-                            className="h-12 w-12 rounded-lg object-cover border border-neutral-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTempDeliverable({
-                                ...tempDeliverable,
-                                medias: (tempDeliverable.medias || []).filter((_, i) => i !== mediaIndex)
-                              })
-                            }}
-                            className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                          >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </div>
-                      ))}
+                      {(tempDeliverable.medias || []).map((media, mediaIndex) => {
+                        const isBlob = media.startsWith("blob:")
+                        const isVideo = media.includes("/videos/") || media.match(/\.(mp4|webm|mov)($|\?)/i)
+                        return (
+                          <div key={mediaIndex} className="relative group">
+                            {isBlob ? (
+                              <div className="h-12 w-12 rounded-lg border border-neutral-200 flex items-center justify-center bg-neutral-100">
+                                <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
+                              </div>
+                            ) : isVideo ? (
+                              <video
+                                src={media}
+                                className="h-12 w-12 rounded-lg object-cover border border-neutral-200"
+                                muted
+                              />
+                            ) : (
+                              <img
+                                src={media}
+                                alt={`Media ${mediaIndex + 1}`}
+                                className="h-12 w-12 rounded-lg object-cover border border-neutral-200"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.style.display = "none"
+                                }}
+                              />
+                            )}
+                            {!isBlob && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTempDeliverable({
+                                    ...tempDeliverable,
+                                    medias: (tempDeliverable.medias || []).filter((_, i) => i !== mediaIndex)
+                                  })
+                                }}
+                                className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
                       {(tempDeliverable.medias || []).length < 20 && (
                         <label className="h-12 w-12 rounded-lg border-2 border-dashed border-neutral-200 flex items-center justify-center cursor-pointer hover:border-[#BEFF00]/50 hover:bg-[#BEFF00]/5 transition-colors relative">
                           <Plus className="h-4 w-4 text-neutral-500" />

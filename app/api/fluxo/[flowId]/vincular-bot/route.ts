@@ -180,6 +180,40 @@ export async function POST(
       }, { status: 403 })
     }
     
+    // Verificar se o bot ja esta vinculado a outro fluxo
+    const { data: existingFlowBot } = await supabase
+      .from("flow_bots")
+      .select("flow_id, flows:flow_id(name)")
+      .eq("bot_id", bot_id)
+      .single()
+    
+    if (existingFlowBot && existingFlowBot.flow_id !== flowId) {
+      const flowName = (existingFlowBot as any).flows?.name || "outro fluxo"
+      return NextResponse.json({ 
+        error: "Bot ja vinculado",
+        message: `Este bot ja esta vinculado ao fluxo "${flowName}". Um bot so pode estar vinculado a um fluxo por vez.`,
+        current_flow_id: existingFlowBot.flow_id,
+        current_flow_name: flowName
+      }, { status: 409 })
+    }
+    
+    // Verificar tambem pelo campo bot_id na tabela flows
+    const { data: existingFlow } = await supabase
+      .from("flows")
+      .select("id, name")
+      .eq("bot_id", bot_id)
+      .neq("id", flowId)
+      .single()
+    
+    if (existingFlow) {
+      return NextResponse.json({ 
+        error: "Bot ja vinculado",
+        message: `Este bot ja esta vinculado ao fluxo "${existingFlow.name}". Um bot so pode estar vinculado a um fluxo por vez.`,
+        current_flow_id: existingFlow.id,
+        current_flow_name: existingFlow.name
+      }, { status: 409 })
+    }
+    
     // Validar bot no Telegram
     let botUsername = null
     try {
