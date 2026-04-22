@@ -775,7 +775,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     }
   }, [flowId])
 
-  // Fetch available bots (bots that are not already linked to THIS flow)
+  // Fetch available bots (bots that are not linked to ANY flow)
   const fetchAvailableBots = useCallback(async () => {
     if (!session?.userId) return
 
@@ -793,13 +793,29 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
       return
     }
     
-    // Get bots linked to THIS flow only
-    const linkedBotIds = flowBots.map(fb => fb.bot_id)
+    // Get ALL bots linked to ANY flow (from flow_bots table)
+    const { data: allLinkedBots } = await supabase
+      .from("flow_bots")
+      .select("bot_id")
     
-    // Filter: exclude only bots already in THIS flow (allow bots to be in multiple flows)
+    const linkedBotIds = new Set((allLinkedBots || []).map(fb => fb.bot_id))
+    
+    // Also check bots linked via bot_id column in flows table
+    const { data: flowsWithBots } = await supabase
+      .from("flows")
+      .select("bot_id")
+      .not("bot_id", "is", null)
+    
+    if (flowsWithBots) {
+      flowsWithBots.forEach(f => {
+        if (f.bot_id) linkedBotIds.add(f.bot_id)
+      })
+    }
+    
+    // Filter: exclude bots already linked to ANY flow
     // Map to AvailableBot format
     const available = userBotsData
-      .filter(b => !linkedBotIds.includes(b.id))
+      .filter(b => !linkedBotIds.has(b.id))
       .map(b => ({
         id: b.id,
         username: b.name,
@@ -809,7 +825,7 @@ setRedirectButtonEnabled(config.redirectButton?.enabled || false)
     
     setAvailableBots(available)
     setIsLoadingBots(false)
-  }, [session?.userId, flowBots])
+  }, [session?.userId])
 
   useEffect(() => {
     if (!isAuthLoading && session?.userId) {
@@ -7153,7 +7169,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                 <p className="text-sm text-gray-400 mb-4">
                   {userBots.length === 0
                     ? "Voce ainda nao tem bots cadastrados"
-                    : "Todos os seus bots ja estao neste fluxo"}
+                    : "Todos os seus bots ja estao vinculados a outros fluxos. Cada bot so pode estar em um fluxo por vez."}
                 </p>
                 <button
                   onClick={() => {
