@@ -2,7 +2,7 @@
 -- TeleFlow: SETUP COMPLETO DO BANCO DE DADOS
 -- Execute este script UMA VEZ no SQL Editor do Supabase
 -- Ele cria todas as tabelas, indexes, RLS policies e storage
--- Ultima atualizacao: inclui Dragon Bio, Campaigns, Gateways
+-- Ultima atualizacao: Consolidado com todas as migracoes
 -- ==============================================
 
 -- ============================================
@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS public.users (
   phone TEXT NOT NULL DEFAULT '',
   avatar_url TEXT DEFAULT '',
   banned BOOLEAN NOT NULL DEFAULT false,
+  affiliate_balance DECIMAL(10,2) DEFAULT 0,
+  affiliate_balance_adjustment DECIMAL(10,2) DEFAULT 0,
+  affiliate_balance_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -51,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.bots (
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   token TEXT NOT NULL,
+  avatar_url TEXT DEFAULT '',
   group_name TEXT,
   group_id TEXT,
   group_link TEXT,
@@ -100,17 +104,51 @@ CREATE TABLE IF NOT EXISTS referrals (
   referrer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   referred_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   coupon_code TEXT NOT NULL,
+  commission_amount DECIMAL(10, 2) DEFAULT 0,
+  status TEXT DEFAULT 'active',
   created_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT unique_referred UNIQUE (referred_id)
+);
+
+CREATE TABLE IF NOT EXISTS referral_sales (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  referrer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  referred_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  source VARCHAR(50) NOT NULL DEFAULT 'sale',
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS referral_withdraws (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount DECIMAL(10, 2) NOT NULL,
+  name TEXT NOT NULL,
+  cpf TEXT NOT NULL,
+  pix_key TEXT NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'paid')),
+  admin_notes TEXT,
+  processed_at TIMESTAMP WITH TIME ZONE,
+  processed_by UUID REFERENCES users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_referral_coupons_user_id ON referral_coupons(user_id);
 CREATE INDEX IF NOT EXISTS idx_referral_coupons_code ON referral_coupons(coupon_code);
 CREATE INDEX IF NOT EXISTS idx_referrals_referrer_id ON referrals(referrer_id);
 CREATE INDEX IF NOT EXISTS idx_referrals_referred_id ON referrals(referred_id);
+CREATE INDEX IF NOT EXISTS idx_referrals_status ON referrals(status);
+CREATE INDEX IF NOT EXISTS idx_referral_sales_referrer ON referral_sales(referrer_id);
+CREATE INDEX IF NOT EXISTS idx_referral_sales_created ON referral_sales(created_at);
+CREATE INDEX IF NOT EXISTS idx_referral_withdraws_user_id ON referral_withdraws(user_id);
+CREATE INDEX IF NOT EXISTS idx_referral_withdraws_status ON referral_withdraws(status);
 
 ALTER TABLE referral_coupons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE referral_sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE referral_withdraws ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all select on referral_coupons" ON referral_coupons;
 DROP POLICY IF EXISTS "Allow all insert on referral_coupons" ON referral_coupons;
@@ -145,19 +183,33 @@ CREATE POLICY "Allow all update on referrals" ON referrals
 CREATE POLICY "Allow all delete on referrals" ON referrals
   FOR DELETE TO anon, authenticated USING (true);
 
+CREATE POLICY "Users can read own referral sales" ON referral_sales
+  FOR SELECT USING (auth.uid() = referrer_id);
+
+CREATE POLICY "Service role can insert referral sales" ON referral_sales
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Service role can manage all referral sales" ON referral_sales
+  FOR ALL USING (true) WITH CHECK (true);
+
 -- ============================================
 -- PARTE 4: TABELAS DE FLOWS E FLOW NODES
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS flows (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  bot_id UUID REFERENCES bots(id) ON DELETE CASCADE,
   user_id UUID NOT NULL,
   name TEXT NOT NULL DEFAULT 'Novo Fluxo',
   category TEXT DEFAULT 'personalizado',
   is_primary BOOLEAN DEFAULT false,
-  flow_type TEXT NOT NULL DEFAULT 'complete' CHECK (flow_type IN ('basic', 'complete')),
+  flow_type TEXT NOT NULL DEFAULT 'complete' CHECK (flow_type IN ('basic', 'complete', 'n8n')),
   status TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'pausado')),
+  welcome_message TEXT,
+  config JSONB DEFAULT '{}',
+  media_cache_chat_id BIGINT,
+  support_username TEXT,
+  country TEXT DEFAULT 'BR',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -171,6 +223,29 @@ CREATE TABLE IF NOT EXISTS flow_nodes (
   position INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS flow_bots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+  bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (flow_id, bot_id)
+);
+
+CREATE TABLE IF NOT EXISTS flow_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  description TEXT,
+  delivery_type VARCHAR(50) DEFAULT 'none',
+  delivery_content TEXT,
+  duration_days INTEGER DEFAULT NULL,
+  is_active BOOLEAN DEFAULT true,
+  position INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS webhook_log (
@@ -189,11 +264,18 @@ CREATE INDEX IF NOT EXISTS idx_flows_user_id ON flows(user_id);
 CREATE INDEX IF NOT EXISTS idx_flows_flow_type ON flows(flow_type);
 CREATE INDEX IF NOT EXISTS idx_flow_nodes_flow_id ON flow_nodes(flow_id);
 CREATE INDEX IF NOT EXISTS idx_flow_nodes_position ON flow_nodes(flow_id, position);
+CREATE INDEX IF NOT EXISTS idx_flow_bots_flow_id ON flow_bots(flow_id);
+CREATE INDEX IF NOT EXISTS idx_flow_bots_bot_id ON flow_bots(bot_id);
+CREATE INDEX IF NOT EXISTS idx_flow_plans_flow_id ON flow_plans(flow_id);
+CREATE INDEX IF NOT EXISTS idx_flow_plans_active ON flow_plans(flow_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_flow_plans_duration ON flow_plans(duration_days);
 CREATE INDEX IF NOT EXISTS idx_webhook_log_bot_id ON webhook_log(bot_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_log_chat_id ON webhook_log(chat_id);
 
 ALTER TABLE flows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flow_bots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flow_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_log ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can view own flows" ON flows;
@@ -220,6 +302,36 @@ CREATE POLICY "Users can update own flow nodes" ON flow_nodes FOR UPDATE USING (
 CREATE POLICY "Users can delete own flow nodes" ON flow_nodes FOR DELETE USING (EXISTS (SELECT 1 FROM flows WHERE flows.id = flow_nodes.flow_id AND flows.user_id = auth.uid()));
 CREATE POLICY "Anon can read flow nodes" ON flow_nodes FOR SELECT TO anon USING (true);
 
+DROP POLICY IF EXISTS "Users can view own flow_bots" ON flow_bots;
+DROP POLICY IF EXISTS "Users can insert own flow_bots" ON flow_bots;
+DROP POLICY IF EXISTS "Users can delete own flow_bots" ON flow_bots;
+DROP POLICY IF EXISTS "Anon can read flow_bots" ON flow_bots;
+
+CREATE POLICY "Users can view own flow_bots" ON flow_bots 
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM flows WHERE flows.id = flow_bots.flow_id AND flows.user_id = auth.uid())
+  );
+
+CREATE POLICY "Users can insert own flow_bots" ON flow_bots 
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM flows WHERE flows.id = flow_bots.flow_id AND flows.user_id = auth.uid())
+    AND EXISTS (SELECT 1 FROM bots WHERE bots.id = flow_bots.bot_id AND bots.user_id = auth.uid())
+  );
+
+CREATE POLICY "Users can delete own flow_bots" ON flow_bots 
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM flows WHERE flows.id = flow_bots.flow_id AND flows.user_id = auth.uid())
+  );
+
+CREATE POLICY "Anon can read flow_bots" ON flow_bots 
+  FOR SELECT TO anon USING (true);
+
+CREATE POLICY "Users can view own flow plans" ON flow_plans FOR SELECT USING (flow_id IN (SELECT id FROM flows WHERE user_id = auth.uid()));
+CREATE POLICY "Users can insert own flow plans" ON flow_plans FOR INSERT WITH CHECK (flow_id IN (SELECT id FROM flows WHERE user_id = auth.uid()));
+CREATE POLICY "Users can update own flow plans" ON flow_plans FOR UPDATE USING (flow_id IN (SELECT id FROM flows WHERE user_id = auth.uid()));
+CREATE POLICY "Users can delete own flow plans" ON flow_plans FOR DELETE USING (flow_id IN (SELECT id FROM flows WHERE user_id = auth.uid()));
+CREATE POLICY "Service role full access to flow_plans" ON flow_plans FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 DROP POLICY IF EXISTS "Users can view own webhook logs" ON webhook_log;
 DROP POLICY IF EXISTS "Anon can insert webhook logs" ON webhook_log;
 DROP POLICY IF EXISTS "Anon can read webhook logs" ON webhook_log;
@@ -227,6 +339,22 @@ DROP POLICY IF EXISTS "Anon can read webhook logs" ON webhook_log;
 CREATE POLICY "Users can view own webhook logs" ON webhook_log FOR SELECT USING (EXISTS (SELECT 1 FROM bots WHERE bots.id = webhook_log.bot_id AND bots.user_id = auth.uid()));
 CREATE POLICY "Anon can insert webhook logs" ON webhook_log FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "Anon can read webhook logs" ON webhook_log FOR SELECT TO anon USING (true);
+
+-- Funcao para limitar bots por fluxo (max 5)
+CREATE OR REPLACE FUNCTION check_flow_bot_limit()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (SELECT COUNT(*) FROM flow_bots WHERE flow_id = NEW.flow_id) >= 5 THEN
+    RAISE EXCEPTION 'Maximum 5 bots per flow allowed';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS enforce_flow_bot_limit ON flow_bots;
+CREATE TRIGGER enforce_flow_bot_limit
+  BEFORE INSERT ON flow_bots
+  FOR EACH ROW EXECUTE FUNCTION check_flow_bot_limit();
 
 -- ============================================
 -- PARTE 5: USER FLOW STATE
@@ -239,8 +367,9 @@ CREATE TABLE IF NOT EXISTS user_flow_state (
   telegram_user_id BIGINT NOT NULL,
   chat_id BIGINT NOT NULL,
   current_node_position INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'waiting_response')),
+  status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'waiting_response', 'waiting_payment', 'waiting_order_bump', 'waiting_upsell', 'waiting_downsell')),
   restart_count INTEGER NOT NULL DEFAULT 0,
+  metadata JSONB DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (bot_id, flow_id, telegram_user_id)
@@ -274,9 +403,12 @@ CREATE TABLE IF NOT EXISTS bot_users (
   username TEXT,
   funnel_step INTEGER NOT NULL DEFAULT 1,
   is_subscriber BOOLEAN NOT NULL DEFAULT false,
+  is_vip BOOLEAN DEFAULT FALSE,
+  vip_since TIMESTAMPTZ,
   subscription_plan TEXT,
   subscription_start TIMESTAMPTZ,
   subscription_end TIMESTAMPTZ,
+  source TEXT DEFAULT 'start',
   last_activity TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -287,6 +419,8 @@ CREATE INDEX IF NOT EXISTS idx_bot_users_bot_id ON bot_users(bot_id);
 CREATE INDEX IF NOT EXISTS idx_bot_users_telegram ON bot_users(bot_id, telegram_user_id);
 CREATE INDEX IF NOT EXISTS idx_bot_users_funnel ON bot_users(bot_id, funnel_step);
 CREATE INDEX IF NOT EXISTS idx_bot_users_subscriber ON bot_users(bot_id, is_subscriber);
+CREATE INDEX IF NOT EXISTS idx_bot_users_source ON bot_users(bot_id, source);
+CREATE INDEX IF NOT EXISTS idx_bot_users_is_vip ON bot_users(is_vip) WHERE is_vip = TRUE;
 
 ALTER TABLE bot_users ENABLE ROW LEVEL SECURITY;
 
@@ -352,14 +486,24 @@ CREATE TABLE IF NOT EXISTS payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   bot_id UUID REFERENCES bots(id) ON DELETE SET NULL,
+  flow_id UUID REFERENCES flows(id) ON DELETE SET NULL,
   telegram_user_id TEXT,
+  telegram_username TEXT,
+  telegram_first_name TEXT,
+  telegram_last_name TEXT,
+  telegram_photo_url TEXT,
+  telegram_user_name TEXT,
   gateway TEXT NOT NULL,
   external_payment_id TEXT,
   amount DECIMAL(10,2) NOT NULL,
   description TEXT,
+  product_type TEXT DEFAULT 'main_product',
+  product_name TEXT,
+  payment_method TEXT DEFAULT 'pix',
   qr_code TEXT,
   qr_code_url TEXT,
   copy_paste TEXT,
+  pix_code TEXT,
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -380,8 +524,11 @@ CREATE INDEX IF NOT EXISTS idx_user_gateways_user_id ON user_gateways(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_gateways_bot_id ON user_gateways(bot_id);
 CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_bot_id ON payments(bot_id);
+CREATE INDEX IF NOT EXISTS idx_payments_flow_id ON payments(flow_id);
 CREATE INDEX IF NOT EXISTS idx_payments_external_id ON payments(external_payment_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+CREATE INDEX IF NOT EXISTS idx_payments_telegram_user ON payments(telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_payments_product_type ON payments(product_type);
 CREATE INDEX IF NOT EXISTS idx_payment_plans_user_id ON payment_plans(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_plans_bot_id ON payment_plans(bot_id);
 
@@ -419,7 +566,86 @@ DROP POLICY IF EXISTS "payment_plans_all" ON payment_plans;
 CREATE POLICY "payment_plans_all" ON payment_plans FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================
--- PARTE 9: CAMPANHAS DE REMARKETING
+-- PARTE 9: VIP GROUPS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS vip_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  chat_id BIGINT NOT NULL,
+  title TEXT NOT NULL,
+  type TEXT DEFAULT 'supergroup',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (bot_id)
+);
+
+CREATE TABLE IF NOT EXISTS vip_invites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  vip_group_id UUID NOT NULL REFERENCES vip_groups(id) ON DELETE CASCADE,
+  telegram_user_id BIGINT NOT NULL,
+  invite_link TEXT NOT NULL,
+  used BOOLEAN DEFAULT false,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS bot_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  chat_id BIGINT NOT NULL,
+  title TEXT NOT NULL,
+  chat_type TEXT NOT NULL DEFAULT 'group',
+  is_admin BOOLEAN DEFAULT false,
+  can_invite BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(bot_id, chat_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_vip_groups_bot_id ON vip_groups(bot_id);
+CREATE INDEX IF NOT EXISTS idx_vip_invites_bot_id ON vip_invites(bot_id);
+CREATE INDEX IF NOT EXISTS idx_vip_invites_telegram_user ON vip_invites(telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_vip_invites_used ON vip_invites(used);
+CREATE INDEX IF NOT EXISTS idx_bot_groups_bot_id ON bot_groups(bot_id);
+CREATE INDEX IF NOT EXISTS idx_bot_groups_chat_id ON bot_groups(chat_id);
+
+ALTER TABLE vip_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vip_invites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_groups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own vip_groups" ON vip_groups;
+DROP POLICY IF EXISTS "Users can insert own vip_groups" ON vip_groups;
+DROP POLICY IF EXISTS "Users can update own vip_groups" ON vip_groups;
+DROP POLICY IF EXISTS "Users can delete own vip_groups" ON vip_groups;
+DROP POLICY IF EXISTS "Anon can read vip_groups" ON vip_groups;
+
+CREATE POLICY "Users can view own vip_groups" ON vip_groups FOR SELECT USING (EXISTS (SELECT 1 FROM bots WHERE bots.id = vip_groups.bot_id AND bots.user_id = auth.uid()));
+CREATE POLICY "Users can insert own vip_groups" ON vip_groups FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM bots WHERE bots.id = vip_groups.bot_id AND bots.user_id = auth.uid()));
+CREATE POLICY "Users can update own vip_groups" ON vip_groups FOR UPDATE USING (EXISTS (SELECT 1 FROM bots WHERE bots.id = vip_groups.bot_id AND bots.user_id = auth.uid()));
+CREATE POLICY "Users can delete own vip_groups" ON vip_groups FOR DELETE USING (EXISTS (SELECT 1 FROM bots WHERE bots.id = vip_groups.bot_id AND bots.user_id = auth.uid()));
+CREATE POLICY "Anon can read vip_groups" ON vip_groups FOR SELECT TO anon USING (true);
+
+DROP POLICY IF EXISTS "Users can view own vip_invites" ON vip_invites;
+DROP POLICY IF EXISTS "Anon can read vip_invites" ON vip_invites;
+DROP POLICY IF EXISTS "Anon can insert vip_invites" ON vip_invites;
+DROP POLICY IF EXISTS "Anon can update vip_invites" ON vip_invites;
+
+CREATE POLICY "Users can view own vip_invites" ON vip_invites FOR SELECT USING (EXISTS (SELECT 1 FROM bots WHERE bots.id = vip_invites.bot_id AND bots.user_id = auth.uid()));
+CREATE POLICY "Users can insert own vip_invites" ON vip_invites FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM bots WHERE bots.id = vip_invites.bot_id AND bots.user_id = auth.uid()));
+CREATE POLICY "Users can update own vip_invites" ON vip_invites FOR UPDATE USING (EXISTS (SELECT 1 FROM bots WHERE bots.id = vip_invites.bot_id AND bots.user_id = auth.uid()));
+CREATE POLICY "Anon can read vip_invites" ON vip_invites FOR SELECT TO anon USING (true);
+CREATE POLICY "Anon can insert vip_invites" ON vip_invites FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "Anon can update vip_invites" ON vip_invites FOR UPDATE TO anon USING (true);
+
+CREATE POLICY "Users can view their bot groups" ON bot_groups FOR SELECT USING (bot_id IN (SELECT id FROM bots WHERE user_id = auth.uid()));
+CREATE POLICY "Service can manage bot groups" ON bot_groups FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON bot_groups TO authenticated;
+GRANT ALL ON bot_groups TO service_role;
+
+-- ============================================
+-- PARTE 10: CAMPANHAS DE REMARKETING
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS campaigns (
@@ -429,6 +655,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
   name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'rascunho' CHECK (status IN ('rascunho', 'ativa', 'pausada', 'concluida')),
   campaign_type TEXT NOT NULL DEFAULT 'basic' CHECK (campaign_type IN ('basic', 'complete')),
+  audience_type TEXT DEFAULT 'start',
+  audience TEXT DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -469,6 +697,20 @@ CREATE TABLE IF NOT EXISTS campaign_user_state (
   UNIQUE(campaign_id, bot_user_id)
 );
 
+CREATE TABLE IF NOT EXISTS remarketing_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  bot_id UUID REFERENCES bots(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  email TEXT NOT NULL,
+  telefone TEXT,
+  status TEXT DEFAULT 'novo',
+  origem TEXT DEFAULT 'importacao',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(email, bot_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_campaigns_bot_id ON campaigns(bot_id);
 CREATE INDEX IF NOT EXISTS idx_campaigns_user_id ON campaigns(user_id);
 CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
@@ -479,11 +721,16 @@ CREATE INDEX IF NOT EXISTS idx_campaign_sends_user ON campaign_sends(bot_user_id
 CREATE INDEX IF NOT EXISTS idx_campaign_sends_node ON campaign_sends(campaign_node_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_user_state_campaign ON campaign_user_state(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_user_state_next ON campaign_user_state(next_send_at) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_remarketing_users_user_id ON remarketing_users(user_id);
+CREATE INDEX IF NOT EXISTS idx_remarketing_users_bot_id ON remarketing_users(bot_id);
+CREATE INDEX IF NOT EXISTS idx_remarketing_users_email ON remarketing_users(email);
+CREATE INDEX IF NOT EXISTS idx_remarketing_users_status ON remarketing_users(status);
 
 ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_sends ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_user_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE remarketing_users ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "campaigns_all" ON campaigns;
 DROP POLICY IF EXISTS "campaign_nodes_all" ON campaign_nodes;
@@ -495,8 +742,13 @@ CREATE POLICY "campaign_nodes_all" ON campaign_nodes FOR ALL USING (true) WITH C
 CREATE POLICY "campaign_sends_all" ON campaign_sends FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "campaign_user_state_all" ON campaign_user_state FOR ALL USING (true) WITH CHECK (true);
 
+CREATE POLICY "Users can view own remarketing users" ON remarketing_users FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users can insert own remarketing users" ON remarketing_users FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Users can update own remarketing users" ON remarketing_users FOR UPDATE USING (user_id = auth.uid());
+CREATE POLICY "Users can delete own remarketing users" ON remarketing_users FOR DELETE USING (user_id = auth.uid());
+
 -- ============================================
--- PARTE 10: DRAGON BIO (Sites)
+-- PARTE 11: DRAGON BIO (Sites)
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS dragon_bio_sites (
@@ -505,6 +757,7 @@ CREATE TABLE IF NOT EXISTS dragon_bio_sites (
   nome VARCHAR(255) NOT NULL,
   slug VARCHAR(255) NOT NULL UNIQUE,
   template VARCHAR(50) DEFAULT 'minimal',
+  page_type TEXT DEFAULT 'dragonbio',
   
   -- Profile data
   profile_name VARCHAR(255),
@@ -515,6 +768,14 @@ CREATE TABLE IF NOT EXISTS dragon_bio_sites (
   primary_color VARCHAR(20) DEFAULT '#8b5cf6',
   secondary_color VARCHAR(20) DEFAULT '#0f172a',
   text_color VARCHAR(20) DEFAULT '#ffffff',
+  colors JSONB DEFAULT '{"primary": "#000000", "secondary": "#ffffff", "accent": "#3b82f6", "background": "#0f172a", "text": "#ffffff"}'::jsonb,
+  
+  -- Pixel tracking
+  pixel_config JSONB DEFAULT NULL,
+  
+  -- Presell data
+  page_data JSONB,
+  presell_type TEXT,
   
   -- Stats
   views INTEGER DEFAULT 0,
@@ -533,6 +794,8 @@ CREATE TABLE IF NOT EXISTS dragon_bio_links (
   title VARCHAR(255) NOT NULL,
   url TEXT NOT NULL,
   icon VARCHAR(50),
+  type VARCHAR(20) DEFAULT 'button',
+  image TEXT,
   position INTEGER DEFAULT 0,
   clicks INTEGER DEFAULT 0,
   is_active BOOLEAN DEFAULT true,
@@ -540,18 +803,43 @@ CREATE TABLE IF NOT EXISTS dragon_bio_links (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS checkout_leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  site_id UUID REFERENCES dragon_bio_sites(id) ON DELETE SET NULL,
+  email TEXT,
+  name TEXT,
+  cpf TEXT,
+  phone TEXT,
+  amount DECIMAL(10,2),
+  status TEXT DEFAULT 'pending',
+  payment_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_dragon_bio_sites_user_id ON dragon_bio_sites(user_id);
 CREATE INDEX IF NOT EXISTS idx_dragon_bio_sites_slug ON dragon_bio_sites(slug);
+CREATE INDEX IF NOT EXISTS idx_dragon_bio_sites_pixel ON dragon_bio_sites((pixel_config IS NOT NULL));
 CREATE INDEX IF NOT EXISTS idx_dragon_bio_links_site_id ON dragon_bio_links(site_id);
+CREATE INDEX IF NOT EXISTS idx_checkout_leads_site_id ON checkout_leads(site_id);
+CREATE INDEX IF NOT EXISTS idx_checkout_leads_created_at ON checkout_leads(created_at DESC);
 
 ALTER TABLE dragon_bio_sites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dragon_bio_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE checkout_leads ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "dragon_bio_sites_all" ON dragon_bio_sites;
 DROP POLICY IF EXISTS "dragon_bio_links_all" ON dragon_bio_links;
+DROP POLICY IF EXISTS "allow_public_read_sites" ON dragon_bio_sites;
+DROP POLICY IF EXISTS "allow_public_read_links" ON dragon_bio_links;
 
 CREATE POLICY "dragon_bio_sites_all" ON dragon_bio_sites FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "dragon_bio_links_all" ON dragon_bio_links FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_public_read_sites" ON dragon_bio_sites FOR SELECT TO anon USING (true);
+CREATE POLICY "allow_public_read_links" ON dragon_bio_links FOR SELECT TO anon USING (true);
+
+CREATE POLICY "Allow public inserts" ON checkout_leads FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "Allow authenticated reads" ON checkout_leads FOR SELECT TO anon USING (true);
+CREATE POLICY "Service role full access" ON checkout_leads FOR ALL TO service_role USING (true);
 
 -- Trigger para atualizar updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -575,7 +863,148 @@ CREATE TRIGGER dragon_bio_links_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- PARTE 11: STORAGE BUCKET (flow-media)
+-- PARTE 12: PLATFORM SETTINGS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS platform_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key TEXT UNIQUE NOT NULL,
+  value JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_by UUID REFERENCES users(id)
+);
+
+INSERT INTO platform_settings (key, value) VALUES 
+('terms_of_use', '{"sections": [
+  {"title": "1. Aceitacao dos Termos", "content": "Ao acessar ou utilizar a plataforma DRAGON, o usuario declara que leu, compreendeu e concorda com todos os termos."},
+  {"title": "2. Elegibilidade", "content": "E obrigatorio ter 18 anos ou mais. O uso por menores e estritamente proibido."},
+  {"title": "3. Uso da Plataforma", "content": "O usuario concorda em nao utilizar a plataforma para atividades ilegais, nao fraudar pagamentos, nao burlar sistemas e nao usar bots ou automacoes indevidas."},
+  {"title": "4. Conta do Usuario", "content": "O usuario e responsavel pela seguranca da conta. A DRAGON pode suspender contas suspeitas. E proibido compartilhar contas."},
+  {"title": "5. Politica de Conteudo", "content": "A DRAGON proibe totalmente conteudo com menores de 18 anos, violencia extrema, conteudo ilegal, fraudes e golpes."},
+  {"title": "6. Pagamentos e Taxas", "content": "Taxa fixa de R$0,50 por venda. Pagamentos sao processados por terceiros. Saques podem ter prazo de processamento."},
+  {"title": "7. Penalidades", "content": "Em caso de violacao: remocao de conteudo, suspensao da conta, banimento permanente, retencao de saldo e acao legal."},
+  {"title": "8. Privacidade (LGPD)", "content": "Coletamos: nome, email, dados de pagamento e dados de navegacao. O usuario pode solicitar exclusao de dados."}
+]}'::jsonb),
+('privacy_policy', '{"sections": [
+  {"title": "1. Coleta de Dados", "content": "Coletamos informacoes que voce fornece diretamente, como nome, email, telefone e dados de pagamento."},
+  {"title": "2. Uso dos Dados", "content": "Usamos seus dados para processar transacoes, melhorar nossos servicos e enviar comunicacoes relevantes."},
+  {"title": "3. Compartilhamento", "content": "Nao vendemos seus dados. Compartilhamos apenas com parceiros essenciais para operacao da plataforma."},
+  {"title": "4. Seus Direitos", "content": "Voce pode acessar, corrigir ou excluir seus dados a qualquer momento."},
+  {"title": "5. Seguranca", "content": "Utilizamos criptografia e outras medidas para proteger seus dados."}
+]}'::jsonb),
+('platform_fees', '{"transaction_fee": 0.50, "withdrawal_fee": 0, "minimum_withdrawal": 10}'::jsonb),
+('awards_thresholds', '{"bronze": 10000, "silver": 50000, "gold": 100000, "diamond": 500000}'::jsonb)
+ON CONFLICT (key) DO NOTHING;
+
+-- ============================================
+-- PARTE 13: BOT MESSAGES E DEBUG LOGS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS bot_messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  telegram_user_id TEXT NOT NULL,
+  telegram_chat_id TEXT NOT NULL,
+  user_first_name TEXT,
+  user_last_name TEXT,
+  user_username TEXT,
+  direction TEXT NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+  message_type TEXT DEFAULT 'text' CHECK (message_type IN ('text', 'photo', 'video', 'document', 'audio', 'voice', 'sticker', 'callback')),
+  content TEXT,
+  media_url TEXT,
+  telegram_message_id INTEGER,
+  reply_to_message_id INTEGER,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS debug_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  level TEXT NOT NULL DEFAULT 'info',
+  category TEXT NOT NULL DEFAULT 'general',
+  message TEXT NOT NULL,
+  data JSONB DEFAULT '{}',
+  telegram_user_id TEXT,
+  bot_id UUID REFERENCES bots(id) ON DELETE CASCADE,
+  flow_id UUID REFERENCES flows(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS scheduled_messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  bot_id UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+  flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+  telegram_user_id TEXT NOT NULL,
+  telegram_chat_id TEXT NOT NULL,
+  message_type TEXT NOT NULL CHECK (message_type IN ('upsell', 'downsell')),
+  sequence_id TEXT NOT NULL,
+  sequence_index INTEGER NOT NULL DEFAULT 0,
+  scheduled_for TIMESTAMPTZ NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'cancelled', 'failed')),
+  sent_at TIMESTAMPTZ,
+  error_message TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS subscription_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  bot_user_id UUID NOT NULL REFERENCES bot_users(id) ON DELETE CASCADE,
+  flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+  notification_type VARCHAR(50) NOT NULL,
+  days_before INTEGER,
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  subscription_expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_messages_bot_id ON bot_messages(bot_id);
+CREATE INDEX IF NOT EXISTS idx_bot_messages_telegram_user_id ON bot_messages(telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_bot_messages_created_at ON bot_messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bot_messages_bot_user ON bot_messages(bot_id, telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_debug_logs_category ON debug_logs(category);
+CREATE INDEX IF NOT EXISTS idx_debug_logs_level ON debug_logs(level);
+CREATE INDEX IF NOT EXISTS idx_debug_logs_created_at ON debug_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_debug_logs_telegram_user ON debug_logs(telegram_user_id);
+CREATE INDEX IF NOT EXISTS idx_debug_logs_bot ON debug_logs(bot_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_bot_id ON scheduled_messages(bot_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_status ON scheduled_messages(status);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_scheduled_for ON scheduled_messages(scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_user ON scheduled_messages(telegram_user_id, bot_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_pending ON scheduled_messages(status, scheduled_for) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_subscription_notifications_bot_user ON subscription_notifications(bot_user_id, notification_type, subscription_expires_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_notifications_unique ON subscription_notifications(bot_user_id, flow_id, notification_type, days_before, DATE(subscription_expires_at));
+
+ALTER TABLE bot_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view messages from their bots" ON bot_messages FOR SELECT USING (bot_id IN (SELECT id FROM bots WHERE user_id = auth.uid()));
+CREATE POLICY "Service can insert messages" ON bot_messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can update messages from their bots" ON bot_messages FOR UPDATE USING (bot_id IN (SELECT id FROM bots WHERE user_id = auth.uid()));
+
+CREATE POLICY "Users can view their scheduled messages" ON scheduled_messages FOR SELECT USING (bot_id IN (SELECT id FROM bots WHERE user_id = auth.uid()));
+CREATE POLICY "Users can insert their scheduled messages" ON scheduled_messages FOR INSERT WITH CHECK (bot_id IN (SELECT id FROM bots WHERE user_id = auth.uid()));
+CREATE POLICY "Users can update their scheduled messages" ON scheduled_messages FOR UPDATE USING (bot_id IN (SELECT id FROM bots WHERE user_id = auth.uid()));
+CREATE POLICY "Service role can manage all scheduled messages" ON scheduled_messages FOR ALL USING (true) WITH CHECK (true);
+
+CREATE OR REPLACE FUNCTION update_scheduled_messages_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_scheduled_messages_updated_at ON scheduled_messages;
+CREATE TRIGGER trigger_scheduled_messages_updated_at
+  BEFORE UPDATE ON scheduled_messages
+  FOR EACH ROW
+  EXECUTE FUNCTION update_scheduled_messages_updated_at();
+
+-- ============================================
+-- PARTE 14: STORAGE BUCKETS
 -- ============================================
 
 INSERT INTO storage.buckets (id, name, public)
