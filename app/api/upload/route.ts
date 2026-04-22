@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
       })
 
     if (uploadError) {
-      console.error('[v0] Upload error:', uploadError)
       return NextResponse.json({ 
         error: uploadError.message || 'Erro no upload' 
       }, { status: 500 })
@@ -67,8 +66,6 @@ export async function POST(request: NextRequest) {
 
     const publicUrl = urlData.publicUrl
 
-    console.log('[v0] Media uploaded successfully:', publicUrl)
-
     return NextResponse.json({
       url: publicUrl,
       filename: file.name,
@@ -77,7 +74,6 @@ export async function POST(request: NextRequest) {
       isVideo: isVideo,
     })
   } catch (error) {
-    console.error('[v0] Upload error:', error)
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
   }
 }
