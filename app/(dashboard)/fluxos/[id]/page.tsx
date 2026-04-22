@@ -7357,27 +7357,49 @@ const handleAddUpsellPlan = (seqId: string) => {
                       <span className="text-[10px] text-neutral-500">{(tempDeliverable.medias || []).length}/20</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {(tempDeliverable.medias || []).map((media, mediaIndex) => (
-                        <div key={mediaIndex} className="relative group">
-                          <img
-                            src={media}
-                            alt={`Media ${mediaIndex + 1}`}
-                            className="h-12 w-12 rounded-lg object-cover border border-neutral-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTempDeliverable({
-                                ...tempDeliverable,
-                                medias: (tempDeliverable.medias || []).filter((_, i) => i !== mediaIndex)
-                              })
-                            }}
-                            className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                          >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </div>
-                      ))}
+                      {(tempDeliverable.medias || []).map((media, mediaIndex) => {
+                        const isBlob = media.startsWith("blob:")
+                        const isVideo = media.includes("/videos/") || media.match(/\.(mp4|webm|mov)($|\?)/i)
+                        return (
+                          <div key={mediaIndex} className="relative group">
+                            {isBlob ? (
+                              <div className="h-12 w-12 rounded-lg border border-neutral-200 flex items-center justify-center bg-neutral-100">
+                                <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
+                              </div>
+                            ) : isVideo ? (
+                              <video
+                                src={media}
+                                className="h-12 w-12 rounded-lg object-cover border border-neutral-200"
+                                muted
+                              />
+                            ) : (
+                              <img
+                                src={media}
+                                alt={`Media ${mediaIndex + 1}`}
+                                className="h-12 w-12 rounded-lg object-cover border border-neutral-200"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.style.display = "none"
+                                }}
+                              />
+                            )}
+                            {!isBlob && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTempDeliverable({
+                                    ...tempDeliverable,
+                                    medias: (tempDeliverable.medias || []).filter((_, i) => i !== mediaIndex)
+                                  })
+                                }}
+                                className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
                       {(tempDeliverable.medias || []).length < 20 && (
                         <label className="h-12 w-12 rounded-lg border-2 border-dashed border-neutral-200 flex items-center justify-center cursor-pointer hover:border-[#BEFF00]/50 hover:bg-[#BEFF00]/5 transition-colors relative">
                           <Plus className="h-4 w-4 text-neutral-500" />
