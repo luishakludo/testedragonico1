@@ -3,6 +3,71 @@ import { getSupabase, getSupabaseAdmin } from "@/lib/supabase"
 import { createPixPayment } from "@/lib/payments/gateways/mercadopago"
 
 // ---------------------------------------------------------------------------
+// Helper: Sanitizar HTML para Telegram
+// Remove tags vazias e corrige formatacao quebrada que causa erro na API
+// ---------------------------------------------------------------------------
+function sanitizeTelegramHTML(text: string): string {
+  if (!text) return ""
+  
+  let result = text
+  
+  // Remove tags vazias que quebram o Telegram (ex: <b></b>, <i></i>)
+  // Isso inclui tags com apenas espacos dentro
+  result = result.replace(/<(b|i|u|s|code|pre|a|blockquote)>\s*<\/\1>/gi, "")
+  
+  // Remove tags aninhadas vazias (ex: <b><i></i></b>)
+  // Repetir algumas vezes para pegar aninhamentos profundos
+  for (let i = 0; i < 3; i++) {
+    result = result.replace(/<(b|i|u|s|code|pre|a|blockquote)>\s*<\/\1>/gi, "")
+  }
+  
+  // Corrige tags <a> sem href (Telegram exige href)
+  result = result.replace(/<a>([^<]*)<\/a>/gi, "$1")
+  result = result.replace(/<a\s+>([^<]*)<\/a>/gi, "$1")
+  
+  // Remove tags <a> com href vazio
+  result = result.replace(/<a\s+href=["']?\s*["']?\s*>([^<]*)<\/a>/gi, "$1")
+  
+  // Corrige tags nao fechadas - adiciona fechamento se necessario
+  // Para cada tag de abertura sem fechamento correspondente, remove a tag
+  const tags = ["b", "i", "u", "s", "code", "pre", "blockquote"]
+  for (const tag of tags) {
+    const openRegex = new RegExp(`<${tag}>`, "gi")
+    const closeRegex = new RegExp(`</${tag}>`, "gi")
+    const openCount = (result.match(openRegex) || []).length
+    const closeCount = (result.match(closeRegex) || []).length
+    
+    // Se tem mais aberturas que fechamentos, remove as aberturas extras
+    if (openCount > closeCount) {
+      // Remove a ultima tag de abertura sem par
+      for (let i = 0; i < openCount - closeCount; i++) {
+        result = result.replace(new RegExp(`<${tag}>(?!.*<${tag}>)`, "i"), "")
+      }
+    }
+    // Se tem mais fechamentos que aberturas, remove os fechamentos extras
+    else if (closeCount > openCount) {
+      for (let i = 0; i < closeCount - openCount; i++) {
+        result = result.replace(new RegExp(`</${tag}>`, "i"), "")
+      }
+    }
+  }
+  
+  // Remove tags <a> mal formadas (sem href valido)
+  result = result.replace(/<a[^>]*href=["']?(?!http)[^"']*["']?[^>]*>([^<]*)<\/a>/gi, "$1")
+  
+  // Remove multiplos espacos em branco consecutivos (exceto quebras de linha)
+  result = result.replace(/[ \t]+/g, " ")
+  
+  // Remove linhas vazias excessivas (mais de 2 consecutivas)
+  result = result.replace(/\n{4,}/g, "\n\n\n")
+  
+  // Trim final
+  result = result.trim()
+  
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Helper: Gerar PIX com gateway da tabela user_gateways
 // ---------------------------------------------------------------------------
 interface GatewayData {
@@ -276,7 +341,17 @@ async function sendTelegramMessage(
   replyMarkup?: object,
   ): Promise<number | null> {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`
-  const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: "HTML" }
+  
+  // Sanitizar HTML para evitar erros do Telegram
+  const sanitizedText = sanitizeTelegramHTML(text)
+  
+  // Se apos sanitizacao o texto ficou vazio, nao enviar
+  if (!sanitizedText || sanitizedText.trim() === "") {
+    console.log("[v0] sendTelegramMessage - texto vazio apos sanitizacao, pulando envio")
+    return null
+  }
+  
+  const body: Record<string, unknown> = { chat_id: chatId, text: sanitizedText, parse_mode: "HTML" }
   if (replyMarkup) body.reply_markup = replyMarkup
   try {
     const res = await fetch(url, {
@@ -285,8 +360,31 @@ async function sendTelegramMessage(
       body: JSON.stringify(body),
     })
     const data = await res.json()
+    
+    // Se falhou por erro de HTML, tenta sem parse_mode
+    if (!data.ok && data.description?.includes("can't parse")) {
+      console.log("[v0] sendTelegramMessage - erro de parse HTML, tentando sem formatacao:", data.description)
+      const fallbackBody: Record<string, unknown> = { chat_id: chatId, text: sanitizedText.replace(/<[^>]*>/g, "") }
+      if (replyMarkup) fallbackBody.reply_markup = replyMarkup
+      const fallbackRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackBody),
+      })
+      const fallbackData = await fallbackRes.json()
+      if (!fallbackData.ok) {
+        console.error("[v0] sendTelegramMessage - erro mesmo sem HTML:", fallbackData.description)
+      }
+      return fallbackData?.result?.message_id || null
+    }
+    
+    if (!data.ok) {
+      console.error("[v0] sendTelegramMessage - erro:", data.description)
+    }
+    
     return data?.result?.message_id || null
-  } catch {
+  } catch (err) {
+    console.error("[v0] sendTelegramMessage - exception:", err)
     return null
   }
 }
@@ -299,20 +397,18 @@ async function editTelegramMessage(
   replyMarkup?: object,
 ): Promise<{ ok: boolean; error?: string; errorCode?: number }> {
   const url = `https://api.telegram.org/bot${botToken}/editMessageText`
+  
+  // Sanitizar HTML
+  const sanitizedText = sanitizeTelegramHTML(text)
+  
   const body: Record<string, unknown> = { 
     chat_id: chatId, 
     message_id: messageId,
-    text, 
+    text: sanitizedText, 
     parse_mode: "HTML" 
   }
   if (replyMarkup) body.reply_markup = replyMarkup
   try {
-    console.log("[v0] editTelegramMessage - CHAMANDO API")
-    console.log("[v0] editTelegramMessage - chatId:", chatId)
-    console.log("[v0] editTelegramMessage - messageId:", messageId)
-    console.log("[v0] editTelegramMessage - text:", text)
-    console.log("[v0] editTelegramMessage - replyMarkup:", JSON.stringify(replyMarkup))
-    
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -320,14 +416,32 @@ async function editTelegramMessage(
     })
     const data = await res.json()
     
-    console.log("[v0] editTelegramMessage - RESPOSTA COMPLETA:", JSON.stringify(data))
+    // Se falhou por erro de HTML, tenta sem parse_mode
+    if (!data?.ok && data.description?.includes("can't parse")) {
+      console.log("[v0] editTelegramMessage - erro de parse HTML, tentando sem formatacao")
+      const fallbackBody: Record<string, unknown> = { 
+        chat_id: chatId, 
+        message_id: messageId,
+        text: sanitizedText.replace(/<[^>]*>/g, "")
+      }
+      if (replyMarkup) fallbackBody.reply_markup = replyMarkup
+      const fallbackRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackBody),
+      })
+      const fallbackData = await fallbackRes.json()
+      if (!fallbackData?.ok) {
+        return { ok: false, error: fallbackData?.description, errorCode: fallbackData?.error_code }
+      }
+      return { ok: true }
+    }
     
     if (!data?.ok) {
       console.log("[v0] editTelegramMessage - ERRO:", data?.description, "error_code:", data?.error_code)
       return { ok: false, error: data?.description, errorCode: data?.error_code }
     }
     
-    console.log("[v0] editTelegramMessage - SUCESSO")
     return { ok: true }
   } catch (err) {
     console.log("[v0] editTelegramMessage - EXCEPTION:", err)
@@ -340,19 +454,62 @@ async function sendTelegramPhoto(
   chatId: number,
   photoUrl: string,
   caption?: string,
-) {
+): Promise<{ ok: boolean; messageId?: number }> {
   const url = `https://api.telegram.org/bot${botToken}/sendPhoto`
+  
+  // Sanitizar caption
+  const sanitizedCaption = caption ? sanitizeTelegramHTML(caption) : undefined
+  
   const body: Record<string, unknown> = {
     chat_id: chatId,
     photo: photoUrl,
-    parse_mode: "HTML",
   }
-  if (caption) body.caption = caption
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
+  
+  // Só adiciona parse_mode se tiver caption
+  if (sanitizedCaption) {
+    body.caption = sanitizedCaption
+    body.parse_mode = "HTML"
+  }
+  
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    
+    // Se falhou por erro de HTML, tenta sem parse_mode
+    if (!data.ok && data.description?.includes("can't parse")) {
+      console.log("[v0] sendTelegramPhoto - erro de parse HTML, tentando sem formatacao:", data.description)
+      const fallbackBody: Record<string, unknown> = {
+        chat_id: chatId,
+        photo: photoUrl,
+      }
+      if (sanitizedCaption) {
+        fallbackBody.caption = sanitizedCaption.replace(/<[^>]*>/g, "")
+      }
+      const fallbackRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackBody),
+      })
+      const fallbackData = await fallbackRes.json()
+      if (!fallbackData.ok) {
+        console.error("[v0] sendTelegramPhoto - erro mesmo sem HTML:", fallbackData.description)
+      }
+      return { ok: fallbackData.ok, messageId: fallbackData?.result?.message_id }
+    }
+    
+    if (!data.ok) {
+      console.error("[v0] sendTelegramPhoto - erro:", data.description)
+    }
+    
+    return { ok: data.ok, messageId: data?.result?.message_id }
+  } catch (err) {
+    console.error("[v0] sendTelegramPhoto - exception:", err)
+    return { ok: false }
+  }
 }
 
 async function sendTelegramVideo(
@@ -360,19 +517,62 @@ async function sendTelegramVideo(
   chatId: number,
   videoUrl: string,
   caption?: string,
-) {
+): Promise<{ ok: boolean; messageId?: number }> {
   const url = `https://api.telegram.org/bot${botToken}/sendVideo`
+  
+  // Sanitizar caption
+  const sanitizedCaption = caption ? sanitizeTelegramHTML(caption) : undefined
+  
   const body: Record<string, unknown> = {
     chat_id: chatId,
     video: videoUrl,
-    parse_mode: "HTML",
   }
-  if (caption) body.caption = caption
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
+  
+  // Só adiciona parse_mode se tiver caption
+  if (sanitizedCaption) {
+    body.caption = sanitizedCaption
+    body.parse_mode = "HTML"
+  }
+  
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    
+    // Se falhou por erro de HTML, tenta sem parse_mode
+    if (!data.ok && data.description?.includes("can't parse")) {
+      console.log("[v0] sendTelegramVideo - erro de parse HTML, tentando sem formatacao:", data.description)
+      const fallbackBody: Record<string, unknown> = {
+        chat_id: chatId,
+        video: videoUrl,
+      }
+      if (sanitizedCaption) {
+        fallbackBody.caption = sanitizedCaption.replace(/<[^>]*>/g, "")
+      }
+      const fallbackRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackBody),
+      })
+      const fallbackData = await fallbackRes.json()
+      if (!fallbackData.ok) {
+        console.error("[v0] sendTelegramVideo - erro mesmo sem HTML:", fallbackData.description)
+      }
+      return { ok: fallbackData.ok, messageId: fallbackData?.result?.message_id }
+    }
+    
+    if (!data.ok) {
+      console.error("[v0] sendTelegramVideo - erro:", data.description)
+    }
+    
+    return { ok: data.ok, messageId: data?.result?.message_id }
+  } catch (err) {
+    console.error("[v0] sendTelegramVideo - exception:", err)
+    return { ok: false }
+  }
 }
 
 async function answerCallback(
@@ -398,17 +598,22 @@ async function sendMediaGroup(
   chatId: number,
   mediaUrls: string[],
   caption?: string,
-) {
-  if (!mediaUrls || mediaUrls.length === 0) return null
+): Promise<{ ok: boolean; error?: string }> {
+  if (!mediaUrls || mediaUrls.length === 0) return { ok: true }
+  
+  // Sanitizar caption
+  const sanitizedCaption = caption ? sanitizeTelegramHTML(caption) : undefined
   
   // Se for apenas 1 midia, envia individualmente
   if (mediaUrls.length === 1) {
-    const url = mediaUrls[0]
-    const isVideo = url.includes("/videos/") || url.match(/\.(mp4|webm|mov)($|\?)/i)
+    const mediaUrl = mediaUrls[0]
+    const isVideo = mediaUrl.includes("/videos/") || mediaUrl.match(/\.(mp4|webm|mov)($|\?)/i)
     if (isVideo) {
-      return sendTelegramVideo(botToken, chatId, url, caption)
+      const result = await sendTelegramVideo(botToken, chatId, mediaUrl, sanitizedCaption)
+      return { ok: result.ok }
     } else {
-      return sendTelegramPhoto(botToken, chatId, url, caption)
+      const result = await sendTelegramPhoto(botToken, chatId, mediaUrl, sanitizedCaption)
+      return { ok: result.ok }
     }
   }
   
@@ -421,25 +626,64 @@ async function sendMediaGroup(
       type: isVideo ? "video" : "photo",
       media: mediaUrl,
     }
-    // Caption only on first item
-    if (index === 0 && caption) {
-      item.caption = caption
+    // Caption only on first item (ja sanitizada)
+    if (index === 0 && sanitizedCaption) {
+      item.caption = sanitizedCaption
       item.parse_mode = "HTML"
     }
     return item
   })
   
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, media }),
-  })
-  
-  const data = await res.json()
-  if (!data.ok) {
-    console.error("[v0] sendMediaGroup error:", data)
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, media }),
+    })
+    
+    const data = await res.json()
+    
+    // Se falhou por erro de HTML no caption, tenta sem formatacao
+    if (!data.ok && data.description?.includes("can't parse")) {
+      console.log("[v0] sendMediaGroup - erro de parse HTML, tentando sem formatacao:", data.description)
+      
+      const mediaWithoutHtml = mediaUrls.map((mediaUrl, index) => {
+        const isVideo = mediaUrl.includes("/videos/") || mediaUrl.match(/\.(mp4|webm|mov)($|\?)/i)
+        const item: Record<string, unknown> = {
+          type: isVideo ? "video" : "photo",
+          media: mediaUrl,
+        }
+        // Caption sem HTML
+        if (index === 0 && sanitizedCaption) {
+          item.caption = sanitizedCaption.replace(/<[^>]*>/g, "")
+        }
+        return item
+      })
+      
+      const fallbackRes = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, media: mediaWithoutHtml }),
+      })
+      
+      const fallbackData = await fallbackRes.json()
+      if (!fallbackData.ok) {
+        console.error("[v0] sendMediaGroup - erro mesmo sem HTML:", fallbackData.description)
+        return { ok: false, error: fallbackData.description }
+      }
+      return { ok: true }
+    }
+    
+    if (!data.ok) {
+      console.error("[v0] sendMediaGroup error:", data.description)
+      return { ok: false, error: data.description }
+    }
+    
+    return { ok: true }
+  } catch (err) {
+    console.error("[v0] sendMediaGroup exception:", err)
+    return { ok: false, error: String(err) }
   }
-  return data
 }
 
 // Helper: Enviar Order Bump (mídias em grupo + mensagem com botões)
@@ -3053,13 +3297,15 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         
         // STEP 1: Send medias (if any valid URLs) - grouped as album
         if (welcomeMedias.length > 0) {
-          try {
-            // Send all medias together as album with welcome message as caption
-            await sendMediaGroup(botToken, chatId, welcomeMedias, finalMsg)
-            // Send buttons separately after the album
+          // Send all medias together as album with welcome message as caption
+          const mediaResult = await sendMediaGroup(botToken, chatId, welcomeMedias, finalMsg)
+          
+          if (mediaResult.ok) {
+            // Media group enviado com sucesso, enviar botoes separadamente
             await sendTelegramMessage(botToken, chatId, "Escolha uma opcao:", replyMarkup)
-          } catch {
-            // If media group fails, send message with buttons normally
+          } else {
+            // Se media group falhou, tentar enviar mensagem normalmente com botoes
+            console.log("[v0] Welcome - mediaGroup falhou, enviando mensagem sem midia")
             await sendTelegramMessage(botToken, chatId, finalMsg, replyMarkup)
           }
         } else {
