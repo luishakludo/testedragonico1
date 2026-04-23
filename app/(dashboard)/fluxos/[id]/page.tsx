@@ -1529,10 +1529,15 @@ plans,
     setHasChanges(true)
   }
 
-  // Update plan
+// Update plan
   const handleUpdatePlan = (id: string, field: keyof FlowPlan, value: FlowPlan[keyof FlowPlan]) => {
-    setPlans(plans.map(p => p.id === id ? { ...p, [field]: value } : p))
-    setHasChanges(true)
+  console.log("[v0] handleUpdatePlan chamado:", { id, field, value, currentPlans: plans })
+  setPlans(prevPlans => {
+    const newPlans = prevPlans.map(p => p.id === id ? { ...p, [field]: value } : p)
+    console.log("[v0] Novos planos apos update:", newPlans)
+    return newPlans
+  })
+  setHasChanges(true)
   }
 
   // Add upsell sequence (mesma estrutura do downsell)
@@ -3068,8 +3073,10 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   <Select
                                     value={getDurationSelectValue(plan.duration_days) || "30_monthly"}
                                     onValueChange={(value) => {
+                                      console.log("[v0] Select onValueChange disparado:", { value, planId: plan.id, currentDurationDays: plan.duration_days })
                                       const [daysStr, type] = value.split("_")
                                       const days = parseInt(daysStr, 10)
+                                      console.log("[v0] Parsed values:", { daysStr, type, days })
                                       handleUpdatePlan(plan.id, "duration_days", days)
                                       handleUpdatePlan(plan.id, "duration_type", type)
                                     }}
