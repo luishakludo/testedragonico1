@@ -3259,11 +3259,13 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         
         // Pegar planos para mostrar direto (se ctaButtonEnabled = false)
         // Primeiro tenta da tabela flow_plans, depois do config
-        let plansToShow: Array<{ id: string; name: string }> = []
+        // Verificar se deve mostrar preco no botao
+        const showPriceInButton = flowConfig.showPriceInButton === true
+        let plansToShow: Array<{ id: string; name: string; price?: number }> = []
         if (!ctaButtonEnabled) {
           const { data: flowPlans } = await supabase
             .from("flow_plans")
-            .select("id, name")
+            .select("id, name, price")
             .eq("flow_id", startFlow.id)
             .eq("is_active", true)
             .order("position", { ascending: true })
@@ -3291,7 +3293,11 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         } else {
           // Mostrar planos direto na mensagem de boas-vindas
           for (const plan of plansToShow) {
-            inlineKeyboard.push([{ text: plan.name, callback_data: `plan_${plan.id}` }])
+            // Mostrar preco no botao se a opcao estiver ativada
+            const buttonText = showPriceInButton && plan.price && plan.price > 0
+              ? `${plan.name} por R$ ${Number(plan.price).toFixed(2).replace(".", ",")}`
+              : plan.name
+            inlineKeyboard.push([{ text: buttonText, callback_data: `plan_${plan.id}` }])
           }
         }
         
