@@ -337,43 +337,40 @@ interface TelegramChat {
 }
 
 // Helper: Normaliza o valor da duracao para o formato correto do Select
-// Converte valores antigos (ex: days=30, type="daily") para o formato novo (ex: "30_monthly")
-function getDurationSelectValue(days: number | undefined | null, type: string | undefined | null): string {
+// Sempre retorna um valor valido que existe nas opcoes do Select
+function getDurationSelectValue(days: number | undefined | null): string {
   const d = days ?? 30
-  // Mapeia os dias para o tipo correto baseado no valor dos dias
-  const typeMap: Record<number, string> = {
-    0: "lifetime",
-    1: "daily",
-    7: "weekly",
-    15: "monthly",
-    30: "monthly",
-    60: "monthly",
-    90: "monthly",
-    180: "monthly",
-    365: "yearly"
+  // Mapeia os dias diretamente para o valor do select (dias_tipo)
+  const valueMap: Record<number, string> = {
+    0: "0_lifetime",
+    1: "1_daily",
+    7: "7_weekly",
+    15: "15_monthly",
+    30: "30_monthly",
+    60: "60_monthly",
+    90: "90_monthly",
+    180: "180_monthly",
+    365: "365_yearly"
   }
-  // Se o tipo ja esta correto e valido, usa ele; senao, usa o mapeamento
-  const validTypes = ["daily", "weekly", "monthly", "yearly", "lifetime"]
-  const finalType = (type && validTypes.includes(type) && typeMap[d] === type) ? type : (typeMap[d] || "monthly")
-  return `${d}_${finalType}`
+  // Se o valor dos dias existe no mapa, usa ele; senao, default para 30_monthly
+  return valueMap[d] || "30_monthly"
 }
 
 // Helper: Retorna o label da duracao para exibicao
-function getDurationLabel(days: number | undefined | null, type: string | undefined | null): string {
+function getDurationLabel(days: number | undefined | null): string {
   const d = days ?? 30
-  const labels: Record<string, string> = {
-    "0_lifetime": "Vitalicio",
-    "1_daily": "Diario",
-    "7_weekly": "Semanal",
-    "15_monthly": "Quinzenal",
-    "30_monthly": "Mensal",
-    "60_monthly": "Bimestral",
-    "90_monthly": "Trimestral",
-    "180_monthly": "Semestral",
-    "365_yearly": "Anual"
+  const labels: Record<number, string> = {
+    0: "Vitalicio",
+    1: "Diario",
+    7: "Semanal",
+    15: "Quinzenal",
+    30: "Mensal",
+    60: "Bimestral",
+    90: "Trimestral",
+    180: "Semestral",
+    365: "Anual"
   }
-  const key = getDurationSelectValue(d, type)
-  return labels[key] || "Mensal"
+  return labels[d] || "Mensal"
 }
 
 export default function FlowEditorPage() {
@@ -3001,7 +2998,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               <div>
   <p className="font-semibold text-neutral-900">{plan.name || `Plano ${index + 1}`}</p>
   <p className="text-sm text-neutral-500">
-  R$ {Number(plan.price || 0).toFixed(2)} • {getDurationLabel(plan.duration_days, plan.duration_type)}
+  R$ {Number(plan.price || 0).toFixed(2)} • {getDurationLabel(plan.duration_days)}
   </p>
                               </div>
                             </div>
@@ -3054,13 +3051,13 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 <div className="space-y-2">
                                   <Label className="text-sm text-neutral-600">Duracao do Acesso</Label>
                                   <Select
-                                    value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
-                                    onValueChange={(value) => {
-                                      const [daysStr, type] = value.split("_")
-                                      const days = parseInt(daysStr, 10)
-                                      handleUpdatePlan(plan.id, "duration_days", days)
-                                      handleUpdatePlan(plan.id, "duration_type", type)
-                                    }}
+value={getDurationSelectValue(plan.duration_days)}
+  onValueChange={(value) => {
+  const [daysStr, type] = value.split("_")
+  const days = parseInt(daysStr, 10)
+  handleUpdatePlan(plan.id, "duration_days", days)
+  handleUpdatePlan(plan.id, "duration_type", type)
+  }}
                                   >
                                     <SelectTrigger className="bg-white border-neutral-200">
                                       <SelectValue placeholder="Selecione a duracao" />
@@ -3882,7 +3879,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           <div className="space-y-1">
                                             <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
   <Select
-  value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
+  value={getDurationSelectValue(plan.duration_days)}
   onValueChange={(value) => {
   const [daysStr, type] = value.split("_")
   const days = parseInt(daysStr, 10)
@@ -4401,7 +4398,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                             <div className="space-y-1">
                                               <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
   <Select
-  value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
+  value={getDurationSelectValue(plan.duration_days)}
   onValueChange={(value) => {
   const [daysStr, type] = value.split("_")
   const days = parseInt(daysStr, 10)
@@ -4897,7 +4894,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                             <div className="space-y-1">
                                               <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
   <Select
-  value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
+  value={getDurationSelectValue(plan.duration_days)}
   onValueChange={(value) => {
   const [daysStr, type] = value.split("_")
   const days = parseInt(daysStr, 10)
