@@ -2778,18 +2778,9 @@ const handleAddUpsellPlan = (seqId: string) => {
                     <div className="p-6">
                       <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50 border border-blue-200">
                         <HelpCircle className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                        <div className="space-y-2">
-                          <p className="text-sm text-neutral-700">
-                            <strong>Modo sem botao intermediario:</strong> Os planos configurados aparecerao como botoes diretamente na mensagem de boas-vindas.
-                          </p>
-                          <p className="text-sm text-neutral-700">
-                            Redirect e Packs continuam aparecendo normalmente.
-                          </p>
-                          <p className="text-xs text-amber-600 flex items-center gap-1 mt-2">
-                            <AlertTriangle className="h-3 w-3" />
-                            <span>A opcao &quot;Mostrar preco no botao&quot; so funciona com o Botao de Acao (CTA) ativado, pois os botoes dos planos precisam passar pelo CTA para exibir o preco formatado.</span>
-                          </p>
-                        </div>
+                        <p className="text-sm text-neutral-700">
+                          Os planos configurados aparecerao como botoes diretamente na mensagem de boas-vindas, sem precisar de um botao intermediario. Redirect e Packs continuam aparecendo normalmente.
+                        </p>
                       </div>
                     </div>
                   )}
@@ -2924,23 +2915,14 @@ const handleAddUpsellPlan = (seqId: string) => {
                 <div className="p-6 space-y-4">
                   {/* Opcao mostrar preco no botao */}
                   {plans.length > 0 && (
-                    <div className={`flex items-center justify-between p-3 rounded-lg border ${ctaButtonEnabled ? 'bg-neutral-50 border-neutral-100' : 'bg-neutral-100 border-neutral-200 opacity-60'}`}>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm ${ctaButtonEnabled ? 'text-neutral-600' : 'text-neutral-400'}`}>Mostrar preco no botao</span>
-                          <span className="text-xs text-neutral-400">(ex: &quot;Mensal por R$ 20,00&quot;)</span>
-                        </div>
-                        {!ctaButtonEnabled && (
-                          <p className="text-xs text-amber-600 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Requer o Botao de Acao (CTA) ativado para funcionar
-                          </p>
-                        )}
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 border border-neutral-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-neutral-600">Mostrar preco no botao</span>
+                        <span className="text-xs text-neutral-400">(ex: &quot;Mensal por R$ 20,00&quot;)</span>
                       </div>
                       <Switch
                         checked={showPriceInButton}
                         onCheckedChange={(checked) => { setShowPriceInButton(checked); setHasChanges(true) }}
-                        disabled={!ctaButtonEnabled}
                       />
                     </div>
                   )}
