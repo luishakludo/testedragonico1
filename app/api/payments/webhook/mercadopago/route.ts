@@ -804,6 +804,9 @@ export async function POST(request: NextRequest) {
                   const paymentMetadata = payment.metadata as Record<string, any> | null
                   const orderBumpDeliverableId = paymentMetadata?.order_bump_deliverable_id
                   
+                  console.log(`[v0] ORDER BUMP CHECK: product_type=${payment.product_type}, metadata=`, JSON.stringify(paymentMetadata))
+                  console.log(`[v0] ORDER BUMP CHECK: orderBumpDeliverableId="${orderBumpDeliverableId}"`)
+                  
                   if (orderBumpDeliverableId && orderBumpDeliverableId !== "") {
                     console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump com deliverableId: ${orderBumpDeliverableId}`)
                     await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpDeliverableId)
