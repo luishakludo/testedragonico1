@@ -1428,8 +1428,27 @@ async function generatePayment(
         await sendTelegramPhoto(botToken, chatId, photoUrl, "", undefined)
       }
 
-      // Send PIX copy-paste
-      const pixMessage = `<b>PIX Copia e Cola:</b>\n\n<code>${pixCopyPaste}</code>\n\n<b>Valor:</b> R$ ${amount.toFixed(2).replace(".", ",")}\n<b>Descricao:</b> ${description}\n\nCopie o codigo acima e pague no seu banco.`
+      // Buscar config de mensagens do flow
+      const { data: flow } = await supabase
+        .from("flows")
+        .select("config")
+        .eq("bot_id", bot.id)
+        .eq("is_active", true)
+        .limit(1)
+        .single()
+      
+      const flowConfig = (flow?.config as Record<string, unknown>) || {}
+      const paymentMessages = (flowConfig.paymentMessages as Record<string, unknown>) || {}
+      
+      // Usar mensagem customizada se configurada (pixGeneratedMessage é o nome no fluxo)
+      const customPixMessage = (paymentMessages.pixGeneratedMessage as string) || (paymentMessages.pixMessage as string) || null
+      const pixMessage = customPixMessage 
+        ? customPixMessage
+          .replace(/\{nome\}/g, telegramUserName || "Cliente")
+          .replace(/\{valor\}/g, `R$ ${amount.toFixed(2).replace(".", ",")}`)
+          .replace(/\{produto\}/g, description)
+        : `<b>PIX Copia e Cola:</b>\n\n<code>${pixCopyPaste}</code>\n\n<b>Valor:</b> R$ ${amount.toFixed(2).replace(".", ",")}\n<b>Descricao:</b> ${description}\n\nCopie o codigo acima e pague no seu banco.`
+      
       await sendTelegramMessage(botToken, chatId, pixMessage)
 
       // Update funnel step

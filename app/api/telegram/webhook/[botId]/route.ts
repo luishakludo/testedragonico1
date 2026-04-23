@@ -144,6 +144,7 @@ async function generatePixPayment(params: {
 // ---------------------------------------------------------------------------
 interface PaymentMessagesConfig {
   pixMessage?: string
+  pixGeneratedMessage?: string // Nome usado no fluxo
   showPlanBeforePix?: boolean
   qrCodeDisplay?: string // "image" | "none"
   pixCodeFormat?: string // "monospace" | "normal"
@@ -183,8 +184,8 @@ async function sendPixPaymentMessages(params: {
     userName 
   } = params
   
-  // Configurações padrão
-  const pixMessage = config?.pixMessage || `<b>Como realizar o pagamento:</b>
+  // Configurações padrão - pixGeneratedMessage é o nome usado no fluxo, pixMessage é legado
+  const pixMessage = config?.pixGeneratedMessage || config?.pixMessage || `<b>Como realizar o pagamento:</b>
 
 1. Abra o aplicativo do seu banco.
 2. Selecione a opcao "Pagar" ou "PIX".
