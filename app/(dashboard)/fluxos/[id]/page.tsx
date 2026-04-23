@@ -336,6 +336,46 @@ interface TelegramChat {
   type: string
 }
 
+// Helper: Normaliza o valor da duracao para o formato correto do Select
+// Converte valores antigos (ex: days=30, type="daily") para o formato novo (ex: "30_monthly")
+function getDurationSelectValue(days: number | undefined | null, type: string | undefined | null): string {
+  const d = days ?? 30
+  // Mapeia os dias para o tipo correto baseado no valor dos dias
+  const typeMap: Record<number, string> = {
+    0: "lifetime",
+    1: "daily",
+    7: "weekly",
+    15: "monthly",
+    30: "monthly",
+    60: "monthly",
+    90: "monthly",
+    180: "monthly",
+    365: "yearly"
+  }
+  // Se o tipo ja esta correto e valido, usa ele; senao, usa o mapeamento
+  const validTypes = ["daily", "weekly", "monthly", "yearly", "lifetime"]
+  const finalType = (type && validTypes.includes(type) && typeMap[d] === type) ? type : (typeMap[d] || "monthly")
+  return `${d}_${finalType}`
+}
+
+// Helper: Retorna o label da duracao para exibicao
+function getDurationLabel(days: number | undefined | null, type: string | undefined | null): string {
+  const d = days ?? 30
+  const labels: Record<string, string> = {
+    "0_lifetime": "Vitalicio",
+    "1_daily": "Diario",
+    "7_weekly": "Semanal",
+    "15_monthly": "Quinzenal",
+    "30_monthly": "Mensal",
+    "60_monthly": "Bimestral",
+    "90_monthly": "Trimestral",
+    "180_monthly": "Semestral",
+    "365_yearly": "Anual"
+  }
+  const key = getDurationSelectValue(d, type)
+  return labels[key] || "Mensal"
+}
+
 export default function FlowEditorPage() {
   const params = useParams()
   const router = useRouter()
@@ -2959,15 +2999,10 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 <Package className="h-5 w-5 text-neutral-600" />
                               </div>
                               <div>
-                                <p className="font-semibold text-neutral-900">{plan.name || `Plano ${index + 1}`}</p>
-                                <p className="text-sm text-neutral-500">
-                                  R$ {Number(plan.price || 0).toFixed(2)} • {
-                                    plan.duration_type === "daily" ? "Diario" :
-                                    plan.duration_type === "weekly" ? "Semanal" :
-                                    plan.duration_type === "monthly" ? "Mensal" :
-                                    plan.duration_type === "yearly" ? "Anual" : "Vitalicio"
-                                  }
-                                </p>
+  <p className="font-semibold text-neutral-900">{plan.name || `Plano ${index + 1}`}</p>
+  <p className="text-sm text-neutral-500">
+  R$ {Number(plan.price || 0).toFixed(2)} • {getDurationLabel(plan.duration_days, plan.duration_type)}
+  </p>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -3019,7 +3054,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 <div className="space-y-2">
                                   <Label className="text-sm text-neutral-600">Duracao do Acesso</Label>
                                   <Select
-                                    value={`${plan.duration_days ?? 30}_${plan.duration_type ?? "monthly"}`}
+                                    value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
                                     onValueChange={(value) => {
                                       const [daysStr, type] = value.split("_")
                                       const days = parseInt(daysStr, 10)
@@ -3028,7 +3063,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                     }}
                                   >
                                     <SelectTrigger className="bg-white border-neutral-200">
-                                      <SelectValue />
+                                      <SelectValue placeholder="Selecione a duracao" />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="1_daily">Diario (1 dia)</SelectItem>
@@ -3846,18 +3881,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                                         <div className="grid grid-cols-2 gap-3">
                                           <div className="space-y-1">
                                             <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
-                                            <Select
-                                              value={`${plan.duration_days ?? 30}_${plan.duration_type ?? "monthly"}`}
-                                              onValueChange={(value) => {
-                                                const [daysStr, type] = value.split("_")
-                                                const days = parseInt(daysStr, 10)
-                                                handleUpdateUpsellPlan(seq.id, plan.id, "duration_days", days)
-                                                handleUpdateUpsellPlan(seq.id, plan.id, "duration_type", type)
-                                              }}
-                                            >
-                                              <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
-                                                <SelectValue />
-                                              </SelectTrigger>
+  <Select
+  value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
+  onValueChange={(value) => {
+  const [daysStr, type] = value.split("_")
+  const days = parseInt(daysStr, 10)
+  handleUpdateUpsellPlan(seq.id, plan.id, "duration_days", days)
+  handleUpdateUpsellPlan(seq.id, plan.id, "duration_type", type)
+  }}
+  >
+  <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
+  <SelectValue placeholder="Selecione" />
+  </SelectTrigger>
                                               <SelectContent>
                                                 <SelectItem value="1_daily">1 dia</SelectItem>
                                                 <SelectItem value="7_weekly">7 dias</SelectItem>
@@ -4365,18 +4400,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1">
                                               <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
-                                              <Select
-                                                value={`${plan.duration_days ?? 30}_${plan.duration_type ?? "monthly"}`}
-                                                onValueChange={(value) => {
-                                                  const [daysStr, type] = value.split("_")
-                                                  const days = parseInt(daysStr, 10)
-                                                  handleUpdateDownsellPlan(seq.id, plan.id, "duration_days", days)
-                                                  handleUpdateDownsellPlan(seq.id, plan.id, "duration_type", type)
-                                                }}
-                                              >
-                                                <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
-                                                  <SelectValue />
-                                                </SelectTrigger>
+  <Select
+  value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
+  onValueChange={(value) => {
+  const [daysStr, type] = value.split("_")
+  const days = parseInt(daysStr, 10)
+  handleUpdateDownsellPlan(seq.id, plan.id, "duration_days", days)
+  handleUpdateDownsellPlan(seq.id, plan.id, "duration_type", type)
+  }}
+  >
+  <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
+  <SelectValue placeholder="Selecione" />
+  </SelectTrigger>
                                                 <SelectContent>
                                                   <SelectItem value="1_daily">1 dia</SelectItem>
                                                   <SelectItem value="7_weekly">7 dias</SelectItem>
@@ -4861,18 +4896,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1">
                                               <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
-                                              <Select
-                                                value={`${plan.duration_days ?? 30}_${plan.duration_type ?? "monthly"}`}
-                                                onValueChange={(value) => {
-                                                  const [daysStr, type] = value.split("_")
-                                                  const days = parseInt(daysStr, 10)
-                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_days", days)
-                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_type", type)
-                                                }}
-                                              >
-                                                <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
-                                                  <SelectValue />
-                                                </SelectTrigger>
+  <Select
+  value={getDurationSelectValue(plan.duration_days, plan.duration_type)}
+  onValueChange={(value) => {
+  const [daysStr, type] = value.split("_")
+  const days = parseInt(daysStr, 10)
+  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_days", days)
+  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_type", type)
+  }}
+  >
+  <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
+  <SelectValue placeholder="Selecione" />
+  </SelectTrigger>
                                                 <SelectContent>
                                                   <SelectItem value="1_daily">1 dia</SelectItem>
                                                   <SelectItem value="7_weekly">7 dias</SelectItem>
