@@ -1531,12 +1531,7 @@ plans,
 
 // Update plan
   const handleUpdatePlan = (id: string, field: keyof FlowPlan, value: FlowPlan[keyof FlowPlan]) => {
-  console.log("[v0] handleUpdatePlan chamado:", { id, field, value, currentPlans: plans })
-  setPlans(prevPlans => {
-    const newPlans = prevPlans.map(p => p.id === id ? { ...p, [field]: value } : p)
-    console.log("[v0] Novos planos apos update:", newPlans)
-    return newPlans
-  })
+  setPlans(prevPlans => prevPlans.map(p => p.id === id ? { ...p, [field]: value } : p))
   setHasChanges(true)
   }
 
@@ -3073,10 +3068,8 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   <Select
                                     value={getDurationSelectValue(plan.duration_days) || "30_monthly"}
                                     onValueChange={(value) => {
-                                      console.log("[v0] Select onValueChange disparado:", { value, planId: plan.id, currentDurationDays: plan.duration_days })
                                       const [daysStr, type] = value.split("_")
                                       const days = parseInt(daysStr, 10)
-                                      console.log("[v0] Parsed values:", { daysStr, type, days })
                                       handleUpdatePlan(plan.id, "duration_days", days)
                                       handleUpdatePlan(plan.id, "duration_type", type)
                                     }}
@@ -3111,8 +3104,8 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   Selecione qual entregavel sera enviado ao comprar este plano
                                 </p>
                                 <Select
-                                  value={plan.delivery_type}
-                                  onValueChange={(value) => {
+                                  value={plan.delivery_type || "default"}
+                                  onValueChange={(value: "default" | "custom") => {
                                     handleUpdatePlan(plan.id, "delivery_type", value)
                                     if (value === "default") {
                                         handleUpdatePlan(plan.id, "deliverableId", "")
@@ -3131,7 +3124,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                     </SelectContent>
                                   </Select>
                                   
-                                  {plan.delivery_type === "custom" && (
+                                  {(plan.delivery_type || "default") === "custom" && (
                                     <div className="pt-2">
                                       {deliverables.length === 0 ? (
                                         <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3">
@@ -4506,7 +4499,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   Por padrao, usa o entregavel principal. Selecione outro entregavel para esta sequencia.
                                 </p>
                                 <Select
-                                  value={seq.deliveryType}
+                                  value={seq.deliveryType || "global"}
                                   onValueChange={(value: "global" | "custom") => {
                                     handleUpdateDownsellSequence(seq.id, "deliveryType", value)
                                     if (value === "global") {
@@ -4527,7 +4520,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 </Select>
 
                                 {/* Seletor de entregavel */}
-                                {seq.deliveryType === "custom" && (
+                                {(seq.deliveryType || "global") === "custom" && (
                                   <div className="space-y-2 pt-2">
                                     {deliverables.length === 0 ? (
                                       <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3">
@@ -5228,7 +5221,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           Selecione qual conteudo sera entregue quando este order bump for comprado (junto com o entregavel principal do plano)
                         </p>
                         <Select
-                          value={orderBumpInicial.deliveryType}
+                          value={orderBumpInicial.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpInicial({...orderBumpInicial, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpInicial.deliverableId})
                             setHasChanges(true)
@@ -5243,7 +5236,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           </SelectContent>
                         </Select>
                         
-                        {orderBumpInicial.deliveryType === "custom" && (
+                        {(orderBumpInicial.deliveryType || "same") === "custom" && (
                           <div className="pt-2">
                             {deliverables.length === 0 ? (
                               <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3">
@@ -5411,7 +5404,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <Label className="text-neutral-700 font-medium">Entregavel</Label>
                         </div>
                         <Select
-                          value={orderBumpUpsell.deliveryType}
+                          value={orderBumpUpsell.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpUpsell({...orderBumpUpsell, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpUpsell.deliverableId})
                             setHasChanges(true)
@@ -5426,7 +5419,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           </SelectContent>
                         </Select>
                         
-                        {orderBumpUpsell.deliveryType === "custom" && (
+                        {(orderBumpUpsell.deliveryType || "same") === "custom" && (
                           <Select
                             value={orderBumpUpsell.deliverableId || "none"}
                             onValueChange={(value) => {
@@ -5580,7 +5573,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <Label className="text-neutral-700 font-medium">Entregavel</Label>
                         </div>
                         <Select
-                          value={orderBumpDownsell.deliveryType}
+                          value={orderBumpDownsell.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpDownsell({...orderBumpDownsell, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpDownsell.deliverableId})
                             setHasChanges(true)
@@ -5595,7 +5588,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           </SelectContent>
                         </Select>
                         
-                        {orderBumpDownsell.deliveryType === "custom" && (
+                        {(orderBumpDownsell.deliveryType || "same") === "custom" && (
                           <Select
                             value={orderBumpDownsell.deliverableId || "none"}
                             onValueChange={(value) => {
@@ -5730,7 +5723,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <Label className="text-neutral-700 font-medium">Entregavel</Label>
                         </div>
                         <Select
-                          value={orderBumpPacks.deliveryType}
+                          value={orderBumpPacks.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpPacks({...orderBumpPacks, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpPacks.deliverableId})
                             setHasChanges(true)
@@ -5745,7 +5738,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           </SelectContent>
                         </Select>
                         
-                        {orderBumpPacks.deliveryType === "custom" && (
+                        {(orderBumpPacks.deliveryType || "same") === "custom" && (
                           <Select
                             value={orderBumpPacks.deliverableId || "none"}
                             onValueChange={(value) => {
