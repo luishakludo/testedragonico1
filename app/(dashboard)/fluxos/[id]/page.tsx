@@ -3066,7 +3066,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 <div className="space-y-2">
                                   <Label className="text-sm text-neutral-600">Duracao do Acesso</Label>
                                   <Select
-                                    value={getDurationSelectValue(plan.duration_days)}
+                                    value={getDurationSelectValue(plan.duration_days) || "30_monthly"}
                                     onValueChange={(value) => {
                                       const [daysStr, type] = value.split("_")
                                       const days = parseInt(daysStr, 10)
@@ -3890,7 +3890,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           <div className="space-y-1">
                                             <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
                                             <Select
-                                              value={getDurationSelectValue(plan.duration_days)}
+                                              value={getDurationSelectValue(plan.duration_days) || "30_monthly"}
                                               onValueChange={(value) => {
                                                 const [daysStr, type] = value.split("_")
                                                 const days = parseInt(daysStr, 10)
@@ -4405,7 +4405,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                             <div className="space-y-1">
                                               <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
                                               <Select
-                                                value={getDurationSelectValue(plan.duration_days)}
+                                                value={getDurationSelectValue(plan.duration_days) || "30_monthly"}
                                                 onValueChange={(value) => {
                                                   const [daysStr, type] = value.split("_")
                                                   const days = parseInt(daysStr, 10)
@@ -4897,7 +4897,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                             <div className="space-y-1">
                                               <Label className="text-xs text-neutral-500">Duracao do Acesso</Label>
                                               <Select
-                                                value={getDurationSelectValue(plan.duration_days)}
+                                                value={getDurationSelectValue(plan.duration_days) || "30_monthly"}
                                                 onValueChange={(value) => {
                                                   const [daysStr, type] = value.split("_")
                                                   const days = parseInt(daysStr, 10)
