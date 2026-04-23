@@ -119,6 +119,7 @@ function replaceVariables(
   message: string,
   variables: {
     nome?: string
+    username?: string
     plano?: string
     dias?: number
     data_expiracao?: string
@@ -129,6 +130,7 @@ function replaceVariables(
   let result = message
   
   if (variables.nome) result = result.replace(/\{nome\}/gi, variables.nome)
+  if (variables.username !== undefined) result = result.replace(/\{username\}/gi, variables.username ? `@${variables.username}` : "")
   if (variables.plano) result = result.replace(/\{plano\}/gi, variables.plano)
   if (variables.dias !== undefined) result = result.replace(/\{dias\}/gi, String(variables.dias))
   if (variables.data_expiracao) result = result.replace(/\{data_expiracao\}/gi, variables.data_expiracao)
@@ -318,15 +320,17 @@ export async function GET(request: NextRequest) {
           const expiresAt = new Date(user.vip_expires_at)
           const daysUntilExpire = Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
           
-          const userName = user.first_name || "Cliente"
-          const variables = {
-            nome: userName,
-            plano: "VIP",
-            dias: daysUntilExpire,
-            data_expiracao: expiresAt.toLocaleDateString("pt-BR"),
-            saudacao: getSaudacao(),
-            uf: ""
-          }
+                const userName = user.first_name || "Cliente"
+                const userUsername = user.username || ""
+                const variables = {
+                  nome: userName,
+                  username: userUsername,
+                  plano: "VIP",
+                  dias: daysUntilExpire,
+                  data_expiracao: expiresAt.toLocaleDateString("pt-BR"),
+                  saudacao: getSaudacao(),
+                  uf: ""
+                }
 
           // ========== USUARIO JA EXPIROU ==========
           if (daysUntilExpire < 0) {

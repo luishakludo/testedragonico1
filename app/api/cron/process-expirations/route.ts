@@ -49,6 +49,8 @@ async function sendTelegramMessage(
 interface Payment {
   id: string
   telegram_user_id: string
+  telegram_first_name?: string
+  telegram_username?: string
   bot_id: string
   flow_id?: string
   product_type: string
@@ -104,6 +106,8 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         telegram_user_id,
+        telegram_first_name,
+        telegram_username,
         bot_id,
         flow_id,
         product_type,
@@ -222,8 +226,12 @@ export async function GET(request: NextRequest) {
 
         // Enviar mensagem de expiracao (se configurado)
         if (flowConfig?.subscription?.expireMessageEnabled && flowConfig?.subscription?.expireMessage) {
+          // Substituir variaveis {nome}, {username}, {plano}
+          const userName = payment.telegram_first_name || "Cliente"
+          const userUsername = payment.telegram_username || ""
           const message = flowConfig.subscription.expireMessage
-            .replace(/\{nome\}/gi, "Cliente")
+            .replace(/\{nome\}/gi, userName)
+            .replace(/\{username\}/gi, userUsername ? `@${userUsername}` : "")
             .replace(/\{plano\}/gi, payment.product_name || "Plano")
           
           await sendTelegramMessage(bot.token, payment.telegram_user_id, message)
