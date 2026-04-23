@@ -128,9 +128,23 @@ export async function GET(request: NextRequest) {
         
         const botToken = metadata!.botToken
         const chatId = msg.telegram_chat_id
-        const message = metadata?.message || ""
         const medias = metadata?.medias || []
         const plans = metadata?.plans || []
+        
+        // Extrair dados do usuario do metadata para substituir variaveis {NOME} e {USERNAME}
+        const userFirstName = (metadata as Record<string, unknown>)?.userFirstName as string || ""
+        const userUsername = (metadata as Record<string, unknown>)?.userUsername as string || ""
+        
+        // Funcao para substituir variaveis {NOME} e {USERNAME} na mensagem
+        const replaceVars = (text: string) => {
+          if (!text) return ""
+          return text
+            .replace(/\{nome\}/gi, userFirstName || "")
+            .replace(/\{username\}/gi, userUsername ? `@${userUsername}` : "")
+        }
+        
+        // Aplicar substituicao de variaveis na mensagem
+        const message = replaceVars(metadata?.message || "")
         
         console.log(`[CRON] Processando msg ${msg.id} - tipo: ${msg.message_type}`)
         console.log(`[CRON] Metadata recebido:`, JSON.stringify(metadata))

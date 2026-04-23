@@ -730,17 +730,21 @@ export async function POST(request: NextRequest) {
                   console.log(`[v0] paymentMessages:`, !!paymentMessages)
                   console.log(`[v0] UPSELL: Flow ${flowId} has ${upsellSequences.length} upsell sequences, enabled: ${upsellConfig?.enabled}`)
 
-                  // Buscar nome do usuario para variavel {nome}
+                  // Buscar nome do usuario para variavel {nome} e {username}
                   let userName = "Cliente"
+                  let userUsername = ""
                   try {
                     const { data: userData } = await supabase
                       .from("bot_users")
-                      .select("first_name, last_name")
+                      .select("first_name, last_name, username")
                       .eq("bot_id", bot.id)
                       .eq("telegram_user_id", String(chatId))
                       .single()
                     if (userData?.first_name) {
                       userName = userData.first_name
+                    }
+                    if (userData?.username) {
+                      userUsername = userData.username
                     }
                   } catch { /* ignore */ }
 
@@ -760,8 +764,9 @@ export async function POST(request: NextRequest) {
                   // Enviar mensagem de pagamento aprovado personalizada
                   const defaultApprovedMsg = `<b>Pagamento Aprovado!</b>\n\nParabens ${userName}! Seu pagamento foi confirmado.\n\nVoce ja tem acesso ao conteudo!`
                   let approvedMsg = paymentMessages?.approvedMessage || defaultApprovedMsg
-                  // Substituir variavel {nome}
+                  // Substituir variaveis {nome} e {username}
                   approvedMsg = approvedMsg.replace(/\{nome\}/gi, userName)
+                  approvedMsg = approvedMsg.replace(/\{username\}/gi, userUsername ? `@${userUsername}` : "")
 
                   // Construir botao de acesso
                   const accessButtonText = paymentMessages?.accessButtonText || "Acessar Conteudo"
@@ -890,6 +895,9 @@ export async function POST(request: NextRequest) {
                             botToken: bot.token,
                             deliveryType: upsellSeq.deliveryType || "global",
                             deliverableId: upsellSeq.deliverableId,
+                            // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
+                            userFirstName: userName || "",
+                            userUsername: userUsername || "",
                           },
                           created_at: new Date().toISOString(),
                           updated_at: new Date().toISOString()
@@ -1084,17 +1092,21 @@ export async function POST(request: NextRequest) {
                     accessButtonUrl?: string
                   } | undefined
                   
-                  // 4. Buscar nome do usuario
+                  // 4. Buscar nome do usuario para variaveis {nome} e {username}
                   let dsUserName = "Cliente"
+                  let dsUserUsername = ""
                   try {
                     const { data: userData } = await supabase
                       .from("bot_users")
-                      .select("first_name, last_name")
+                      .select("first_name, last_name, username")
                       .eq("bot_id", bot.id)
                       .eq("telegram_user_id", String(chatId))
                       .single()
                     if (userData?.first_name) {
                       dsUserName = userData.first_name
+                    }
+                    if (userData?.username) {
+                      dsUserUsername = userData.username
                     }
                   } catch { /* ignore */ }
                   
@@ -1114,7 +1126,9 @@ export async function POST(request: NextRequest) {
                   // 6. Enviar mensagem de pagamento aprovado
                   const defaultDsApprovedMsg = `<b>Pagamento Aprovado!</b>\n\nParabens ${dsUserName}! Seu pagamento foi confirmado.\n\nVoce ja tem acesso ao conteudo!`
                   let dsApprovedMsg = paymentMessages?.approvedMessage || defaultDsApprovedMsg
+                  // Substituir variaveis {nome} e {username}
                   dsApprovedMsg = dsApprovedMsg.replace(/\{nome\}/gi, dsUserName)
+                  dsApprovedMsg = dsApprovedMsg.replace(/\{username\}/gi, dsUserUsername ? `@${dsUserUsername}` : "")
                   
                   const dsAccessButtonText = paymentMessages?.accessButtonText || "Acessar Conteudo"
                   const dsAccessButtonUrl = paymentMessages?.accessButtonUrl

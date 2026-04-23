@@ -3368,6 +3368,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 deliverableId: seq.deliverableId,
                 customDelivery: seq.customDelivery,
                 botToken: botToken,
+                // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
+                userFirstName: from?.first_name || "",
+                userUsername: from?.username || "",
               }
             })
             
