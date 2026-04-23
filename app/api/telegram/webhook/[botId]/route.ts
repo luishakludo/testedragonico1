@@ -699,17 +699,19 @@ async function sendOrderBumpOffer(params: {
   medias?: string[]
   mainAmountCents: number
   callbackPrefix?: string // Prefixo do callback (padrão: "ob")
+  orderBumpIndex?: number // Índice do order bump (para identificar qual foi aceito)
 }) {
-  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, callbackPrefix = "ob" } = params
+  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, callbackPrefix = "ob", orderBumpIndex = 0 } = params
   
   const obPriceCents = Math.round(price * 100)
   // Mensagem padrão simples: Título, Descrição, Por apenas R$ X,XX
   const obMessage = `<b>${name || "Oferta Especial"}</b>\n\n${description || ""}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
   
+  // Incluir índice no callback para identificar qual order bump foi aceito
   const obButtons = {
     inline_keyboard: [
       [
-        { text: acceptText || "QUERO", callback_data: `${callbackPrefix}_accept_${mainAmountCents}_${obPriceCents}` },
+        { text: acceptText || "QUERO", callback_data: `${callbackPrefix}_accept_${mainAmountCents}_${obPriceCents}_${orderBumpIndex}` },
         { text: rejectText || "NAO QUERO", callback_data: `${callbackPrefix}_decline_${mainAmountCents}_0` }
       ]
     ]
@@ -1658,7 +1660,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         
         const isAccept = callbackData.startsWith("ob_accept_")
         const parts = callbackData.replace("ob_accept_", "").replace("ob_decline_", "").split("_")
-        console.log("[v0] Order Bump parts:", parts, "isAccept:", isAccept)
+        // parts pode ser [mainCents, bumpCents] ou [mainCents, bumpCents, index]
+        const orderBumpIndex = parts.length > 2 ? parseInt(parts[2]) : 0
+        console.log("[v0] Order Bump parts:", parts, "isAccept:", isAccept, "orderBumpIndex:", orderBumpIndex)
         
         // Buscar metadata do order bump salvo no estado - PRIMEIRO SEM filtro de status
         let userState = null
@@ -1698,8 +1702,15 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const metadata = userState?.metadata as Record<string, any> | null
-        const orderBumpName = metadata?.order_bump_name || "Order Bump"
+        
+        // Buscar order bump correto pelo índice (se tiver array de order bumps)
+        const orderBumpsArray = metadata?.order_bumps as Array<{ name: string; price: number; deliverableId: string; deliveryType: string }> | undefined
+        const selectedOrderBump = orderBumpsArray?.[orderBumpIndex]
+        const orderBumpName = selectedOrderBump?.name || metadata?.order_bump_name || "Order Bump"
+        const orderBumpDeliverableIdFromIndex = selectedOrderBump?.deliverableId || metadata?.order_bump_deliverable_id || ""
         const mainDescription = metadata?.main_description || "Produto Principal"
+        
+        console.log("[v0] Order Bump - selectedOrderBump:", selectedOrderBump, "deliverableId:", orderBumpDeliverableIdFromIndex)
         
         let totalAmount = 0
         let description = mainDescription
@@ -1878,8 +1889,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           }
           
           // Save payment - IMPORTANTE: usar ownerUserId que foi encontrado corretamente
-          // Incluir deliverableId do order bump no metadata se aceito
-          const orderBumpDeliverableId = isAccept ? (metadata?.order_bump_deliverable_id || "") : ""
+          // Incluir deliverableId do order bump no metadata se aceito - usar o deliverableId correto baseado no índice
+          const orderBumpDeliverableId = isAccept ? orderBumpDeliverableIdFromIndex : ""
           console.log("[v0] Saving OB payment - user_id:", ownerUserId, "bot_id:", botUuid, "amount:", totalAmount, "productType:", productType, "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "order_bump_deliverable_id:", orderBumpDeliverableId)
           const { error: obPaymentError } = await supabase.from("payments").insert({
             bot_id: botUuid,
@@ -2795,6 +2806,15 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             ob.enabled && ob.price && ob.price > 0
           )
           
+          // Log detalhado dos order bumps para debug
+          console.log("[v0] Order Bumps ativos detalhados:", activePlanOrderBumps.map((ob: { name?: string; price?: number; deliverableId?: string; deliveryType?: string }, idx: number) => ({
+            index: idx,
+            name: ob.name,
+            price: ob.price,
+            deliverableId: ob.deliverableId || "VAZIO",
+            deliveryType: ob.deliveryType || "same"
+          })))
+          
           // PRIORIDADE: Se o order bump GLOBAL (fluxo inicial) estiver ativado, ele ANULA os order bumps do plano
           const globalOrderBumpEnabled = orderBumpInicial?.enabled && orderBumpInicial?.price > 0
           
@@ -2827,8 +2847,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               // Se tem MAIS DE 1: mostra so QUERO (o PROSSEGUIR vem no final)
               if (hasMultipleBumps) {
                 // Multiplos bumps: enviar cada um com só botão QUERO
+                // Incluir indice no callback para identificar qual order bump foi aceito
                 const obMessage = `<b>${planOrderBump.name || "Oferta Especial"}</b>\n\n${planOrderBump.description || ""}\n\n💰 Por apenas <b>R$ ${planOrderBump.price.toFixed(2).replace(".", ",")}</b>`
-                const acceptCallback = `ob_accept_${mainPriceRounded}_${bumpPriceRounded}`
+                const acceptCallback = `ob_accept_${mainPriceRounded}_${bumpPriceRounded}_${i}`
                 const obButtons = { inline_keyboard: [[{ text: planOrderBump.acceptText || "QUERO", callback_data: acceptCallback }]] }
                 
                 // Enviar TODAS as mídias em grupo primeiro
@@ -2852,7 +2873,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                   acceptText: planOrderBump.acceptText,
                   rejectText: planOrderBump.rejectText,
                   medias: planOrderBump.medias,
-                  mainAmountCents: mainPriceRounded
+                  mainAmountCents: mainPriceRounded,
+                  orderBumpIndex: i // Incluir índice para identificar o order bump
                 })
               }
             }
@@ -2875,7 +2897,14 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             }
             
             // Salvar estado USANDO MESMO STATUS DO ORDER BUMP GLOBAL (waiting_order_bump)
+            // Salvar TODOS os order bumps para poder buscar o correto pelo índice depois
             console.log("[v0] Salvando estado Plan Order Bump - bot_id:", botUuid, "telegram_user_id:", String(telegramUserId))
+            const orderBumpsData = activePlanOrderBumps.map((ob: { name?: string; price?: number; deliverableId?: string; deliveryType?: string }) => ({
+              name: ob.name || "Order Bump",
+              price: ob.price || 0,
+              deliverableId: ob.deliverableId || "",
+              deliveryType: ob.deliveryType || "same"
+            }))
             const { error: stateUpsertError } = await supabase.from("user_flow_state").upsert({
               bot_id: botUuid,
               telegram_user_id: String(telegramUserId),
@@ -2887,6 +2916,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 order_bump_name: activePlanOrderBumps[0].name || "Order Bump",
                 order_bump_price: activePlanOrderBumps[0].price,
                 order_bump_deliverable_id: activePlanOrderBumps[0].deliverableId || "",
+                order_bumps: orderBumpsData, // Array com TODOS os order bumps
                 main_amount: planPrice,
                 main_description: planName,
                 order_bump_source: "plan_specific"
