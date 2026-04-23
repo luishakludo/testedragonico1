@@ -855,13 +855,21 @@ export async function POST(request: NextRequest) {
                   }
 
                   // Depois verificar se tem upsell para enviar - AGENDAR TODAS AS SEQUENCIAS (igual downsell)
-                  // APENAS para produto principal (main_product, plan), NAO para order_bump, upsell, downsell
-                  const shouldScheduleUpsell = payment.product_type === "main_product" || payment.product_type === "plan"
+                  // Para produto principal OU produto principal com order bump, NAO para upsell/downsell
+                  const shouldScheduleUpsell = 
+                    payment.product_type === "main_product" || 
+                    payment.product_type === "plan" ||
+                    payment.product_type === "order_bump" ||
+                    payment.product_type === "plan_order_bump" ||
+                    payment.product_type === "pack" ||
+                    payment.product_type === "pack_order_bump"
                   console.log(`[UPSELL] product_type: ${payment.product_type}, shouldScheduleUpsell: ${shouldScheduleUpsell}`)
                   console.log(`[UPSELL] upsellConfig enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
                   
                   if (shouldScheduleUpsell && upsellConfig?.enabled && upsellSequences.length > 0) {
+                    console.log(`[UPSELL] ========== AGENDANDO UPSELL ==========`)
                     console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
+                    console.log(`[UPSELL] Bot ID: ${bot.id}, Flow ID: ${flowId}`)
                     
                     // Agendar TODAS as sequencias de upsell na tabela scheduled_messages
                     let cumulativeDelayMs = 0
@@ -909,13 +917,19 @@ export async function POST(request: NextRequest) {
                         })
                       
                       if (insertError) {
-                        console.error(`[UPSELL] Error scheduling upsell ${i}:`, insertError)
+                        console.error(`[UPSELL] ERRO ao agendar upsell ${i}:`, insertError.message)
+                        console.error(`[UPSELL] Detalhes do erro:`, JSON.stringify(insertError))
                       } else {
-                        console.log(`[UPSELL] Scheduled upsell ${i} for ${scheduledFor}`)
+                        console.log(`[UPSELL] SUCCESS - Upsell ${i} agendado para ${scheduledFor}`)
+                        console.log(`[UPSELL] Dados: message="${upsellSeq.message?.substring(0, 50)}...", plans=${upsellSeq.plans?.length || 0}`)
                       }
                     }
                   } else {
-                    console.log(`[v0] UPSELL: No upsell configured for this flow`)
+                    console.log(`[UPSELL] ========== NAO AGENDOU UPSELL ==========`)
+                    console.log(`[UPSELL] shouldScheduleUpsell: ${shouldScheduleUpsell}`)
+                    console.log(`[UPSELL] upsellConfig?.enabled: ${upsellConfig?.enabled}`)
+                    console.log(`[UPSELL] upsellSequences.length: ${upsellSequences.length}`)
+                    console.log(`[UPSELL] product_type: ${payment.product_type}`)
                   }
                 } else {
                   console.log(`[v0] DELIVERY: No flow found for bot ${bot.id}`)

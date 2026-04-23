@@ -146,7 +146,10 @@ export async function GET(request: NextRequest) {
         // Aplicar substituicao de variaveis na mensagem
         const message = replaceVars(metadata?.message || "")
         
-        console.log(`[CRON] Processando msg ${msg.id} - tipo: ${msg.message_type}`)
+        console.log(`[CRON] ========== PROCESSANDO MENSAGEM ==========`)
+        console.log(`[CRON] ID: ${msg.id} - tipo: ${msg.message_type}`)
+        console.log(`[CRON] telegram_chat_id: ${msg.telegram_chat_id}`)
+        console.log(`[CRON] bot_id: ${msg.bot_id}`)
         console.log(`[CRON] Metadata recebido:`, JSON.stringify(metadata))
         console.log(`[CRON] Planos encontrados: ${plans.length}`, JSON.stringify(plans))
         
