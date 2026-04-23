@@ -227,6 +227,18 @@ export async function GET(request: NextRequest) {
   const planButtons: Array<Array<{ text: string; callback_data: string }>> = []
   const sequenceIndex = (metadata as Record<string, unknown>)?.sequence_index as number || 0
   
+  // Verificar se deve mostrar preco no botao
+  const showPriceInButton = (metadata as Record<string, unknown>)?.showPriceInButton === true
+  
+  // Funcao para formatar texto do botao com preco se necessario
+  const formatButtonText = (plan: { buttonText?: string; name?: string; price?: number }) => {
+    const baseText = plan.buttonText || plan.name || "Plano"
+    if (showPriceInButton && plan.price && plan.price > 0) {
+      return `${baseText} por R$ ${Number(plan.price).toFixed(2).replace(".", ",")}`
+    }
+    return baseText
+  }
+  
   if (plans && plans.length > 0) {
   if (messageType === "upsell") {
   // UPSELL: usar callback up_{msgId}_{planIndex}_{priceInCents} (igual downsell)
@@ -239,10 +251,10 @@ export async function GET(request: NextRequest) {
   const callbackData = `up_${shortMsgId}_${planIdx}_${priceInCents}`
   
   planButtons.push([{
-  text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
+  text: formatButtonText(plan),
   callback_data: callbackData
   }])
-  console.log(`[CRON] Upsell button: ${plan.buttonText} - callback: ${callbackData} (${callbackData.length} chars)`)
+  console.log(`[CRON] Upsell button: ${formatButtonText(plan)} - callback: ${callbackData} (${callbackData.length} chars)`)
   }
   } else {
             // DOWNSELL: usar callback curto ds_{msgId}_{planIndex}_{priceInCents}
@@ -255,10 +267,10 @@ export async function GET(request: NextRequest) {
               const callbackData = `ds_${shortMsgId}_${planIdx}_${priceInCents}`
               
               planButtons.push([{
-                text: plan.buttonText || `R$ ${(plan.price || 0).toFixed(2).replace(".", ",")}`,
+                text: formatButtonText(plan),
                 callback_data: callbackData
               }])
-              console.log(`[CRON] Downsell button: ${plan.buttonText} - callback: ${callbackData} (${callbackData.length} chars)`)
+              console.log(`[CRON] Downsell button: ${formatButtonText(plan)} - callback: ${callbackData} (${callbackData.length} chars)`)
             }
           }
         }

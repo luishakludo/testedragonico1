@@ -895,6 +895,8 @@ export async function POST(request: NextRequest) {
                             botToken: bot.token,
                             deliveryType: upsellSeq.deliveryType || "global",
                             deliverableId: upsellSeq.deliverableId,
+                            // Flag para mostrar preco no botao (ex: "Mensal por R$ 20,00")
+                            showPriceInButton: upsellSeq.showPriceInButton === true,
                             // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
                             userFirstName: userName || "",
                             userUsername: userUsername || "",

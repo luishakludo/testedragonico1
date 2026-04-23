@@ -1226,10 +1226,15 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           const packsEnabled = packsConfig?.enabled && packsConfig?.list && packsConfig.list.filter(p => p.active !== false).length > 0
           const packsButtonText = packsConfig?.buttonText || "Packs Disponiveis"
           
+          // Verificar se deve mostrar preco no botao
+          const showPriceInButton = flowConfig.showPriceInButton === true
+          
           if (plans && plans.length > 0) {
-            // Build buttons for each plan (only name, no price)
+            // Build buttons for each plan
             const planButtons: Array<Array<{ text: string; callback_data: string }>> = plans.map(plan => [{
-              text: plan.name,
+              text: showPriceInButton && plan.price > 0 
+                ? `${plan.name} por R$ ${Number(plan.price).toFixed(2).replace(".", ",")}`
+                : plan.name,
               callback_data: `plan_${plan.id}`
             }])
             
@@ -1245,7 +1250,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             
             if (configPlans.length > 0) {
               const planButtons: Array<Array<{ text: string; callback_data: string }>> = configPlans.map(plan => [{
-                text: plan.name,
+                text: showPriceInButton && plan.price > 0 
+                  ? `${plan.name} por R$ ${Number(plan.price).toFixed(2).replace(".", ",")}`
+                  : plan.name,
                 callback_data: `plan_${plan.id}`
               }])
               
@@ -1362,6 +1369,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         const flowForPlans = await getActiveFlowForBot(supabase, botUuid)
         
         if (flowForPlans) {
+          const flowConfig = (flowForPlans.config as Record<string, unknown>) || {}
+          const showPriceInButton = flowConfig.showPriceInButton === true
+          
           const { data: plans } = await supabase
             .from("flow_plans")
             .select("*")
@@ -1371,7 +1381,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           
           if (plans && plans.length > 0) {
             const planButtons: Array<Array<{ text: string; callback_data: string }>> = plans.map(plan => [{
-              text: plan.name,
+              text: showPriceInButton && plan.price > 0 
+                ? `${plan.name} por R$ ${Number(plan.price).toFixed(2).replace(".", ",")}`
+                : plan.name,
               callback_data: `plan_${plan.id}`
             }])
             
@@ -3368,6 +3380,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 deliverableId: seq.deliverableId,
                 customDelivery: seq.customDelivery,
                 botToken: botToken,
+                // Flag para mostrar preco no botao (ex: "Mensal por R$ 20,00")
+                showPriceInButton: seq.showPriceInButton === true,
                 // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
                 userFirstName: from?.first_name || "",
                 userUsername: from?.username || "",
