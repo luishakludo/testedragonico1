@@ -1,3 +1,4 @@
+// v0.2 - Fix: Upsell agora funciona com order_bump e mensagem PIX customizada
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/supabase"
 
