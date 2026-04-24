@@ -57,27 +57,46 @@ export async function GET() {
     const orderBumpInicial = orderBumpConfig.inicial as Record<string, unknown> || {}
     debug.orderBump_inicial = orderBumpInicial
 
-    // 4. Buscar pagamentos
+    // 4. Buscar pagamentos - Se bot_id é null, buscar todos os recentes
     debug.step = "buscando_pagamentos"
-    const { data: payments, error: paymentsError } = await supabase
-      .from("payments")
-      .select("id, status, product_type, amount, telegram_user_id, metadata, created_at")
-      .eq("bot_id", botId)
-      .order("created_at", { ascending: false })
-      .limit(10)
-
-    if (paymentsError) {
-      debug.payments_error = paymentsError.message
+    let payments: Array<Record<string, unknown>> = []
+    let paymentsError: string | null = null
+    
+    if (botId) {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, status, product_type, amount, telegram_user_id, metadata, created_at, bot_id")
+        .eq("bot_id", botId)
+        .order("created_at", { ascending: false })
+        .limit(10)
+      
+      if (error) paymentsError = error.message
+      payments = data || []
+    } else {
+      // bot_id é null, buscar TODOS os pagamentos recentes
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, status, product_type, amount, telegram_user_id, metadata, created_at, bot_id")
+        .order("created_at", { ascending: false })
+        .limit(20)
+      
+      if (error) paymentsError = error.message
+      payments = data || []
+      debug.aviso = "bot_id do fluxo é NULL - buscando TODOS os pagamentos recentes"
     }
 
-    debug.pagamentos = payments || []
+    if (paymentsError) {
+      debug.payments_error = paymentsError
+    }
+
+    debug.pagamentos = payments
 
     // 5. Filtrar order bumps
-    const obPayments = payments?.filter(p => 
+    const obPayments = payments.filter(p => 
       p.product_type === "plan_order_bump" || 
       p.product_type === "order_bump" ||
       p.product_type === "pack_order_bump"
-    ) || []
+    )
 
     debug.pagamentos_order_bump = obPayments
 
@@ -95,16 +114,41 @@ export async function GET() {
       const planDeliverableIdFromMetadata = paymentMetadata?.plan_deliverable_id as string || ""
       const planIdFromMetadata = paymentMetadata?.plan_id as string || ""
       
+      // DEBUG: mostrar valores raw
+      debug.debug_valores = {
+        orderBumpConfig_tipo: typeof orderBumpConfig,
+        orderBumpConfig_keys: Object.keys(orderBumpConfig),
+        orderBumpInicial_tipo: typeof orderBumpInicial,
+        orderBumpInicial_keys: Object.keys(orderBumpInicial),
+        orderBumpInicial_deliverableId: orderBumpInicial.deliverableId,
+        orderBumpInicial_deliverableId_tipo: typeof orderBumpInicial.deliverableId
+      }
+      
       // Determinar deliverableId do order bump (mesma logica do webhook)
+      // FALLBACK COMPLETO: 1) metadata, 2) config global, 3) order bump do plano
       let finalOrderBumpDeliverableId = ""
       let fonte_ob_deliverable = ""
       
+      // 1. Tentar do metadata do pagamento
       if (orderBumpDeliverableIdFromMetadata) {
         finalOrderBumpDeliverableId = orderBumpDeliverableIdFromMetadata
         fonte_ob_deliverable = "METADATA_DO_PAGAMENTO"
-      } else if (orderBumpInicial.deliverableId) {
+      } 
+      // 2. Tentar do config global do order bump
+      else if (orderBumpInicial.deliverableId && orderBumpInicial.deliverableId !== "") {
         finalOrderBumpDeliverableId = orderBumpInicial.deliverableId as string
-        fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP"
+        fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP (orderBump.inicial)"
+      }
+      // 3. Tentar do primeiro plano que tem order bump
+      else {
+        for (const plan of plans) {
+          const planOrderBumps = (plan.order_bumps as Array<Record<string, unknown>>) || []
+          if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
+            finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
+            fonte_ob_deliverable = `ORDER_BUMP_DO_PLANO (${plan.name})`
+            break
+          }
+        }
       }
       
       // Verificar se o deliverableId existe
@@ -171,14 +215,27 @@ export async function GET() {
 
     // 7. Buscar user_flow_state
     debug.step = "buscando_states"
-    const { data: states } = await supabase
-      .from("user_flow_state")
-      .select("telegram_user_id, status, metadata, updated_at")
-      .eq("bot_id", botId)
-      .order("updated_at", { ascending: false })
-      .limit(5)
+    let states: Array<Record<string, unknown>> = []
+    
+    if (botId) {
+      const { data } = await supabase
+        .from("user_flow_state")
+        .select("telegram_user_id, status, metadata, updated_at, bot_id")
+        .eq("bot_id", botId)
+        .order("updated_at", { ascending: false })
+        .limit(5)
+      states = data || []
+    } else {
+      // Buscar todos os states recentes
+      const { data } = await supabase
+        .from("user_flow_state")
+        .select("telegram_user_id, status, metadata, updated_at, bot_id")
+        .order("updated_at", { ascending: false })
+        .limit(10)
+      states = data || []
+    }
 
-    debug.user_flow_states = states || []
+    debug.user_flow_states = states
 
     debug.step = "concluido"
     debug.success = true
