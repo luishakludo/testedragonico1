@@ -175,16 +175,32 @@ export async function GET() {
         }
       }
       // 4. NOVO FALLBACK: Se nao tem plan_id no metadata, buscar em TODOS os planos pelo primeiro order bump com deliverableId
+      // DEBUG: mostrar todos os planos e seus order bumps
+      const fallbackDebug: Array<Record<string, unknown>> = []
       if (!finalOrderBumpDeliverableId) {
         for (const plan of plans) {
           const planOrderBumps = (plan.order_bumps as Array<Record<string, unknown>>) || []
+          const debugEntry: Record<string, unknown> = {
+            plan_id: plan.id,
+            plan_name: plan.name,
+            order_bumps_count: planOrderBumps.length,
+            order_bumps_raw: planOrderBumps.map((ob: Record<string, unknown>) => ({
+              id: ob.id,
+              name: ob.name,
+              deliverableId: ob.deliverableId,
+              deliverableId_existe: !!ob.deliverableId
+            }))
+          }
+          fallbackDebug.push(debugEntry)
+          
           if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
             finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
-            fonte_ob_deliverable = `FALLBACK_PRIMEIRO_PLANO_COM_ORDER_BUMP "${plan.name}" (sem plan_id no metadata)`
+            fonte_ob_deliverable = `FALLBACK_PRIMEIRO_PLANO_COM_ORDER_BUMP "${plan.name}" (order_bump: ${planOrderBumps[0].name})`
             break
           }
         }
       }
+      debug.fallback_debug = fallbackDebug
       // 5. Fallback final: config global do order bump
       if (!finalOrderBumpDeliverableId && orderBumpInicial.deliverableId && orderBumpInicial.deliverableId !== "") {
         finalOrderBumpDeliverableId = orderBumpInicial.deliverableId as string
