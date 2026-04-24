@@ -11,6 +11,10 @@ function sanitizeTelegramHTML(text: string): string {
   
   let result = text
   
+  // PRIMEIRO: Converter sintaxe [LINK: text | url] para HTML <a href="url">text</a>
+  // Isso garante que links configurados no RichTextEditor funcionem no Telegram
+  result = result.replace(/\[LINK:\s*([^|]+)\s*\|\s*([^\]]+)\]/gi, '<a href="$2">$1</a>')
+  
   // Remove tags vazias que quebram o Telegram (ex: <b></b>, <i></i>)
   // Isso inclui tags com apenas espacos dentro
   result = result.replace(/<(b|i|u|s|code|pre|a|blockquote)>\s*<\/\1>/gi, "")
@@ -3318,13 +3322,16 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         // Get flow config (contains all settings from /fluxos/[id] page)
         const flowConfig = (startFlow.config as Record<string, unknown>) || {}
         
-        // Helper to replace variables
+        // Helper to replace variables and convert link syntax
         const replaceVars = (text: string) => {
           if (!text) return ""
           return text
             .replace(/\{nome\}/gi, (from?.first_name as string) || "")
             .replace(/\{username\}/gi, (from?.username as string) ? `@${from.username}` : "")
             .replace(/\{bot\.username\}/gi, bot.username ? `@${bot.username}` : bot.name || "")
+            // Converter sintaxe [LINK: text | url] para HTML <a href="url">text</a>
+            // Caso a mensagem tenha sido salva no formato display ao inves de HTML
+            .replace(/\[LINK:\s*([^|]+)\s*\|\s*([^\]]+)\]/gi, '<a href="$2">$1</a>')
         }
         
         // Get welcome message - try config first, then table field
@@ -3528,11 +3535,13 @@ async function executeNode(botToken: string, chatId: number, node: Record<string
   const config = (node.config as Record<string, unknown>) || {}
   const subVariant = (config.subVariant as string) || ""
 
-  // Helper to replace variables
+  // Helper to replace variables and convert link syntax
   const replaceVars = (text: string) => {
     return text
       .replace(/\{nome\}/gi, (from?.first_name as string) || "")
       .replace(/\{username\}/gi, (from?.username as string) ? `@${from.username}` : "")
+      // Converter sintaxe [LINK: text | url] para HTML <a href="url">text</a>
+      .replace(/\[LINK:\s*([^|]+)\s*\|\s*([^\]]+)\]/gi, '<a href="$2">$1</a>')
   }
 
   switch (nodeType) {
