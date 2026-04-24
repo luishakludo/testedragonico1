@@ -902,7 +902,20 @@ export async function POST(request: NextRequest) {
                       }
                     }
                     
-                    // Fallback: config global do order bump
+                    // NOVO FALLBACK: Se nao tem plan_id no metadata, buscar em TODOS os planos pelo primeiro order bump com deliverableId
+                    if (!finalOrderBumpDeliverableId) {
+                      for (const plan of configPlans) {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const planOrderBumps = (plan.order_bumps as Array<Record<string, any>>) || []
+                        if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
+                          finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
+                          console.log(`[v0] ORDER BUMP: FALLBACK - Usando deliverableId do primeiro plano com order bump "${plan.name}": ${finalOrderBumpDeliverableId}`)
+                          break
+                        }
+                      }
+                    }
+                    
+                    // Fallback final: config global do order bump
                     if (!finalOrderBumpDeliverableId && orderBumpConfigGlobal?.deliverableId && orderBumpConfigGlobal.deliverableId !== "") {
                       finalOrderBumpDeliverableId = orderBumpConfigGlobal.deliverableId as string
                       console.log(`[v0] ORDER BUMP: Usando deliverableId do CONFIG GLOBAL: ${finalOrderBumpDeliverableId}`)

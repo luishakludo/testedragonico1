@@ -174,7 +174,18 @@ export async function GET() {
           fonte_ob_deliverable = `PRIMEIRO_ORDER_BUMP_DO_PLANO "${planFromConfig?.name}" (plan_id: ${planIdFromMetadata})`
         }
       }
-      // 4. Fallback: config global do order bump
+      // 4. NOVO FALLBACK: Se nao tem plan_id no metadata, buscar em TODOS os planos pelo primeiro order bump com deliverableId
+      if (!finalOrderBumpDeliverableId) {
+        for (const plan of plans) {
+          const planOrderBumps = (plan.order_bumps as Array<Record<string, unknown>>) || []
+          if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
+            finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
+            fonte_ob_deliverable = `FALLBACK_PRIMEIRO_PLANO_COM_ORDER_BUMP "${plan.name}" (sem plan_id no metadata)`
+            break
+          }
+        }
+      }
+      // 5. Fallback final: config global do order bump
       if (!finalOrderBumpDeliverableId && orderBumpInicial.deliverableId && orderBumpInicial.deliverableId !== "") {
         finalOrderBumpDeliverableId = orderBumpInicial.deliverableId as string
         fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP (orderBump.inicial)"
