@@ -388,6 +388,44 @@ function getDurationLabelFull(days: number | undefined | null): string {
   return labels[d] || "Mensal"
 }
 
+// Componente de input de desconto com estado local para permitir edicao livre
+function DiscountInput({ 
+  value, 
+  onChange, 
+  className 
+}: { 
+  value: number
+  onChange: (value: number) => void
+  className?: string 
+}) {
+  const [localValue, setLocalValue] = useState(value.toString())
+  
+  useEffect(() => {
+    setLocalValue(value.toString())
+  }, [value])
+  
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      value={localValue}
+      onChange={(e) => {
+        const val = e.target.value.replace(/[^0-9]/g, '')
+        setLocalValue(val)
+      }}
+      onBlur={() => {
+        const numValue = parseInt(localValue) || 0
+        const clampedValue = Math.min(99, Math.max(1, numValue))
+        setLocalValue(clampedValue.toString())
+        onChange(clampedValue)
+      }}
+      className={className}
+      min={1}
+      max={99}
+    />
+  )
+}
+
 export default function FlowEditorPage() {
   const params = useParams()
   const router = useRouter()
@@ -3834,13 +3872,10 @@ const handleAddUpsellPlan = (seqId: string) => {
                                     <div className="flex-1">
                                       <Label className="text-xs text-violet-700">Desconto aplicado (%)</Label>
                                       <div className="flex items-center gap-2 mt-1">
-                                        <Input
-                                          type="number"
+                                        <DiscountInput
                                           value={seq.discountPercent || 20}
-                                          onChange={(e) => handleUpdateUpsellSequence(seq.id, "discountPercent", parseInt(e.target.value) || 0)}
+                                          onChange={(val) => handleUpdateUpsellSequence(seq.id, "discountPercent", val)}
                                           className="w-24 bg-white border-violet-200 h-8 text-sm"
-                                          min={1}
-                                          max={99}
                                         />
                                         <span className="text-sm text-violet-600 font-medium">%</span>
                                       </div>
@@ -4359,13 +4394,10 @@ const handleAddUpsellPlan = (seqId: string) => {
                                       <div className="flex-1">
                                         <Label className="text-xs text-pink-700">Desconto aplicado (%)</Label>
                                         <div className="flex items-center gap-2 mt-1">
-                                          <Input
-                                            type="number"
+                                          <DiscountInput
                                             value={seq.discountPercent || 20}
-                                            onChange={(e) => handleUpdateDownsellSequence(seq.id, "discountPercent", parseInt(e.target.value) || 0)}
+                                            onChange={(val) => handleUpdateDownsellSequence(seq.id, "discountPercent", val)}
                                             className="w-24 bg-white border-pink-200 h-8 text-sm"
-                                            min={1}
-                                            max={99}
                                           />
                                           <span className="text-sm text-pink-600 font-medium">%</span>
                                         </div>
@@ -4858,13 +4890,10 @@ const handleAddUpsellPlan = (seqId: string) => {
                                       <div className="flex-1">
                                         <Label className="text-xs text-orange-700">Desconto aplicado (%)</Label>
                                         <div className="flex items-center gap-2 mt-1">
-                                          <Input
-                                            type="number"
+                                          <DiscountInput
                                             value={seq.discountPercent || 20}
-                                            onChange={(e) => handleUpdateDownsellPixSequence(seq.id, "discountPercent", parseInt(e.target.value) || 0)}
+                                            onChange={(val) => handleUpdateDownsellPixSequence(seq.id, "discountPercent", val)}
                                             className="w-24 bg-white border-orange-200 h-8 text-sm"
-                                            min={1}
-                                            max={99}
                                           />
                                           <span className="text-sm text-orange-600 font-medium">%</span>
                                         </div>
