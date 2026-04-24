@@ -13,7 +13,12 @@ function sanitizeTelegramHTML(text: string): string {
   
   // PRIMEIRO: Converter sintaxe [LINK: text | url] para HTML <a href="url">text</a>
   // Isso garante que links configurados no RichTextEditor funcionem no Telegram
-  result = result.replace(/\[LINK:\s*([^|]+)\s*\|\s*([^\]]+)\]/gi, '<a href="$2">$1</a>')
+  // Captura o texto e a URL, removendo espacos extras da URL
+  result = result.replace(/\[LINK:\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]/gi, (_, linkText, linkUrl) => {
+    const cleanUrl = linkUrl.trim()
+    const cleanText = linkText.trim()
+    return `<a href="${cleanUrl}">${cleanText}</a>`
+  })
   
   // Remove tags vazias que quebram o Telegram (ex: <b></b>, <i></i>)
   // Isso inclui tags com apenas espacos dentro
@@ -56,8 +61,16 @@ function sanitizeTelegramHTML(text: string): string {
     }
   }
   
-  // Remove tags <a> mal formadas (sem href valido)
-  result = result.replace(/<a[^>]*href=["']?(?!http)[^"']*["']?[^>]*>([^<]*)<\/a>/gi, "$1")
+  // Remove tags <a> mal formadas (sem href valido ou sem http/https)
+  // Preserva links que comecam com http:// ou https://
+  result = result.replace(/<a\s+href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi, (match, url, text) => {
+    // Se a URL comeca com http ou https, manter o link
+    if (url.trim().startsWith("http://") || url.trim().startsWith("https://")) {
+      return `<a href="${url.trim()}">${text}</a>`
+    }
+    // Caso contrario, remover a tag e manter so o texto
+    return text
+  })
   
   // Remove multiplos espacos em branco consecutivos (exceto quebras de linha)
   result = result.replace(/[ \t]+/g, " ")
@@ -1712,15 +1725,46 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         const orderBumpsArray = metadata?.order_bumps as Array<{ name: string; price: number; deliverableId: string; deliveryType: string }> | undefined
         const selectedOrderBump = orderBumpsArray?.[orderBumpIndex]
         const orderBumpName = selectedOrderBump?.name || metadata?.order_bump_name || "Order Bump"
-        const orderBumpDeliverableIdFromIndex = selectedOrderBump?.deliverableId || metadata?.order_bump_deliverable_id || ""
+        let orderBumpDeliverableIdFromIndex = selectedOrderBump?.deliverableId || metadata?.order_bump_deliverable_id || ""
         const mainDescription = metadata?.main_description || "Produto Principal"
         
         // Buscar plan_deliverable_id do metadata (para entregar o produto principal corretamente)
         const planDeliverableIdFromState = metadata?.plan_deliverable_id || ""
         const planIdFromState = metadata?.plan_id || ""
         
-        console.log("[v0] Order Bump - selectedOrderBump:", selectedOrderBump, "deliverableId:", orderBumpDeliverableIdFromIndex)
+        console.log("[v0] Order Bump - metadata completo:", JSON.stringify(metadata))
+        console.log("[v0] Order Bump - selectedOrderBump:", JSON.stringify(selectedOrderBump))
+        console.log("[v0] Order Bump - orderBumpDeliverableIdFromIndex:", orderBumpDeliverableIdFromIndex)
         console.log("[v0] Order Bump - planDeliverableId:", planDeliverableIdFromState, "planId:", planIdFromState)
+        
+        // FALLBACK: Se nao tem deliverableId do OB no metadata, buscar direto do flowConfig
+        if (!orderBumpDeliverableIdFromIndex && isAccept) {
+          console.log("[v0] Order Bump - FALLBACK: Buscando deliverableId do flowConfig...")
+          const flowForFallback = await getActiveFlowForBot(supabase, botUuid)
+          const flowConfigFallback = (flowForFallback?.config as Record<string, unknown>) || {}
+          
+          // Tentar buscar do order bump do plano primeiro
+          const plansArrayFallback = (flowConfigFallback.plans as Array<Record<string, unknown>>) || []
+          const planIdToFind = planIdFromState || metadata?.plan_id
+          if (planIdToFind) {
+            const planWithOB = plansArrayFallback.find(p => p.id === planIdToFind)
+            const planOrderBumps = (planWithOB?.order_bumps as Array<Record<string, unknown>>) || []
+            if (planOrderBumps.length > 0 && planOrderBumps[orderBumpIndex]?.deliverableId) {
+              orderBumpDeliverableIdFromIndex = planOrderBumps[orderBumpIndex].deliverableId as string
+              console.log("[v0] Order Bump - FALLBACK: Encontrou deliverableId do plano:", orderBumpDeliverableIdFromIndex)
+            }
+          }
+          
+          // Se ainda nao tem, buscar do order bump global
+          if (!orderBumpDeliverableIdFromIndex) {
+            const obConfigFallback = flowConfigFallback.orderBump as Record<string, unknown> | undefined
+            const obInicialFallback = obConfigFallback?.inicial as Record<string, unknown> | undefined
+            if (obInicialFallback?.deliverableId) {
+              orderBumpDeliverableIdFromIndex = obInicialFallback.deliverableId as string
+              console.log("[v0] Order Bump - FALLBACK: Encontrou deliverableId global:", orderBumpDeliverableIdFromIndex)
+            }
+          }
+        }
         
         let totalAmount = 0
         let description = mainDescription
