@@ -718,12 +718,23 @@ async function sendOrderBumpOffer(params: {
   mainAmountCents: number
   callbackPrefix?: string // Prefixo do callback (padrão: "ob")
   orderBumpIndex?: number // Índice do order bump (para identificar qual foi aceito)
+  userFirstName?: string // Nome do usuario para substituir {nome}
+  userUsername?: string // Username do usuario para substituir {username}
 }) {
-  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, callbackPrefix = "ob", orderBumpIndex = 0 } = params
+  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, callbackPrefix = "ob", orderBumpIndex = 0, userFirstName = "", userUsername = "" } = params
+  
+  // Funcao para substituir variaveis {nome} e {username}
+  const replaceVars = (text: string) => {
+    if (!text) return ""
+    return text
+      .replace(/\{nome\}/gi, userFirstName || "")
+      .replace(/\{username\}/gi, userUsername ? `@${userUsername}` : "")
+  }
   
   const obPriceCents = Math.round(price * 100)
   // Mensagem padrão simples: Título, Descrição, Por apenas R$ X,XX
-  const obMessage = `<b>${name || "Oferta Especial"}</b>\n\n${description || ""}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
+  // Aplicar substituicao de variaveis na descricao e no nome
+  const obMessage = `<b>${replaceVars(name) || "Oferta Especial"}</b>\n\n${replaceVars(description || "")}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
   
   // Incluir índice no callback para identificar qual order bump foi aceito
   const obButtons = {
@@ -1536,7 +1547,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             acceptText: orderBumpPacks.acceptText,
             rejectText: orderBumpPacks.rejectText,
             medias: orderBumpPacks.medias,
-            mainAmountCents: Math.round(packPrice * 100)
+            mainAmountCents: Math.round(packPrice * 100),
+            userFirstName: userFirstName || "",
+            userUsername: userUsername || ""
           })
           
           return
@@ -2230,18 +2243,20 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
           
-          // Enviar order bump no formato padrão (mídias em grupo + mensagem simples com botões)
-          await sendOrderBumpOffer({
-            botToken,
-            chatId,
-            name: orderBumpDownsell.name || "Oferta Especial",
-            description: orderBumpDownsell.description,
-            price: orderBumpDownsell.price,
-            acceptText: orderBumpDownsell.acceptText,
-            rejectText: orderBumpDownsell.rejectText,
-            medias: orderBumpDownsell.medias,
-            mainAmountCents: mainPriceCents,
-            callbackPrefix: "dsob"
+        // Enviar order bump no formato padrão (mídias em grupo + mensagem simples com botões)
+        await sendOrderBumpOffer({
+          botToken,
+          chatId,
+          name: orderBumpDownsell.name || "Oferta Especial",
+          description: orderBumpDownsell.description,
+          price: orderBumpDownsell.price,
+          acceptText: orderBumpDownsell.acceptText,
+          rejectText: orderBumpDownsell.rejectText,
+          medias: orderBumpDownsell.medias,
+          mainAmountCents: mainPriceCents,
+          callbackPrefix: "dsob",
+          userFirstName: userFirstName || "",
+          userUsername: userUsername || ""
           })
           
           return // STOP - aguardar decisao do Order Bump
@@ -2593,18 +2608,20 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           // Calcular precos
           const mainPriceCents = Math.round(price * 100)
           
-          // Enviar order bump no formato padrão (mídias em grupo + mensagem simples com botões)
-          await sendOrderBumpOffer({
-            botToken,
-            chatId,
-            name: orderBumpUpsell.name || "Oferta Especial",
-            description: orderBumpUpsell.description,
-            price: orderBumpUpsell.price,
-            acceptText: orderBumpUpsell.acceptText,
-            rejectText: orderBumpUpsell.rejectText,
-            medias: orderBumpUpsell.medias,
-            mainAmountCents: mainPriceCents,
-            callbackPrefix: "upob"
+        // Enviar order bump no formato padrão (mídias em grupo + mensagem simples com botões)
+        await sendOrderBumpOffer({
+          botToken,
+          chatId,
+          name: orderBumpUpsell.name || "Oferta Especial",
+          description: orderBumpUpsell.description,
+          price: orderBumpUpsell.price,
+          acceptText: orderBumpUpsell.acceptText,
+          rejectText: orderBumpUpsell.rejectText,
+          medias: orderBumpUpsell.medias,
+          mainAmountCents: mainPriceCents,
+          callbackPrefix: "upob",
+          userFirstName: userFirstName || "",
+          userUsername: userUsername || ""
           })
           
           return // STOP - aguardar decisao do Order Bump
@@ -2938,7 +2955,14 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               if (hasMultipleBumps) {
                 // Multiplos bumps: enviar cada um com só botão QUERO
                 // Incluir indice no callback para identificar qual order bump foi aceito
-                const obMessage = `<b>${planOrderBump.name || "Oferta Especial"}</b>\n\n${planOrderBump.description || ""}\n\n💰 Por apenas <b>R$ ${planOrderBump.price.toFixed(2).replace(".", ",")}</b>`
+                // Funcao para substituir variaveis {nome} e {username}
+                const replaceVarsOb = (text: string) => {
+                  if (!text) return ""
+                  return text
+                    .replace(/\{nome\}/gi, userFirstName || "")
+                    .replace(/\{username\}/gi, userUsername ? `@${userUsername}` : "")
+                }
+                const obMessage = `<b>${replaceVarsOb(planOrderBump.name) || "Oferta Especial"}</b>\n\n${replaceVarsOb(planOrderBump.description || "")}\n\n💰 Por apenas <b>R$ ${planOrderBump.price.toFixed(2).replace(".", ",")}</b>`
                 const acceptCallback = `ob_accept_${mainPriceRounded}_${bumpPriceRounded}_${i}`
                 const obButtons = { inline_keyboard: [[{ text: planOrderBump.acceptText || "QUERO", callback_data: acceptCallback }]] }
                 
@@ -2953,18 +2977,20 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 // Depois enviar mensagem com botão
                 await sendTelegramMessage(botToken, chatId, obMessage, obButtons)
               } else {
-                // Apenas 1 bump: usar sendOrderBumpOffer com QUERO + NAO QUERO
-                await sendOrderBumpOffer({
-                  botToken,
-                  chatId,
-                  name: planOrderBump.name || "Oferta Especial",
-                  description: planOrderBump.description,
-                  price: planOrderBump.price,
-                  acceptText: planOrderBump.acceptText,
-                  rejectText: planOrderBump.rejectText,
-                  medias: planOrderBump.medias,
-                  mainAmountCents: mainPriceRounded,
-                  orderBumpIndex: i // Incluir índice para identificar o order bump
+// Apenas 1 bump: usar sendOrderBumpOffer com QUERO + NAO QUERO
+          await sendOrderBumpOffer({
+            botToken,
+            chatId,
+            name: planOrderBump.name || "Oferta Especial",
+            description: planOrderBump.description,
+            price: planOrderBump.price,
+            acceptText: planOrderBump.acceptText,
+            rejectText: planOrderBump.rejectText,
+            medias: planOrderBump.medias,
+            mainAmountCents: mainPriceRounded,
+            orderBumpIndex: i, // Incluir índice para identificar o order bump
+            userFirstName: userFirstName || "",
+            userUsername: userUsername || ""
                 })
               }
             }
@@ -3054,18 +3080,20 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               undefined
             )
             
-            // Enviar order bump no formato correto (imagem + caption + botões juntos)
-            await sendOrderBumpOffer({
-              botToken,
-              chatId,
-              name: orderBumpInicial.name || "Oferta Especial",
-              description: orderBumpInicial.description,
-              price: orderBumpInicial.price,
-              acceptText: orderBumpInicial.acceptText,
-              rejectText: orderBumpInicial.rejectText,
-              medias: orderBumpInicial.medias,
-              mainAmountCents: mainPriceRounded
-            })
+        // Enviar order bump no formato correto (imagem + caption + botões juntos)
+        await sendOrderBumpOffer({
+          botToken,
+          chatId,
+          name: orderBumpInicial.name || "Oferta Especial",
+          description: orderBumpInicial.description,
+          price: orderBumpInicial.price,
+          acceptText: orderBumpInicial.acceptText,
+          rejectText: orderBumpInicial.rejectText,
+          medias: orderBumpInicial.medias,
+          mainAmountCents: mainPriceRounded,
+          userFirstName: userFirstName || "",
+          userUsername: userUsername || ""
+        })
             
             // Salvar estado para quando usuario responder
             // Buscar deliverableId especifico do plano (para entregar corretamente o produto principal)
