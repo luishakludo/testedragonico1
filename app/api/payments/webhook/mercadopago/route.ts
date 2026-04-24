@@ -856,25 +856,70 @@ export async function POST(request: NextRequest) {
                   // ========== ENTREGAR ORDER BUMP SE HOUVER ==========
                   // Verifica se o pagamento inclui order bump e entrega o entregavel do order bump tambem
                   const orderBumpDeliverableId = paymentMetadata?.order_bump_deliverable_id
+                  const orderBumpIdFromMetadata = paymentMetadata?.order_bump_id
                   const orderBumpConfigGlobal = flowConfig?.orderBump?.inicial as Record<string, unknown> | undefined
                   
                   console.log(`[v0] ORDER BUMP CHECK: product_type=${payment.product_type}`)
                   console.log(`[v0] ORDER BUMP CHECK: metadata=`, JSON.stringify(paymentMetadata))
                   console.log(`[v0] ORDER BUMP CHECK: orderBumpDeliverableId (metadata)="${orderBumpDeliverableId}"`)
+                  console.log(`[v0] ORDER BUMP CHECK: orderBumpId (metadata)="${orderBumpIdFromMetadata}"`)
                   console.log(`[v0] ORDER BUMP CHECK: orderBumpConfig global=`, JSON.stringify(orderBumpConfigGlobal))
                   
                   // Determinar qual deliverableId usar para o order bump
-                  // Prioridade: 1) metadata do pagamento, 2) config global do order bump
+                  // Prioridade: 1) metadata do pagamento, 2) order bump especifico do plano, 3) config global do order bump
                   let finalOrderBumpDeliverableId = ""
                   
                   if (orderBumpDeliverableId && orderBumpDeliverableId !== "") {
                     finalOrderBumpDeliverableId = orderBumpDeliverableId
                     console.log(`[v0] ORDER BUMP: Usando deliverableId do METADATA: ${finalOrderBumpDeliverableId}`)
-                  } else if (orderBumpConfigGlobal?.deliverableId && orderBumpConfigGlobal.deliverableId !== "") {
-                    // Verificar se o config tem deliverableId, independente do deliveryType
-                    // Se tem deliverableId configurado, usar ele
-                    finalOrderBumpDeliverableId = orderBumpConfigGlobal.deliverableId as string
-                    console.log(`[v0] ORDER BUMP: Usando deliverableId do CONFIG GLOBAL: ${finalOrderBumpDeliverableId}`)
+                  } else {
+                    // Buscar deliverableId do order bump especifico do plano
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const configPlans = (flowConfig?.plans as Array<Record<string, any>>) || []
+                    
+                    // Primeiro tentar encontrar pelo order_bump_id do metadata
+                    if (orderBumpIdFromMetadata) {
+                      for (const plan of configPlans) {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const planOrderBumps = (plan.order_bumps as Array<Record<string, any>>) || []
+                        const matchingOb = planOrderBumps.find((ob: Record<string, unknown>) => ob.id === orderBumpIdFromMetadata)
+                        if (matchingOb?.deliverableId) {
+                          finalOrderBumpDeliverableId = matchingOb.deliverableId as string
+                          console.log(`[v0] ORDER BUMP: Encontrado deliverableId pelo order_bump_id "${orderBumpIdFromMetadata}": ${finalOrderBumpDeliverableId}`)
+                          break
+                        }
+                      }
+                    }
+                    
+                    // Se nao encontrou pelo ID, tentar pelo plan_id do metadata
+                    if (!finalOrderBumpDeliverableId && planIdFromPayment) {
+                      const planFromConfig = configPlans.find(p => p.id === planIdFromPayment)
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const planOrderBumps = (planFromConfig?.order_bumps as Array<Record<string, any>>) || []
+                      if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
+                        finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
+                        console.log(`[v0] ORDER BUMP: Usando deliverableId do PRIMEIRO order bump do plano "${planIdFromPayment}": ${finalOrderBumpDeliverableId}`)
+                      }
+                    }
+                    
+                    // NOVO FALLBACK: Se nao tem plan_id no metadata, buscar em TODOS os planos pelo primeiro order bump com deliverableId
+                    if (!finalOrderBumpDeliverableId) {
+                      for (const plan of configPlans) {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const planOrderBumps = (plan.order_bumps as Array<Record<string, any>>) || []
+                        if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
+                          finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
+                          console.log(`[v0] ORDER BUMP: FALLBACK - Usando deliverableId do primeiro plano com order bump "${plan.name}": ${finalOrderBumpDeliverableId}`)
+                          break
+                        }
+                      }
+                    }
+                    
+                    // Fallback final: config global do order bump
+                    if (!finalOrderBumpDeliverableId && orderBumpConfigGlobal?.deliverableId && orderBumpConfigGlobal.deliverableId !== "") {
+                      finalOrderBumpDeliverableId = orderBumpConfigGlobal.deliverableId as string
+                      console.log(`[v0] ORDER BUMP: Usando deliverableId do CONFIG GLOBAL: ${finalOrderBumpDeliverableId}`)
+                    }
                   }
                   
                   // Se é um pagamento de order bump, entregar o entregavel do order bump
