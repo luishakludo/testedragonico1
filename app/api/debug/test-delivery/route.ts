@@ -81,34 +81,92 @@ export async function GET() {
 
     debug.pagamentos_order_bump = obPayments
 
-    // 6. Diagnostico
-    debug.step = "diagnostico"
+    // 6. SIMULACAO DE ENTREGA - Simula o que o webhook do MercadoPago faria
+    debug.step = "simulando_entrega"
     
-    if (obPayments.length > 0) {
-      const payment = obPayments[0]
-      const metadata = payment.metadata as Record<string, unknown> || {}
+    // Pegar o primeiro pagamento de order bump para simular
+    const paymentToSimulate = obPayments[0]
+    
+    if (paymentToSimulate) {
+      const paymentMetadata = paymentToSimulate.metadata as Record<string, unknown> || {}
       
-      debug.diagnostico = {
-        pagamento: {
-          id: payment.id,
-          product_type: payment.product_type,
-          status: payment.status,
-          metadata: metadata
+      // Simular a logica do webhook do MercadoPago
+      const orderBumpDeliverableIdFromMetadata = paymentMetadata?.order_bump_deliverable_id as string || ""
+      const planDeliverableIdFromMetadata = paymentMetadata?.plan_deliverable_id as string || ""
+      const planIdFromMetadata = paymentMetadata?.plan_id as string || ""
+      
+      // Determinar deliverableId do order bump (mesma logica do webhook)
+      let finalOrderBumpDeliverableId = ""
+      let fonte_ob_deliverable = ""
+      
+      if (orderBumpDeliverableIdFromMetadata) {
+        finalOrderBumpDeliverableId = orderBumpDeliverableIdFromMetadata
+        fonte_ob_deliverable = "METADATA_DO_PAGAMENTO"
+      } else if (orderBumpInicial.deliverableId) {
+        finalOrderBumpDeliverableId = orderBumpInicial.deliverableId as string
+        fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP"
+      }
+      
+      // Verificar se o deliverableId existe
+      const obDeliverableEncontrado = deliverables.find(d => d.id === finalOrderBumpDeliverableId)
+      
+      // Determinar deliverableId do produto principal
+      let finalPlanDeliverableId = ""
+      let fonte_plan_deliverable = ""
+      
+      if (planDeliverableIdFromMetadata) {
+        finalPlanDeliverableId = planDeliverableIdFromMetadata
+        fonte_plan_deliverable = "METADATA_DO_PAGAMENTO"
+      } else if (flowConfig.mainDeliverableId) {
+        finalPlanDeliverableId = flowConfig.mainDeliverableId as string
+        fonte_plan_deliverable = "MAIN_DELIVERABLE_ID_GLOBAL"
+      }
+      
+      const planDeliverableEncontrado = deliverables.find(d => d.id === finalPlanDeliverableId)
+      
+      debug.simulacao_entrega = {
+        pagamento_usado: {
+          id: paymentToSimulate.id,
+          product_type: paymentToSimulate.product_type,
+          status: paymentToSimulate.status,
+          metadata: paymentMetadata
         },
-        verificacoes: {
-          tem_order_bump_deliverable_id_no_metadata: !!metadata.order_bump_deliverable_id,
-          order_bump_deliverable_id: metadata.order_bump_deliverable_id || "VAZIO",
-          tem_plan_deliverable_id: !!metadata.plan_deliverable_id,
-          plan_deliverable_id: metadata.plan_deliverable_id || "VAZIO",
-          config_global_deliverable_id: orderBumpInicial.deliverableId || "VAZIO",
-          config_global_delivery_type: orderBumpInicial.deliveryType || "same"
+        
+        entrega_produto_principal: {
+          deliverable_id: finalPlanDeliverableId || "NENHUM",
+          fonte: fonte_plan_deliverable || "NAO_ENCONTRADO",
+          deliverable_encontrado: planDeliverableEncontrado ? {
+            id: planDeliverableEncontrado.id,
+            name: planDeliverableEncontrado.name,
+            type: planDeliverableEncontrado.type
+          } : "NAO_ENCONTRADO_NA_LISTA",
+          vai_entregar: !!planDeliverableEncontrado
         },
-        problema: !metadata.order_bump_deliverable_id && !orderBumpInicial.deliverableId
-          ? "PROBLEMA: Nenhum deliverableId de order bump configurado!"
-          : "VERIFICAR: Verifique se o deliverableId existe na lista de entregaveis"
+        
+        entrega_order_bump: {
+          deliverable_id: finalOrderBumpDeliverableId || "NENHUM",
+          fonte: fonte_ob_deliverable || "NAO_ENCONTRADO",
+          deliverable_encontrado: obDeliverableEncontrado ? {
+            id: obDeliverableEncontrado.id,
+            name: obDeliverableEncontrado.name,
+            type: obDeliverableEncontrado.type
+          } : "NAO_ENCONTRADO_NA_LISTA",
+          vai_entregar: !!obDeliverableEncontrado
+        },
+        
+        resultado_final: {
+          principal_ok: !!planDeliverableEncontrado,
+          order_bump_ok: !!obDeliverableEncontrado,
+          problema: !obDeliverableEncontrado 
+            ? `ORDER BUMP NAO VAI SER ENTREGUE! deliverableId="${finalOrderBumpDeliverableId}" nao foi encontrado ou esta vazio`
+            : "TUDO OK - Ambos vao ser entregues"
+        }
       }
     } else {
-      debug.diagnostico = "Nenhum pagamento de order bump encontrado"
+      debug.simulacao_entrega = {
+        erro: "Nenhum pagamento de order bump encontrado para simular",
+        sugestao: "Faca um pagamento de teste com order bump"
+      }
     }
 
     // 7. Buscar user_flow_state
