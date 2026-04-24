@@ -21,7 +21,8 @@ import {
   GitBranch,
   Calendar,
   Ban,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -98,7 +99,41 @@ export default function ClientesPage() {
   const [bots, setBots] = useState<Bot[]>([]) // Para uso futuro (filtro por bot)
   const [selectedFlowId, setSelectedFlowId] = useState<string>("")
   const [banningClient, setBanningClient] = useState<string | null>(null)
+  const [clearingClients, setClearingClients] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const ITEMS_PER_PAGE = 50
+
+  // Funcao para limpar todos os clientes
+  const handleClearAllClients = async () => {
+    if (!userId) return
+    
+    setClearingClients(true)
+    
+    try {
+      const res = await fetch("/api/clients/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId })
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        toast.success(data.message || "Todos os clientes foram removidos")
+        setClients([])
+        setTotalCount(0)
+        setStats({ total: 0, assinantes: 0, compradores: 0, assinantes_ativos: 0, assinantes_expirados: 0, vitalicio: 0 })
+        setShowClearConfirm(false)
+      } else {
+        toast.error(data.error || "Erro ao limpar clientes")
+      }
+    } catch (err) {
+      console.error("[clear] Error:", err)
+      toast.error("Erro ao limpar clientes")
+    } finally {
+      setClearingClients(false)
+    }
+  }
 
   // Funcao para banir cliente
   const handleBanClient = async (client: Client, action: "ban" | "remove" = "remove") => {
@@ -267,6 +302,14 @@ export default function ClientesPage() {
                 <p className="text-gray-500">Gerencie seus assinantes e compradores</p>
               </div>
               <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setShowClearConfirm(true)}
+                  disabled={clearingClients || (stats?.total || 0) === 0}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Limpar Tudo
+                </button>
                 <button 
                   onClick={() => fetchClients()}
                   disabled={loading}
@@ -800,6 +843,50 @@ export default function ClientesPage() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmacao para limpar todos os clientes */}
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent className="sm:max-w-md bg-white p-0 rounded-2xl">
+          <div className="p-6">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 text-center mb-2">
+              Limpar todos os clientes?
+            </h3>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              Isso vai apagar todos os pagamentos e dados de clientes dos seus bots. 
+              Essa acao nao pode ser desfeita.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                disabled={clearingClients}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleClearAllClients}
+                disabled={clearingClients}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                {clearingClients ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Limpando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Sim, limpar tudo
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
