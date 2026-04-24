@@ -734,7 +734,7 @@ async function sendOrderBumpOffer(params: {
   const obPriceCents = Math.round(price * 100)
   // Mensagem padrão simples: Título, Descrição, Por apenas R$ X,XX
   // Aplicar substituicao de variaveis na descricao e no nome
-  const obMessage = `<b>${replaceVars(name) || "Oferta Especial"}</b>\n\n${replaceVars(description || "")}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
+  const obMessage = `<b>${replaceVars(name) || "Oferta Especial"}</b>\n\n${replaceVars(description || "")}\n\n�� Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
   
   // Incluir índice no callback para identificar qual order bump foi aceito
   const obButtons = {
@@ -1676,10 +1676,184 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         return
       }
       
-
+  
+  
+  // ========== UPSELL ORDER BUMP CALLBACKS (uob_) ==========
+  // Order bump mostrado DEPOIS do upsell ser pago - se recusado, nao gera novo PIX
+  if (callbackData.startsWith("uob_accept_") || callbackData.startsWith("uob_decline_")) {
+    console.log("[v0] Upsell Order Bump Callback recebido:", callbackData, "botUuid:", botUuid, "telegramUserId:", telegramUserId)
+    
+    // Answer callback query imediatamente
+    await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackQueryId })
+    })
+    
+    const isAccept = callbackData.startsWith("uob_accept_")
+    const parts = callbackData.replace("uob_accept_", "").replace("uob_decline_", "").split("_")
+    
+    // Buscar estado do usuario
+    const { data: userState } = await supabase
+      .from("user_flow_state")
+      .select("metadata, flow_id")
+      .eq("bot_id", botUuid)
+      .eq("telegram_user_id", String(telegramUserId))
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .single()
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metadata = userState?.metadata as Record<string, any> | null
+    
+    if (isAccept) {
+      // Usuario ACEITOU o order bump do upsell - gerar PIX apenas do order bump
+      const obPriceCents = parseInt(parts[1]) || 0
+      const obPrice = obPriceCents / 100
       
-      // ========== ORDER BUMP CALLBACKS ==========
-      if (callbackData.startsWith("ob_accept_") || callbackData.startsWith("ob_decline_")) {
+      if (obPrice <= 0) {
+        console.log("[v0] Upsell Order Bump ERRO - preco <= 0")
+        await sendTelegramMessage(botToken, chatId, "Erro ao processar. Tente novamente.")
+        return
+      }
+      
+      // Buscar order bump info do metadata
+      const orderBumpName = metadata?.order_bump_name || "Order Bump"
+      
+      // Atualizar estado
+      await supabase
+        .from("user_flow_state")
+        .update({ status: "payment_pending", updated_at: new Date().toISOString() })
+        .eq("bot_id", botUuid)
+        .eq("telegram_user_id", String(telegramUserId))
+      
+      // Enviar mensagem de processamento
+      await sendTelegramMessage(
+        botToken,
+        chatId,
+        `Otimo! Gerando pagamento PIX...\n\nValor: R$ ${obPrice.toFixed(2).replace(".", ",")}`,
+        undefined
+      )
+      
+      // Get user_id
+      const { data: botDataUOB } = await supabase
+        .from("bots")
+        .select("user_id")
+        .eq("id", botUuid)
+        .single()
+      
+      let ownerUserId = botDataUOB?.user_id || null
+      
+      if (!ownerUserId && userState?.flow_id) {
+        const { data: flowDataUOB } = await supabase
+          .from("flows")
+          .select("user_id")
+          .eq("id", userState.flow_id)
+          .single()
+        ownerUserId = flowDataUOB?.user_id || null
+      }
+      
+      if (!ownerUserId) {
+        console.error("[v0] Upsell Order Bump - No user_id found")
+        await sendTelegramMessage(botToken, chatId, "Erro interno. Tente novamente mais tarde.")
+        return
+      }
+      
+      // Buscar gateway
+      const { data: gatewayUOB } = await supabase
+        .from("payment_gateways")
+        .select("*")
+        .eq("user_id", ownerUserId)
+        .eq("is_active", true)
+        .single()
+      
+      if (!gatewayUOB) {
+        console.error("[v0] Upsell Order Bump - No gateway found")
+        await sendTelegramMessage(botToken, chatId, "Pagamento nao disponivel no momento.")
+        return
+      }
+      
+      // Gerar PIX apenas do order bump
+      const pixResult = await generatePixPayment(gatewayUOB, obPrice, `Order Bump - ${orderBumpName}`)
+      
+      if (!pixResult.success) {
+        console.error("[v0] Upsell Order Bump - PIX error:", pixResult.error)
+        await sendTelegramMessage(botToken, chatId, `Erro ao gerar PIX: ${pixResult.error}`)
+        return
+      }
+      
+      // Salvar pagamento - produto tipo upsell_order_bump
+      await supabase.from("payments").insert({
+        user_id: ownerUserId,
+        bot_id: botUuid,
+        flow_id: userState?.flow_id || null,
+        telegram_user_id: String(telegramUserId),
+        telegram_username: userUsername || null,
+        telegram_first_name: userFirstName || null,
+        telegram_last_name: userLastName || null,
+        amount: obPrice,
+        status: "pending",
+        payment_method: "pix",
+        gateway: gatewayUOB.gateway_name || "mercadopago",
+        external_payment_id: String(pixResult.paymentId),
+        description: `Order Bump - ${orderBumpName}`,
+        product_name: orderBumpName,
+        product_type: "upsell_order_bump",
+        qr_code: pixResult.qrCode,
+        qr_code_url: pixResult.qrCodeUrl,
+        copy_paste: pixResult.copyPaste,
+        pix_code: pixResult.copyPaste || pixResult.qrCode,
+        metadata: {
+          upsell_index: metadata?.upsell_index,
+          order_bump_deliverable_id: metadata?.order_bump_deliverable_id || "",
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      
+      // Enviar QR Code
+      const pixMessage = `
+<b>PIX Gerado!</b>
+
+Valor: <b>R$ ${obPrice.toFixed(2).replace(".", ",")}</b>
+Produto: ${orderBumpName}
+
+Escaneie o QR Code ou copie o codigo abaixo:
+
+<code>${pixResult.copyPaste || pixResult.qrCode}</code>
+      `.trim()
+      
+      if (pixResult.qrCodeUrl) {
+        await sendTelegramPhoto(botToken, chatId, pixResult.qrCodeUrl, pixMessage)
+      } else {
+        await sendTelegramMessage(botToken, chatId, pixMessage)
+      }
+      
+    } else {
+      // Usuario RECUSOU o order bump do upsell
+      // O upsell JA FOI PAGO E ENTREGUE - apenas continuar o fluxo
+      console.log("[v0] Upsell Order Bump RECUSADO - continuando fluxo sem gerar novo PIX")
+      
+      await sendTelegramMessage(
+        botToken,
+        chatId,
+        "Tudo certo! Seu produto ja foi liberado.",
+        undefined
+      )
+      
+      // Atualizar estado para completed
+      await supabase
+        .from("user_flow_state")
+        .update({ status: "completed", updated_at: new Date().toISOString() })
+        .eq("bot_id", botUuid)
+        .eq("telegram_user_id", String(telegramUserId))
+    }
+    
+    return
+  }
+  
+  // ========== ORDER BUMP CALLBACKS ==========
+  if (callbackData.startsWith("ob_accept_") || callbackData.startsWith("ob_decline_")) {
         console.log("[v0] Order Bump Callback recebido:", callbackData, "botUuid:", botUuid, "telegramUserId:", telegramUserId)
         
         // Answer callback query imediatamente

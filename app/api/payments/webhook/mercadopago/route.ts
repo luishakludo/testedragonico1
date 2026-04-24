@@ -1207,6 +1207,8 @@ export async function POST(request: NextRequest) {
                     }, { onConflict: "bot_id,telegram_user_id" })
                     
                     // Enviar order bump no formato correto (imagem + caption + botões juntos)
+                    // IMPORTANTE: Usar prefixo "uob" (upsell order bump) para diferenciar
+                    // Quando recusado, nao deve gerar novo PIX pois o upsell ja foi pago
                     await sendOrderBumpOffer({
                       botToken: bot.token,
                       chatId,
@@ -1216,7 +1218,8 @@ export async function POST(request: NextRequest) {
                       acceptText: orderBumpToUse.acceptText,
                       rejectText: orderBumpToUse.rejectText,
                       medias: orderBumpToUse.medias,
-                      mainAmountCents: Math.round(payment.amount * 100),
+                      mainAmountCents: Math.round(orderBumpToUse.price * 100), // Usar preco do OB como base
+                      callbackPrefix: "uob", // Prefixo especifico para order bump de upsell
                       userFirstName: payment.telegram_first_name || "",
                       userUsername: payment.telegram_username || ""
                     })
