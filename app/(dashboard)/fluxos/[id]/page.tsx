@@ -3906,15 +3906,15 @@ const handleAddUpsellPlan = (seqId: string) => {
                                                 <SelectValue placeholder="30 dias" />
                                               </SelectTrigger>
                                               <SelectContent position="popper" sideOffset={4}>
-                                                <SelectItem value="1_daily">1 dia</SelectItem>
-                                                <SelectItem value="7_weekly">7 dias</SelectItem>
-                                                <SelectItem value="15_monthly">15 dias</SelectItem>
-                                                <SelectItem value="30_monthly">30 dias</SelectItem>
-                                                <SelectItem value="60_monthly">60 dias</SelectItem>
-                                                <SelectItem value="90_monthly">90 dias</SelectItem>
-                                                <SelectItem value="180_monthly">180 dias</SelectItem>
-                                                <SelectItem value="365_yearly">365 dias</SelectItem>
-                                                <SelectItem value="0_lifetime">Vitalicio</SelectItem>
+                                                <SelectItem value="1_daily">Diario (1 dia)</SelectItem>
+                                                <SelectItem value="7_weekly">Semanal (7 dias)</SelectItem>
+                                                <SelectItem value="15_monthly">Quinzenal (15 dias)</SelectItem>
+                                                <SelectItem value="30_monthly">Mensal (30 dias)</SelectItem>
+                                                <SelectItem value="60_monthly">Bimestral (60 dias)</SelectItem>
+                                                <SelectItem value="90_monthly">Trimestral (90 dias)</SelectItem>
+                                                <SelectItem value="180_monthly">Semestral (180 dias)</SelectItem>
+                                                <SelectItem value="365_yearly">Anual (365 dias)</SelectItem>
+                                                <SelectItem value="0_lifetime">Vitalicio (sem expiracao)</SelectItem>
                                               </SelectContent>
                                             </Select>
                                           </div>
@@ -4425,15 +4425,15 @@ const handleAddUpsellPlan = (seqId: string) => {
                                                   <SelectValue placeholder="30 dias" />
                                                 </SelectTrigger>
                                                 <SelectContent position="popper" sideOffset={4}>
-                                                  <SelectItem value="1_daily">1 dia</SelectItem>
-                                                  <SelectItem value="7_weekly">7 dias</SelectItem>
-                                                  <SelectItem value="15_monthly">15 dias</SelectItem>
-                                                  <SelectItem value="30_monthly">30 dias</SelectItem>
-                                                  <SelectItem value="60_monthly">60 dias</SelectItem>
-                                                  <SelectItem value="90_monthly">90 dias</SelectItem>
-                                                  <SelectItem value="180_monthly">180 dias</SelectItem>
-                                                  <SelectItem value="365_yearly">365 dias</SelectItem>
-                                                  <SelectItem value="0_lifetime">Vitalicio</SelectItem>
+                                                  <SelectItem value="1_daily">Diario (1 dia)</SelectItem>
+                                                  <SelectItem value="7_weekly">Semanal (7 dias)</SelectItem>
+                                                  <SelectItem value="15_monthly">Quinzenal (15 dias)</SelectItem>
+                                                  <SelectItem value="30_monthly">Mensal (30 dias)</SelectItem>
+                                                  <SelectItem value="60_monthly">Bimestral (60 dias)</SelectItem>
+                                                  <SelectItem value="90_monthly">Trimestral (90 dias)</SelectItem>
+                                                  <SelectItem value="180_monthly">Semestral (180 dias)</SelectItem>
+                                                  <SelectItem value="365_yearly">Anual (365 dias)</SelectItem>
+                                                  <SelectItem value="0_lifetime">Vitalicio (sem expiracao)</SelectItem>
                                                 </SelectContent>
                                               </Select>
                                             </div>
@@ -4921,15 +4921,15 @@ const handleAddUpsellPlan = (seqId: string) => {
                                                   <SelectValue placeholder="30 dias" />
                                                 </SelectTrigger>
                                                 <SelectContent position="popper" sideOffset={4}>
-                                                  <SelectItem value="1_daily">1 dia</SelectItem>
-                                                  <SelectItem value="7_weekly">7 dias</SelectItem>
-                                                  <SelectItem value="15_monthly">15 dias</SelectItem>
-                                                  <SelectItem value="30_monthly">30 dias</SelectItem>
-                                                  <SelectItem value="60_monthly">60 dias</SelectItem>
-                                                  <SelectItem value="90_monthly">90 dias</SelectItem>
-                                                  <SelectItem value="180_monthly">180 dias</SelectItem>
-                                                  <SelectItem value="365_yearly">365 dias</SelectItem>
-                                                  <SelectItem value="0_lifetime">Vitalicio</SelectItem>
+                                                  <SelectItem value="1_daily">Diario (1 dia)</SelectItem>
+                                                  <SelectItem value="7_weekly">Semanal (7 dias)</SelectItem>
+                                                  <SelectItem value="15_monthly">Quinzenal (15 dias)</SelectItem>
+                                                  <SelectItem value="30_monthly">Mensal (30 dias)</SelectItem>
+                                                  <SelectItem value="60_monthly">Bimestral (60 dias)</SelectItem>
+                                                  <SelectItem value="90_monthly">Trimestral (90 dias)</SelectItem>
+                                                  <SelectItem value="180_monthly">Semestral (180 dias)</SelectItem>
+                                                  <SelectItem value="365_yearly">Anual (365 dias)</SelectItem>
+                                                  <SelectItem value="0_lifetime">Vitalicio (sem expiracao)</SelectItem>
                                                 </SelectContent>
                                               </Select>
                                             </div>

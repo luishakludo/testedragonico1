@@ -36,6 +36,19 @@ interface Purchase {
   flow_id?: string
 }
 
+// Interface para assinaturas individuais (plano, upsell, downsell)
+interface Subscription {
+  type: "plan" | "upsell" | "downsell"
+  name: string
+  price: number
+  duration_days: number | null
+  remaining_days: number | null
+  is_lifetime: boolean
+  is_expired: boolean
+  start_date: string
+  end_date?: string
+}
+
 interface Client {
   id: string
   telegram_user_id: string
@@ -55,6 +68,7 @@ interface Client {
   subscription_end?: string
   purchase_date: string
   purchases: Purchase[]
+  subscriptions?: Subscription[] // Lista de todas as assinaturas (plano, upsell, downsell)
   total_spent: number
   bot_id: string
   bot_name?: string
@@ -375,7 +389,7 @@ export default function ClientesPage() {
                     </div>
                   </div>
                   <p className="text-3xl font-extrabold text-white">{stats?.compradores || 0}</p>
-                  <p className="text-sm font-medium text-gray-500 mt-1">packs, upsell e downsell</p>
+                  <p className="text-sm font-medium text-gray-500 mt-1">packs e order bumps</p>
                 </div>
               </div>
             </div>
@@ -532,9 +546,37 @@ export default function ClientesPage() {
                         )}
                       </div>
 
-                      {/* Tempo Restante */}
-                      <div>
-                        {client.type === "assinante" ? (
+                      {/* Tempo Restante - mostra assinaturas separadas */}
+                      <div className="space-y-1">
+                        {client.type === "assinante" && client.subscriptions && client.subscriptions.length > 0 ? (
+                          client.subscriptions.map((sub, idx) => (
+                            <div key={idx} className="flex items-center gap-1">
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                sub.type === "plan" ? "bg-purple-100 text-purple-700" :
+                                sub.type === "upsell" ? "bg-green-100 text-green-700" :
+                                "bg-orange-100 text-orange-700"
+                              }`}>
+                                {sub.type === "plan" ? "P" : sub.type === "upsell" ? "U" : "D"}
+                              </span>
+                              {sub.is_lifetime ? (
+                                <span className="inline-flex items-center gap-0.5 text-xs font-bold text-emerald-600">
+                                  <Infinity className="w-3 h-3" />
+                                </span>
+                              ) : sub.is_expired ? (
+                                <span className="inline-flex items-center gap-0.5 text-xs font-bold text-red-500">
+                                  <AlertCircle className="w-3 h-3" />
+                                  0d
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-0.5 text-xs font-bold text-amber-600">
+                                  <Clock className="w-3 h-3" />
+                                  {sub.remaining_days}d
+                                </span>
+                              )}
+                            </div>
+                          ))
+                        ) : client.type === "assinante" ? (
+                          // Fallback para clientes sem subscriptions array (dados antigos)
                           client.is_lifetime ? (
                             <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
                               <Infinity className="w-3 h-3" />
@@ -730,8 +772,61 @@ export default function ClientesPage() {
                   )}
                 </div>
 
-                {/* Subscription Details (for subscribers) */}
-                {selectedClient.type === "assinante" && (
+                {/* Subscription Details (for subscribers) - mostra todas as assinaturas separadas */}
+                {selectedClient.type === "assinante" && selectedClient.subscriptions && selectedClient.subscriptions.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-amber-600" />
+                      <p className="text-sm font-bold text-amber-800">Assinaturas Ativas</p>
+                    </div>
+                    {selectedClient.subscriptions.map((sub, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`rounded-xl p-4 border ${
+                          sub.type === "plan" ? "bg-purple-50 border-purple-100" :
+                          sub.type === "upsell" ? "bg-green-50 border-green-100" :
+                          "bg-orange-50 border-orange-100"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${
+                            sub.type === "plan" ? "bg-purple-100 text-purple-700" :
+                            sub.type === "upsell" ? "bg-green-100 text-green-700" :
+                            "bg-orange-100 text-orange-700"
+                          }`}>
+                            {sub.type === "plan" ? "Plano" : sub.type === "upsell" ? "Upsell" : "Downsell"}
+                          </span>
+                          {sub.is_lifetime ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+                              <Infinity className="w-3 h-3" />
+                              Vitalicio
+                            </span>
+                          ) : sub.is_expired ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-red-500">
+                              <AlertCircle className="w-3 h-3" />
+                              Expirado
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-600">
+                              <Clock className="w-3 h-3" />
+                              {sub.remaining_days}d restantes
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-bold text-gray-900">{sub.name}</p>
+                        <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+                          <span>Inicio: {formatDate(sub.start_date)}</span>
+                          {!sub.is_lifetime && sub.end_date && (
+                            <span>Venc: {formatDate(sub.end_date)}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Fallback para dados antigos sem subscriptions */}
+                {selectedClient.type === "assinante" && (!selectedClient.subscriptions || selectedClient.subscriptions.length === 0) && (
                   <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
                     <div className="flex items-center gap-2 mb-3">
                       <Calendar className="w-4 h-4 text-amber-600" />
