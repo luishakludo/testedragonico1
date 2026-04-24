@@ -987,14 +987,29 @@ export async function POST(request: NextRequest) {
                   console.log(`[UPSELL] upsellConfig enabled: ${upsellConfig?.enabled}, sequences: ${upsellSequences.length}`)
                   
                   if (shouldScheduleUpsell && upsellConfig?.enabled && upsellSequences.length > 0) {
-                    console.log(`[UPSELL] ========== AGENDANDO UPSELL ==========`)
-                    console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
-                    console.log(`[UPSELL] Bot ID: ${bot.id}, Flow ID: ${flowId}`)
+                    console.log(`[UPSELL] ========== VERIFICANDO SE JA TEM UPSELL AGENDADO ==========`)
                     
-                    // Agendar TODAS as sequencias de upsell na tabela scheduled_messages
-                    let cumulativeDelayMs = 0
+                    // VERIFICAR SE JA EXISTE UPSELL PENDENTE PARA ESTE USUARIO (evita repeticao)
+                    const { data: existingUpsells } = await supabase
+                      .from("scheduled_messages")
+                      .select("id, sequence_index")
+                      .eq("bot_id", bot.id)
+                      .eq("telegram_user_id", String(chatId))
+                      .eq("message_type", "upsell")
+                      .eq("status", "pending")
                     
-                    for (let i = 0; i < upsellSequences.length; i++) {
+                    if (existingUpsells && existingUpsells.length > 0) {
+                      console.log(`[UPSELL] JA EXISTE ${existingUpsells.length} upsell(s) pendente(s) para usuario ${chatId} - NAO AGENDANDO NOVAMENTE`)
+                      console.log(`[UPSELL] IDs existentes: ${existingUpsells.map(u => u.id).join(", ")}`)
+                    } else {
+                      console.log(`[UPSELL] ========== AGENDANDO UPSELL ==========`)
+                      console.log(`[UPSELL] Agendando ${upsellSequences.length} sequencias de upsell para usuario ${chatId}`)
+                      console.log(`[UPSELL] Bot ID: ${bot.id}, Flow ID: ${flowId}`)
+                    
+                      // Agendar TODAS as sequencias de upsell na tabela scheduled_messages
+                      let cumulativeDelayMs = 0
+                    
+                      for (let i = 0; i < upsellSequences.length; i++) {
                       const upsellSeq = upsellSequences[i]
                       
                       // Calcular delay para esta sequencia
@@ -1026,6 +1041,7 @@ export async function POST(request: NextRequest) {
                             botToken: bot.token,
                             deliveryType: upsellSeq.deliveryType || "global",
                             deliverableId: upsellSeq.deliverableId,
+                            sequence_index: i, // Indice da sequencia para usar no callback
                             // Flag para mostrar preco no botao (ex: "Mensal por R$ 20,00")
                             showPriceInButton: upsellSeq.showPriceInButton === true,
                             // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
@@ -1044,6 +1060,7 @@ export async function POST(request: NextRequest) {
                         console.log(`[UPSELL] Dados: message="${upsellSeq.message?.substring(0, 50)}...", plans=${upsellSeq.plans?.length || 0}`)
                       }
                     }
+                    } // Fecha o else do existingUpsells check
                   } else {
                     console.log(`[UPSELL] ========== NAO AGENDOU UPSELL ==========`)
                     console.log(`[UPSELL] shouldScheduleUpsell: ${shouldScheduleUpsell}`)
@@ -1097,6 +1114,64 @@ export async function POST(request: NextRequest) {
                   }
                   
                   console.log(`[UPSELL] Order bump check - upsell enabled: ${orderBumpToUse?.enabled}, price: ${orderBumpToUse?.price}`)
+                  
+                  // ========== ENTREGAR O PRODUTO DO UPSELL QUE FOI PAGO ==========
+                  // Prioridade: 1) deliverable_id do metadata do pagamento, 2) deliverableId da sequencia do upsell
+                  const paymentMetadataUp = payment.metadata as { deliverable_id?: string; upsell_sequence_index?: number } | null
+                  const currentUpsell = upsellSequences[currentIndex]
+                  const deliverables = (flowConfig?.deliverables as Deliverable[]) || []
+                  
+                  // Tentar buscar deliverableId do metadata do pagamento primeiro
+                  let upsellDeliverableId = paymentMetadataUp?.deliverable_id || ""
+                  
+                  // Se nao tem no metadata, buscar da sequencia do upsell
+                  if (!upsellDeliverableId && currentUpsell?.deliverableId) {
+                    upsellDeliverableId = currentUpsell.deliverableId
+                  }
+                  
+                  console.log(`[UPSELL] Entregando produto do upsell ${currentIndex}`)
+                  console.log(`[UPSELL] deliverableId do metadata: ${paymentMetadataUp?.deliverable_id || "NENHUM"}`)
+                  console.log(`[UPSELL] deliverableId da sequencia: ${currentUpsell?.deliverableId || "NENHUM"}`)
+                  console.log(`[UPSELL] deliverableId FINAL: ${upsellDeliverableId || "NENHUM"}`)
+                  
+                  if (upsellDeliverableId) {
+                    const upsellDeliverable = deliverables.find((d: Deliverable) => d.id === upsellDeliverableId)
+                    
+                    if (upsellDeliverable) {
+                      console.log(`[UPSELL] Entregando entregavel "${upsellDeliverable.name}" (${upsellDeliverable.type})`)
+                      await sendDeliverable(bot.token, chatId, upsellDeliverable, "Upsell")
+                      
+                      // Se for vip_group, adicionar usuario ao grupo
+                      if (upsellDeliverable.type === "vip_group" && upsellDeliverable.vipGroupChatId) {
+                        try {
+                          const createLinkRes = await fetch(`https://api.telegram.org/bot${bot.token}/createChatInviteLink`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              chat_id: upsellDeliverable.vipGroupChatId,
+                              member_limit: 1,
+                              creates_join_request: false
+                            })
+                          })
+                          const linkData = await createLinkRes.json()
+                          if (linkData.ok && linkData.result?.invite_link) {
+                            await sendTelegramMessage(
+                              bot.token,
+                              chatId,
+                              `Seu acesso ao grupo VIP do Upsell:\n${linkData.result.invite_link}`
+                            )
+                            console.log(`[UPSELL] Link VIP enviado com sucesso`)
+                          }
+                        } catch (e) {
+                          console.error(`[UPSELL] Erro ao criar link VIP:`, e)
+                        }
+                      }
+                    } else {
+                      console.log(`[UPSELL] Entregavel ${upsellDeliverableId} nao encontrado na lista`)
+                    }
+                  } else {
+                    console.log(`[UPSELL] Upsell ${currentIndex} nao tem deliverableId configurado`)
+                  }
 
                   // Se tem order bump para upsell e ainda nao foi mostrado neste ciclo
                   if (orderBumpToUse?.enabled && orderBumpToUse?.price && orderBumpToUse.price > 0 && !metadata?.order_bump_shown) {

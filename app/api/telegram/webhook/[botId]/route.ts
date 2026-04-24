@@ -2656,11 +2656,21 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             return
           }
           
+          // Buscar o deliverableId do plano selecionado no metadata da mensagem ou na config do flow
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const upsellPlans = (msgMetadata?.plans as Array<Record<string, any>>) || []
+          const selectedUpsellPlan = upsellPlans[planIndex]
+          const upsellDeliverableId = selectedUpsellPlan?.deliverableId || (msgMetadata?.deliverableId as string) || ""
+          const upsellSequenceIndex = (msgMetadata?.sequence_index as number) || 0
+          
+          console.log(`[v0] Upsell deliverableId: ${upsellDeliverableId}, sequenceIndex: ${upsellSequenceIndex}`)
+          
           // Salvar pagamento do upsell (igual ao downsell)
           console.log("[v0] Saving upsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: upsell", "telegram_user_id:", telegramUserId)
           const { data: savedUpPayment, error: upPaymentError } = await supabase.from("payments").insert({
             user_id: botOwner.user_id,
             bot_id: botUuid,
+            flow_id: flowId || flowUp?.id || null, // IMPORTANTE: salvar flow_id
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -2677,6 +2687,12 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             qr_code_url: pixResult.qrCodeUrl,
             copy_paste: pixResult.copyPaste,
             pix_code: pixResult.copyPaste || pixResult.qrCode,
+            // IMPORTANTE: salvar metadata com info do entregavel
+            metadata: {
+              deliverable_id: upsellDeliverableId,
+              upsell_sequence_index: upsellSequenceIndex,
+              plan_index: planIndex,
+            },
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }).select().single()
