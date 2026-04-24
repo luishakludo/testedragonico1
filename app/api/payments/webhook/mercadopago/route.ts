@@ -665,27 +665,36 @@ export async function POST(request: NextRequest) {
               const chatId = parseInt(payment.telegram_user_id)
               
               // CANCELAR todos os downsells pendentes (usuario ja pagou)
-              await supabase
+              // Cancelar por bot_id + telegram_user_id (cancela de todos os fluxos deste bot)
+              const { data: cancelledDownsells } = await supabase
                 .from("scheduled_messages")
                 .update({ status: "cancelled" })
                 .eq("bot_id", payment.bot_id)
                 .eq("telegram_user_id", payment.telegram_user_id)
                 .eq("message_type", "downsell")
                 .eq("status", "pending")
+                .select("id")
               
-              console.log(`[DOWNSELL] Cancelled pending downsells for user ${payment.telegram_user_id}`)
+              console.log(`[DOWNSELL] Cancelled ${cancelledDownsells?.length || 0} pending downsells for user ${payment.telegram_user_id}`)
               
               // ATUALIZAR user_flow_state para "paid" (usado pelo cron para verificar se deve enviar downsell)
+              // Incluir flow_id se disponivel no pagamento
+              const userFlowStateData: Record<string, unknown> = {
+                bot_id: payment.bot_id,
+                telegram_user_id: payment.telegram_user_id,
+                status: "paid",
+                updated_at: new Date().toISOString()
+              }
+              
+              if (payment.flow_id) {
+                userFlowStateData.flow_id = payment.flow_id
+              }
+              
               await supabase
                 .from("user_flow_state")
-                .upsert({
-                  bot_id: payment.bot_id,
-                  telegram_user_id: payment.telegram_user_id,
-                  status: "paid",
-                  updated_at: new Date().toISOString()
-                }, { onConflict: "bot_id,telegram_user_id" })
+                .upsert(userFlowStateData, { onConflict: "bot_id,telegram_user_id" })
               
-              console.log(`[PAYMENT] User ${payment.telegram_user_id} marked as paid in user_flow_state`)
+              console.log(`[PAYMENT] User ${payment.telegram_user_id} marked as paid in user_flow_state (flow_id: ${payment.flow_id || 'N/A'})`)
 
               // Se for pagamento do produto principal ou order bump, verificar se tem upsell
               if (payment.product_type === "main_product" || payment.product_type === "order_bump" || payment.product_type === "plan" || payment.product_type === "plan_order_bump" || payment.product_type === "pack" || payment.product_type === "pack_order_bump") {
@@ -1254,25 +1263,32 @@ export async function POST(request: NextRequest) {
                 console.log(`[DOWNSELL] Downsell payment approved for user ${chatId}`)
                 
                 // 1. Cancelar todos os outros downsells pendentes para este usuario
-                await supabase
+                const { data: cancelledDsDownsells } = await supabase
                   .from("scheduled_messages")
                   .update({ status: "cancelled" })
                   .eq("bot_id", bot.id)
                   .eq("telegram_user_id", payment.telegram_user_id)
                   .eq("message_type", "downsell")
                   .eq("status", "pending")
+                  .select("id")
                 
-                console.log(`[DOWNSELL] Cancelled remaining pending downsells for user ${payment.telegram_user_id}`)
+                console.log(`[DOWNSELL] Cancelled ${cancelledDsDownsells?.length || 0} remaining pending downsells for user ${payment.telegram_user_id}`)
                 
                 // 2. Atualizar user_flow_state para "paid"
+                const downsellUserFlowState: Record<string, unknown> = {
+                  bot_id: bot.id,
+                  telegram_user_id: payment.telegram_user_id,
+                  status: "paid",
+                  updated_at: new Date().toISOString()
+                }
+                
+                if (payment.flow_id) {
+                  downsellUserFlowState.flow_id = payment.flow_id
+                }
+                
                 await supabase
                   .from("user_flow_state")
-                  .upsert({
-                    bot_id: bot.id,
-                    telegram_user_id: payment.telegram_user_id,
-                    status: "paid",
-                    updated_at: new Date().toISOString()
-                  }, { onConflict: "bot_id,telegram_user_id" })
+                  .upsert(downsellUserFlowState, { onConflict: "bot_id,telegram_user_id" })
                 
                 console.log(`[DOWNSELL] User ${payment.telegram_user_id} marked as paid in user_flow_state`)
                 

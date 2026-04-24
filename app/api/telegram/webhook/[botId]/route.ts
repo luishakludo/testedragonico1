@@ -1617,10 +1617,11 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               const copyPaste = txData.qr_code
               
               // Salvar pagamento primeiro para ter o ID
-              console.log("[v0] Saving pack payment - user_id:", botDataPack.user_id, "bot_id:", botUuid, "amount:", packPrice)
+              console.log("[v0] Saving pack payment - user_id:", botDataPack.user_id, "bot_id:", botUuid, "flow_id:", flowForPack?.id, "amount:", packPrice)
               const { data: savedPayment, error: saveError } = await supabase.from("payments").insert({
                 user_id: botDataPack.user_id,
                 bot_id: botUuid,
+                flow_id: flowForPack?.id || null, // IMPORTANTE: Incluir flow_id para cancelar downsells corretamente
                 telegram_user_id: String(telegramUserId),
                 telegram_username: userUsername || null,
                 telegram_first_name: userFirstName || null,
@@ -3399,10 +3400,11 @@ Escaneie o QR Code ou copie o codigo abaixo:
           }
           
           // Save payment record with correct fields including Telegram user info AND plan metadata
-          console.log("[v0] Saving plan payment - user_id:", botData?.user_id, "bot_id:", botUuid, "amount:", planPrice, "planId:", planId, "deliverableId:", planDeliverableId)
+          console.log("[v0] Saving plan payment - user_id:", botData?.user_id, "bot_id:", botUuid, "flow_id:", flowIdForGateway, "amount:", planPrice, "planId:", planId, "deliverableId:", planDeliverableId)
           const { data: savedPlanPayment, error: savePlanError } = await supabase.from("payments").insert({
             user_id: botData?.user_id,
             bot_id: botUuid,
+            flow_id: flowIdForGateway || null, // IMPORTANTE: Incluir flow_id para cancelar downsells corretamente
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
