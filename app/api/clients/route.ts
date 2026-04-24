@@ -20,6 +20,19 @@ function calculateRemainingDays(purchaseDate: string, durationDays: number | nul
   return Math.ceil(remainingMs / (24 * 60 * 60 * 1000))
 }
 
+// Interface para assinaturas individuais (plano, upsell, downsell)
+export interface Subscription {
+  type: "plan" | "upsell" | "downsell"
+  name: string
+  price: number
+  duration_days: number | null
+  remaining_days: number | null
+  is_lifetime: boolean
+  is_expired: boolean
+  start_date: string
+  end_date?: string
+}
+
 export interface Client {
   id: string
   telegram_user_id: string
@@ -27,7 +40,7 @@ export interface Client {
   first_name?: string
   last_name?: string
   full_name: string
-  type: "assinante" | "comprador" // assinante = plano, comprador = pack/upsell/downsell
+  type: "assinante" | "comprador" // assinante = plano/upsell/downsell, comprador = pack/order_bump
   plan_name?: string
   plan_price?: number
   duration_type?: string
@@ -47,6 +60,8 @@ export interface Client {
     created_at: string
     flow_id?: string
   }>
+  // Novas propriedades para mostrar assinaturas separadas
+  subscriptions: Subscription[] // Lista de todas as assinaturas (plano, upsell, downsell)
   total_spent: number
   bot_id: string
   bot_name?: string
@@ -251,7 +266,8 @@ export async function GET(request: NextRequest) {
 
       // Determinar tipo de produto
       const productType = payment.product_type || "main_product"
-      const isSubscription = productType === "main_product" || productType === "plan"
+      // Assinante inclui: plano, upsell e downsell (todos tem duracao)
+      const isSubscription = productType === "main_product" || productType === "plan" || productType === "upsell" || productType === "downsell"
       
       // Buscar info do plano pelo nome do produto
       const planInfo = null // plan_id nao existe mais na tabela payments
@@ -315,11 +331,12 @@ export async function GET(request: NextRequest) {
             ? calculateRemainingDays(payment.created_at, durationDays) === 0 
             : false,
 subscription_start: isSubscription ? payment.created_at : undefined,
-        subscription_end: isSubscription && durationDays !== null 
+        subscription_end: isSubscription && durationDays !== null
           ? new Date(new Date(payment.created_at).getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString()
           : undefined,
         purchase_date: payment.created_at,
         purchases: [],
+        subscriptions: [], // Array para guardar assinaturas separadas (plano, upsell, downsell)
         total_spent: 0,
         bot_id: payment.bot_id,
         bot_name: botInfo?.name,
@@ -355,7 +372,33 @@ subscription_start: isSubscription ? payment.created_at : undefined,
         created_at: payment.created_at,
         flow_id: derivedFlowId || undefined
       })
-
+      
+      // Adicionar subscription se for plano, upsell ou downsell
+      if (isSubscription) {
+        // Determinar tipo de subscription
+        let subType: "plan" | "upsell" | "downsell" = "plan"
+        if (productType === "upsell") subType = "upsell"
+        else if (productType === "downsell") subType = "downsell"
+        
+        const remainingDays = durationDays !== null 
+          ? calculateRemainingDays(payment.created_at, durationDays) 
+          : null
+        
+        client.subscriptions.push({
+          type: subType,
+          name: payment.product_name || productType,
+          price: Number(payment.amount),
+          duration_days: durationDays,
+          remaining_days: remainingDays,
+          is_lifetime: durationDays === null,
+          is_expired: durationDays !== null ? remainingDays === 0 : false,
+          start_date: payment.created_at,
+          end_date: durationDays !== null 
+            ? new Date(new Date(payment.created_at).getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString()
+            : undefined
+        })
+      }
+      
       // Atualizar flow_id do cliente se ainda nao tiver
       if (derivedFlowId && !client.flow_id) {
         client.flow_id = derivedFlowId

@@ -1583,6 +1583,14 @@ const handleAddUpsellPlan = (seqId: string) => {
     const updatedPlans = (seq.plans || []).map(p => p.id === planId ? { ...p, [field]: value } : p)
     handleUpdateUpsellSequence(seqId, "plans", updatedPlans)
   }
+  
+  // Update multiple fields in a plan in upsell sequence (para evitar race conditions)
+  const handleUpdateUpsellPlanMulti = (seqId: string, planId: string, updates: Partial<UpsellPlan>) => {
+    const seq = upsellSequences.find(s => s.id === seqId)
+    if (!seq) return
+    const updatedPlans = (seq.plans || []).map(p => p.id === planId ? { ...p, ...updates } : p)
+    handleUpdateUpsellSequence(seqId, "plans", updatedPlans)
+  }
 
   // Remove upsell sequence
   const handleRemoveUpsellSequence = (id: string) => {
@@ -1720,6 +1728,14 @@ const handleAddUpsellPlan = (seqId: string) => {
     const updatedPlans = (seq.plans || []).map(p => p.id === planId ? { ...p, [field]: value } : p)
     handleUpdateDownsellSequence(seqId, "plans", updatedPlans)
   }
+  
+  // Update multiple fields in a plan in downsell sequence (para evitar race conditions)
+  const handleUpdateDownsellPlanMulti = (seqId: string, planId: string, updates: Partial<DownsellPlan>) => {
+    const seq = downsellSequences.find(s => s.id === seqId)
+    if (!seq) return
+    const updatedPlans = (seq.plans || []).map(p => p.id === planId ? { ...p, ...updates } : p)
+    handleUpdateDownsellSequence(seqId, "plans", updatedPlans)
+  }
 
   // Remove downsell sequence
   const handleRemoveDownsellSequence = (id: string) => {
@@ -1853,6 +1869,14 @@ const handleAddUpsellPlan = (seqId: string) => {
     const seq = downsellPixSequences.find(s => s.id === seqId)
     if (!seq) return
     const updatedPlans = (seq.plans || []).map(p => p.id === planId ? { ...p, [field]: value } : p)
+    handleUpdateDownsellPixSequence(seqId, "plans", updatedPlans)
+  }
+  
+  // Update multiple fields in a plan in downsell PIX sequence (para evitar race conditions)
+  const handleUpdateDownsellPixPlanMulti = (seqId: string, planId: string, updates: Partial<DownsellPlan>) => {
+    const seq = downsellPixSequences.find(s => s.id === seqId)
+    if (!seq) return
+    const updatedPlans = (seq.plans || []).map(p => p.id === planId ? { ...p, ...updates } : p)
     handleUpdateDownsellPixSequence(seqId, "plans", updatedPlans)
   }
 
@@ -3898,23 +3922,26 @@ const handleAddUpsellPlan = (seqId: string) => {
                                               onValueChange={(value) => {
                                                 const [daysStr, type] = value.split("_")
                                                 const days = parseInt(daysStr, 10)
-                                                handleUpdateUpsellPlan(seq.id, plan.id, "duration_days", days)
-                                                handleUpdateUpsellPlan(seq.id, plan.id, "duration_type", type)
+                                                // Usar funcao que atualiza multiplos campos de uma vez para evitar race condition
+                                                handleUpdateUpsellPlanMulti(seq.id, plan.id, { 
+                                                  duration_days: days, 
+                                                  duration_type: type as UpsellPlan["duration_type"] 
+                                                })
                                               }}
                                             >
                                               <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
                                                 <SelectValue placeholder="30 dias" />
                                               </SelectTrigger>
                                               <SelectContent position="popper" sideOffset={4}>
-                                                <SelectItem value="1_daily">1 dia</SelectItem>
-                                                <SelectItem value="7_weekly">7 dias</SelectItem>
-                                                <SelectItem value="15_monthly">15 dias</SelectItem>
-                                                <SelectItem value="30_monthly">30 dias</SelectItem>
-                                                <SelectItem value="60_monthly">60 dias</SelectItem>
-                                                <SelectItem value="90_monthly">90 dias</SelectItem>
-                                                <SelectItem value="180_monthly">180 dias</SelectItem>
-                                                <SelectItem value="365_yearly">365 dias</SelectItem>
-                                                <SelectItem value="0_lifetime">Vitalicio</SelectItem>
+                                                <SelectItem value="1_daily">Diario (1 dia)</SelectItem>
+                                                <SelectItem value="7_weekly">Semanal (7 dias)</SelectItem>
+                                                <SelectItem value="15_monthly">Quinzenal (15 dias)</SelectItem>
+                                                <SelectItem value="30_monthly">Mensal (30 dias)</SelectItem>
+                                                <SelectItem value="60_monthly">Bimestral (60 dias)</SelectItem>
+                                                <SelectItem value="90_monthly">Trimestral (90 dias)</SelectItem>
+                                                <SelectItem value="180_monthly">Semestral (180 dias)</SelectItem>
+                                                <SelectItem value="365_yearly">Anual (365 dias)</SelectItem>
+                                                <SelectItem value="0_lifetime">Vitalicio (sem expiracao)</SelectItem>
                                               </SelectContent>
                                             </Select>
                                           </div>
@@ -4417,23 +4444,26 @@ const handleAddUpsellPlan = (seqId: string) => {
                                                 onValueChange={(value) => {
                                                   const [daysStr, type] = value.split("_")
                                                   const days = parseInt(daysStr, 10)
-                                                  handleUpdateDownsellPlan(seq.id, plan.id, "duration_days", days)
-                                                  handleUpdateDownsellPlan(seq.id, plan.id, "duration_type", type)
+                                                  // Usar funcao que atualiza multiplos campos de uma vez para evitar race condition
+                                                  handleUpdateDownsellPlanMulti(seq.id, plan.id, { 
+                                                    duration_days: days, 
+                                                    duration_type: type as DownsellPlan["duration_type"] 
+                                                  })
                                                 }}
                                               >
                                                 <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
                                                   <SelectValue placeholder="30 dias" />
                                                 </SelectTrigger>
                                                 <SelectContent position="popper" sideOffset={4}>
-                                                  <SelectItem value="1_daily">1 dia</SelectItem>
-                                                  <SelectItem value="7_weekly">7 dias</SelectItem>
-                                                  <SelectItem value="15_monthly">15 dias</SelectItem>
-                                                  <SelectItem value="30_monthly">30 dias</SelectItem>
-                                                  <SelectItem value="60_monthly">60 dias</SelectItem>
-                                                  <SelectItem value="90_monthly">90 dias</SelectItem>
-                                                  <SelectItem value="180_monthly">180 dias</SelectItem>
-                                                  <SelectItem value="365_yearly">365 dias</SelectItem>
-                                                  <SelectItem value="0_lifetime">Vitalicio</SelectItem>
+                                                  <SelectItem value="1_daily">Diario (1 dia)</SelectItem>
+                                                  <SelectItem value="7_weekly">Semanal (7 dias)</SelectItem>
+                                                  <SelectItem value="15_monthly">Quinzenal (15 dias)</SelectItem>
+                                                  <SelectItem value="30_monthly">Mensal (30 dias)</SelectItem>
+                                                  <SelectItem value="60_monthly">Bimestral (60 dias)</SelectItem>
+                                                  <SelectItem value="90_monthly">Trimestral (90 dias)</SelectItem>
+                                                  <SelectItem value="180_monthly">Semestral (180 dias)</SelectItem>
+                                                  <SelectItem value="365_yearly">Anual (365 dias)</SelectItem>
+                                                  <SelectItem value="0_lifetime">Vitalicio (sem expiracao)</SelectItem>
                                                 </SelectContent>
                                               </Select>
                                             </div>
@@ -4913,23 +4943,26 @@ const handleAddUpsellPlan = (seqId: string) => {
                                                 onValueChange={(value) => {
                                                   const [daysStr, type] = value.split("_")
                                                   const days = parseInt(daysStr, 10)
-                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_days", days)
-                                                  handleUpdateDownsellPixPlan(seq.id, plan.id, "duration_type", type)
+                                                  // Usar funcao que atualiza multiplos campos de uma vez para evitar race condition
+                                                  handleUpdateDownsellPixPlanMulti(seq.id, plan.id, { 
+                                                    duration_days: days, 
+                                                    duration_type: type as DownsellPlan["duration_type"] 
+                                                  })
                                                 }}
                                               >
                                                 <SelectTrigger className="bg-secondary/50 border-neutral-200 h-8 text-sm">
                                                   <SelectValue placeholder="30 dias" />
                                                 </SelectTrigger>
                                                 <SelectContent position="popper" sideOffset={4}>
-                                                  <SelectItem value="1_daily">1 dia</SelectItem>
-                                                  <SelectItem value="7_weekly">7 dias</SelectItem>
-                                                  <SelectItem value="15_monthly">15 dias</SelectItem>
-                                                  <SelectItem value="30_monthly">30 dias</SelectItem>
-                                                  <SelectItem value="60_monthly">60 dias</SelectItem>
-                                                  <SelectItem value="90_monthly">90 dias</SelectItem>
-                                                  <SelectItem value="180_monthly">180 dias</SelectItem>
-                                                  <SelectItem value="365_yearly">365 dias</SelectItem>
-                                                  <SelectItem value="0_lifetime">Vitalicio</SelectItem>
+                                                  <SelectItem value="1_daily">Diario (1 dia)</SelectItem>
+                                                  <SelectItem value="7_weekly">Semanal (7 dias)</SelectItem>
+                                                  <SelectItem value="15_monthly">Quinzenal (15 dias)</SelectItem>
+                                                  <SelectItem value="30_monthly">Mensal (30 dias)</SelectItem>
+                                                  <SelectItem value="60_monthly">Bimestral (60 dias)</SelectItem>
+                                                  <SelectItem value="90_monthly">Trimestral (90 dias)</SelectItem>
+                                                  <SelectItem value="180_monthly">Semestral (180 dias)</SelectItem>
+                                                  <SelectItem value="365_yearly">Anual (365 dias)</SelectItem>
+                                                  <SelectItem value="0_lifetime">Vitalicio (sem expiracao)</SelectItem>
                                                 </SelectContent>
                                               </Select>
                                             </div>
