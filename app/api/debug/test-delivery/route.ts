@@ -3,90 +3,43 @@ import { NextResponse } from "next/server"
 
 // API de teste para debugar entrega de order bump
 // Acesse: /api/debug/test-delivery
+// Usa flow_id fixo passado pelo usuario
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
+const FLOW_ID = "206cbb10-efeb-4f59-a153-9c9d420b4e84"
+
 export async function GET() {
   const debug: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
-    step: "iniciando"
+    flow_id_usado: FLOW_ID
   }
 
   try {
-    // Usar cliente Supabase Admin do projeto (tem credenciais hardcoded)
     const supabase = getSupabaseAdmin()
 
-    // 1. Buscar todos os bots
-    debug.step = "buscando_bots"
-    const { data: bots, error: botsError } = await supabase
-      .from("bots")
-      .select("id, name, user_id, token")
-      .limit(10)
-
-    if (botsError) {
-      return NextResponse.json({ 
-        success: false, 
-        step: "buscando_bots",
-        error: botsError.message,
-        details: botsError
-      }, { status: 500 })
-    }
-
-    debug.bots_count = bots?.length || 0
-    debug.bots = bots
-
-    if (!bots || bots.length === 0) {
-      return NextResponse.json({ 
-        success: false, 
-        error: "Nenhum bot encontrado",
-        debug 
-      }, { status: 404 })
-    }
-
-    const bot = bots[0]
-    debug.selected_bot = bot
-
-    // 2. Buscar fluxos do bot
-    debug.step = "buscando_fluxos"
-    const { data: flows, error: flowsError } = await supabase
+    // 1. Buscar o fluxo diretamente pelo ID
+    debug.step = "buscando_fluxo"
+    const { data: flow, error: flowError } = await supabase
       .from("flows")
-      .select("id, name, config, is_active")
-      .eq("bot_id", bot.id)
-      .limit(5)
+      .select("*")
+      .eq("id", FLOW_ID)
+      .single()
 
-    if (flowsError) {
+    if (flowError) {
       return NextResponse.json({ 
         success: false, 
-        step: "buscando_fluxos",
-        error: flowsError.message,
-        bot: bot,
-        details: flowsError
+        step: "buscando_fluxo",
+        error: flowError.message,
+        flow_id: FLOW_ID
       }, { status: 500 })
     }
 
-    debug.flows_count = flows?.length || 0
+    const flowConfig = flow.config as Record<string, unknown> || {}
+    const botId = flow.bot_id
     
-    // Pegar fluxo ativo ou o primeiro
-    const activeFlow = flows?.find(f => f.is_active) || flows?.[0]
-    
-    if (!activeFlow) {
-      return NextResponse.json({ 
-        success: false, 
-        error: "Nenhum fluxo encontrado",
-        bot: bot,
-        flows: flows,
-        debug 
-      }, { status: 404 })
-    }
-
-    const flowConfig = activeFlow.config as Record<string, unknown> || {}
-    
-    debug.selected_flow = {
-      id: activeFlow.id,
-      name: activeFlow.name,
-      is_active: activeFlow.is_active
-    }
+    debug.flow = { id: flow.id, name: flow.name, bot_id: botId }
 
     // 3. Extrair configuracoes do fluxo
     debug.step = "analisando_config"
@@ -109,7 +62,7 @@ export async function GET() {
     const { data: payments, error: paymentsError } = await supabase
       .from("payments")
       .select("id, status, product_type, amount, telegram_user_id, metadata, created_at")
-      .eq("bot_id", bot.id)
+      .eq("bot_id", botId)
       .order("created_at", { ascending: false })
       .limit(10)
 
@@ -163,7 +116,7 @@ export async function GET() {
     const { data: states } = await supabase
       .from("user_flow_state")
       .select("telegram_user_id, status, metadata, updated_at")
-      .eq("bot_id", bot.id)
+      .eq("bot_id", botId)
       .order("updated_at", { ascending: false })
       .limit(5)
 
