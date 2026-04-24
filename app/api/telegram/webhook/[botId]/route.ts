@@ -3710,7 +3710,8 @@ Escaneie o QR Code ou copie o codigo abaixo:
         const downsellConfig = flowConfig.downsell as {
           enabled?: boolean; sequences?: Array<{
             id: string; message: string; medias?: string[]; sendTiming?: string; sendDelayValue?: number; sendDelayUnit?: string;
-            plans?: Array<{ id: string; buttonText: string; price: number }>; deliveryType?: string; deliverableId?: string; customDelivery?: string
+            plans?: Array<{ id: string; buttonText: string; price: number }>; deliveryType?: string; deliverableId?: string; customDelivery?: string;
+            useDefaultPlans?: boolean; discountPercent?: number; showPriceInButton?: boolean
           }>
         } | undefined
 
@@ -3726,6 +3727,14 @@ Escaneie o QR Code ou copie o codigo abaixo:
             .eq("telegram_user_id", String(telegramUserId))
             .eq("status", "pending")
 
+          // Buscar planos do flow principal (para usar quando useDefaultPlans = true)
+          const { data: mainFlowPlans } = await supabase
+            .from("flow_plans")
+            .select("id, name, price")
+            .eq("flow_id", startFlow.id)
+            .eq("is_active", true)
+            .order("position", { ascending: true })
+
           // Processar todas as sequencias de downsell
           for (const seq of downsellConfig.sequences) {
             // Calcular delay em minutos
@@ -3735,6 +3744,29 @@ Escaneie o QR Code ou copie o codigo abaixo:
 
             // Calcular horario exato para envio
             const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
+
+            // Determinar quais planos usar: se useDefaultPlans = true, usa os planos do fluxo principal com desconto
+            let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
+            const useDefaultPlans = seq.useDefaultPlans !== false // default true
+            const discountPercent = seq.discountPercent || 20 // default 20%
+
+            if (useDefaultPlans && mainFlowPlans && mainFlowPlans.length > 0) {
+              // Usar planos do fluxo principal com desconto aplicado
+              plansToUse = mainFlowPlans.map(plan => {
+                const discountedPrice = plan.price * (1 - discountPercent / 100)
+                return {
+                  id: plan.id,
+                  buttonText: plan.name,
+                  name: plan.name,
+                  price: Math.round(discountedPrice * 100) / 100 // Arredondar para 2 casas decimais
+                }
+              })
+              console.log(`[DOWNSELL] Usando planos do fluxo principal com ${discountPercent}% desconto:`, JSON.stringify(plansToUse))
+            } else {
+              // Usar planos personalizados da sequencia
+              plansToUse = seq.plans || []
+              console.log(`[DOWNSELL] Usando planos personalizados da sequencia:`, JSON.stringify(plansToUse))
+            }
 
             // Salvar no banco para o cron processar
             console.log(`[DOWNSELL] Agendando downsell para ${scheduledFor.toISOString()} (delay: ${delayMinutes} min)`)
@@ -3752,7 +3784,7 @@ Escaneie o QR Code ou copie o codigo abaixo:
               metadata: {
                 message: seq.message,
                 medias: seq.medias || [],
-                plans: seq.plans || [],
+                plans: plansToUse,
                 deliveryType: seq.deliveryType,
                 deliverableId: seq.deliverableId,
                 customDelivery: seq.customDelivery,
@@ -3762,6 +3794,9 @@ Escaneie o QR Code ou copie o codigo abaixo:
                 // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
                 userFirstName: from?.first_name || "",
                 userUsername: from?.username || "",
+                // Info de desconto (para referencia)
+                useDefaultPlans: useDefaultPlans,
+                discountPercent: useDefaultPlans ? discountPercent : undefined,
               }
             })
 
