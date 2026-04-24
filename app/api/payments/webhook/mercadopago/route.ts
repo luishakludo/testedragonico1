@@ -737,6 +737,14 @@ export async function POST(request: NextRequest) {
                   const flowConfig = flowData?.config as Record<string, any> | null
                   const upsellConfig = flowConfig?.upsell
                   const upsellSequences = upsellConfig?.sequences || []
+                  
+                  // Buscar planos do flow principal (para usar quando useDefaultPlans = true no upsell)
+                  const { data: mainFlowPlansForUpsell } = await supabase
+                    .from("flow_plans")
+                    .select("id, name, price")
+                    .eq("flow_id", flowId)
+                    .eq("is_active", true)
+                    .order("position", { ascending: true })
                   const paymentMessages = flowConfig?.paymentMessages as {
                     approvedMessage?: string
                     approvedMedias?: string[]
@@ -1041,6 +1049,29 @@ export async function POST(request: NextRequest) {
                       
                       const scheduledFor = new Date(Date.now() + cumulativeDelayMs).toISOString()
                       
+                      // Determinar quais planos usar: se useDefaultPlans = true, usa os planos do fluxo principal com desconto
+                      let plansToUseUpsell: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
+                      const useDefaultPlansUpsell = upsellSeq.useDefaultPlans !== false // default true
+                      const discountPercentUpsell = upsellSeq.discountPercent || 20 // default 20%
+
+                      if (useDefaultPlansUpsell && mainFlowPlansForUpsell && mainFlowPlansForUpsell.length > 0) {
+                        // Usar planos do fluxo principal com desconto aplicado
+                        plansToUseUpsell = mainFlowPlansForUpsell.map(plan => {
+                          const discountedPrice = plan.price * (1 - discountPercentUpsell / 100)
+                          return {
+                            id: plan.id,
+                            buttonText: plan.name,
+                            name: plan.name,
+                            price: Math.round(discountedPrice * 100) / 100 // Arredondar para 2 casas decimais
+                          }
+                        })
+                        console.log(`[UPSELL] Usando planos do fluxo principal com ${discountPercentUpsell}% desconto:`, JSON.stringify(plansToUseUpsell))
+                      } else {
+                        // Usar planos personalizados da sequencia
+                        plansToUseUpsell = upsellSeq.plans || []
+                        console.log(`[UPSELL] Usando planos personalizados da sequencia:`, JSON.stringify(plansToUseUpsell))
+                      }
+                      
                       // Inserir na tabela scheduled_messages (mesma estrutura do downsell)
                       const { error: insertError } = await supabase
                         .from("scheduled_messages")
@@ -1057,7 +1088,7 @@ export async function POST(request: NextRequest) {
                           metadata: {
                             message: upsellSeq.message || "",
                             medias: upsellSeq.medias || [],
-                            plans: upsellSeq.plans || [],
+                            plans: plansToUseUpsell,
                             botToken: bot.token,
                             deliveryType: upsellSeq.deliveryType || "global",
                             deliverableId: upsellSeq.deliverableId,
@@ -1067,6 +1098,9 @@ export async function POST(request: NextRequest) {
                             // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
                             userFirstName: userName || "",
                             userUsername: userUsername || "",
+                            // Info de desconto (para referencia)
+                            useDefaultPlans: useDefaultPlansUpsell,
+                            discountPercent: useDefaultPlansUpsell ? discountPercentUpsell : undefined,
                           },
                           created_at: new Date().toISOString(),
                           updated_at: new Date().toISOString()
