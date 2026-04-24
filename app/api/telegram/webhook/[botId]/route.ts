@@ -1711,7 +1711,12 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
         const orderBumpDeliverableIdFromIndex = selectedOrderBump?.deliverableId || metadata?.order_bump_deliverable_id || ""
         const mainDescription = metadata?.main_description || "Produto Principal"
         
+        // Buscar plan_deliverable_id do metadata (para entregar o produto principal corretamente)
+        const planDeliverableIdFromState = metadata?.plan_deliverable_id || ""
+        const planIdFromState = metadata?.plan_id || ""
+        
         console.log("[v0] Order Bump - selectedOrderBump:", selectedOrderBump, "deliverableId:", orderBumpDeliverableIdFromIndex)
+        console.log("[v0] Order Bump - planDeliverableId:", planDeliverableIdFromState, "planId:", planIdFromState)
         
         let totalAmount = 0
         let description = mainDescription
@@ -1891,8 +1896,18 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           
           // Save payment - IMPORTANTE: usar ownerUserId que foi encontrado corretamente
           // Incluir deliverableId do order bump no metadata se aceito - usar o deliverableId correto baseado no índice
+          // Tambem incluir plan_deliverable_id para entregar o produto principal corretamente
           const orderBumpDeliverableId = isAccept ? orderBumpDeliverableIdFromIndex : ""
-          console.log("[v0] Saving OB payment - user_id:", ownerUserId, "bot_id:", botUuid, "amount:", totalAmount, "productType:", productType, "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "order_bump_deliverable_id:", orderBumpDeliverableId)
+          
+          // Construir metadata do pagamento
+          const paymentMetadataOB: Record<string, string> = {}
+          if (planIdFromState) paymentMetadataOB.plan_id = planIdFromState
+          if (planDeliverableIdFromState) paymentMetadataOB.plan_deliverable_id = planDeliverableIdFromState
+          if (isAccept && orderBumpDeliverableId) paymentMetadataOB.order_bump_deliverable_id = orderBumpDeliverableId
+          
+          const hasMetadata = Object.keys(paymentMetadataOB).length > 0
+          
+          console.log("[v0] Saving OB payment - user_id:", ownerUserId, "bot_id:", botUuid, "amount:", totalAmount, "productType:", productType, "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "metadata:", JSON.stringify(paymentMetadataOB))
           const { error: obPaymentError } = await supabase.from("payments").insert({
             bot_id: botUuid,
             user_id: ownerUserId,
@@ -1906,7 +1921,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             gateway: "mercadopago",
             external_payment_id: String(pixResultOB.paymentId),
             product_type: productType,
-            metadata: isAccept && orderBumpDeliverableId ? { order_bump_deliverable_id: orderBumpDeliverableId } : null
+            metadata: hasMetadata ? paymentMetadataOB : null
           })
           if (obPaymentError) {
             console.error("[v0] Error saving OB payment:", obPaymentError)
@@ -2906,6 +2921,14 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               deliverableId: ob.deliverableId || "",
               deliveryType: ob.deliveryType || "same"
             }))
+            
+            // Buscar deliverableId especifico do plano (para entregar corretamente o produto principal)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const configPlansForOB = (flowConfig.plans as Array<Record<string, any>>) || []
+            const selectedPlanConfigOB = configPlansForOB.find(p => p.id === planId || p.name === planName)
+            const planDeliverableIdForOB = selectedPlanConfigOB?.deliverableId || ""
+            console.log("[v0] Plan Order Bump - planDeliverableId:", planDeliverableIdForOB, "for plan:", planName)
+            
             const { error: stateUpsertError } = await supabase.from("user_flow_state").upsert({
               bot_id: botUuid,
               telegram_user_id: String(telegramUserId),
@@ -2914,6 +2937,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               current_node_position: 0,
               metadata: {
                 type: "plan",
+                plan_id: planId,
+                plan_deliverable_id: planDeliverableIdForOB, // ID do entregavel do plano principal
                 order_bump_name: activePlanOrderBumps[0].name || "Order Bump",
                 order_bump_price: activePlanOrderBumps[0].price,
                 order_bump_deliverable_id: activePlanOrderBumps[0].deliverableId || "",
@@ -2968,6 +2993,13 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             })
             
             // Salvar estado para quando usuario responder
+            // Buscar deliverableId especifico do plano (para entregar corretamente o produto principal)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const configPlansForGlobalOB = (flowConfig.plans as Array<Record<string, any>>) || []
+            const selectedPlanConfigGlobalOB = configPlansForGlobalOB.find(p => p.id === planId || p.name === planName)
+            const planDeliverableIdForGlobalOB = selectedPlanConfigGlobalOB?.deliverableId || ""
+            console.log("[v0] Global Order Bump - planDeliverableId:", planDeliverableIdForGlobalOB, "for plan:", planName)
+            
             console.log("[v0] Salvando estado Order Bump - bot_id:", botUuid, "telegram_user_id:", String(telegramUserId))
             const { error: stateUpsertError } = await supabase.from("user_flow_state").upsert({
               bot_id: botUuid,
@@ -2977,6 +3009,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
               current_node_position: 0,
               metadata: {
                 type: "plan",
+                plan_id: planId,
+                plan_deliverable_id: planDeliverableIdForGlobalOB, // ID do entregavel do plano principal
                 order_bump_name: orderBumpInicial.name || "Order Bump",
                 order_bump_price: orderBumpInicial.price,
                 order_bump_deliverable_id: orderBumpInicial.deliverableId || "",
@@ -3066,8 +3100,29 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             .eq("id", botUuid)
             .single()
           
-          // Save payment record with correct fields including Telegram user info
-          console.log("[v0] Saving plan payment - user_id:", botData?.user_id, "bot_id:", botUuid, "amount:", planPrice)
+          // Buscar deliverableId especifico do plano (se existir)
+          let planDeliverableId = ""
+          
+          // Se o plano veio do banco (flow_plans), buscar deliverableId diretamente
+          if (planFromDb && dbPlan) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            planDeliverableId = (dbPlan as any).deliverable_id || ""
+            console.log("[v0] Plan deliverableId from DB:", planDeliverableId)
+          }
+          
+          // Se nao tem do banco, buscar do config JSON
+          if (!planDeliverableId) {
+            const flowForDelivery = await getActiveFlowForBot(supabase, botUuid)
+            const flowConfigDelivery = (flowForDelivery?.config as Record<string, unknown>) || {}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const configPlans = (flowConfigDelivery.plans as Array<Record<string, any>>) || []
+            const selectedPlanConfig = configPlans.find(p => p.id === planId || p.name === planName)
+            planDeliverableId = selectedPlanConfig?.deliverableId || ""
+            console.log("[v0] Plan deliverableId from config JSON:", planDeliverableId)
+          }
+          
+          // Save payment record with correct fields including Telegram user info AND plan metadata
+          console.log("[v0] Saving plan payment - user_id:", botData?.user_id, "bot_id:", botUuid, "amount:", planPrice, "planId:", planId, "deliverableId:", planDeliverableId)
           const { data: savedPlanPayment, error: savePlanError } = await supabase.from("payments").insert({
             user_id: botData?.user_id,
             bot_id: botUuid,
@@ -3087,6 +3142,7 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             copy_paste: pixResult.copyPaste,
             pix_code: pixResult.copyPaste || pixResult.qrCode,
             status: "pending",
+            metadata: planDeliverableId ? { plan_id: planId, plan_deliverable_id: planDeliverableId } : { plan_id: planId },
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }).select().single()
