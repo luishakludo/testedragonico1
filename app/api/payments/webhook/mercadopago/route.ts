@@ -159,9 +159,9 @@ async function createVipInviteLink(botToken: string, chatId: string): Promise<st
   }
 }
 
-// Helper: Enviar Order Bump (mídias em grupo + mensagem com botões)
-// Formato padrão: Título, Descrição, Por apenas R$ X,XX
-async function sendOrderBumpOffer(params: {
+  // Helper: Enviar Order Bump (mídias em grupo + mensagem com botões)
+  // Formato padrão: Título, Descrição, Por apenas R$ X,XX
+  async function sendOrderBumpOffer(params: {
   botToken: string
   chatId: number
   name: string
@@ -172,12 +172,23 @@ async function sendOrderBumpOffer(params: {
   medias?: string[]
   mainAmountCents: number
   callbackPrefix?: string // Prefixo do callback (padrão: "ob")
-}) {
-  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, callbackPrefix = "ob" } = params
+  userFirstName?: string // Nome do usuario para substituir {nome}
+  userUsername?: string // Username do usuario para substituir {username}
+  }) {
+  const { botToken, chatId, name, description, price, acceptText, rejectText, medias, mainAmountCents, callbackPrefix = "ob", userFirstName = "", userUsername = "" } = params
+  
+  // Funcao para substituir variaveis {nome} e {username}
+  const replaceVars = (text: string) => {
+    if (!text) return ""
+    return text
+      .replace(/\{nome\}/gi, userFirstName || "")
+      .replace(/\{username\}/gi, userUsername ? `@${userUsername}` : "")
+  }
   
   const obPriceCents = Math.round(price * 100)
   // Mensagem padrão simples: Título, Descrição, Por apenas R$ X,XX
-  const obMessage = `<b>${name || "Oferta Especial"}</b>\n\n${description || ""}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
+  // Aplicar substituicao de variaveis na descricao e no nome
+  const obMessage = `<b>${replaceVars(name) || "Oferta Especial"}</b>\n\n${replaceVars(description || "")}\n\n💰 Por apenas <b>R$ ${price.toFixed(2).replace(".", ",")}</b>`
   
   const obButtons = {
     inline_keyboard: [
@@ -1196,6 +1207,8 @@ export async function POST(request: NextRequest) {
                     }, { onConflict: "bot_id,telegram_user_id" })
                     
                     // Enviar order bump no formato correto (imagem + caption + botões juntos)
+                    // IMPORTANTE: Usar prefixo "uob" (upsell order bump) para diferenciar
+                    // Quando recusado, nao deve gerar novo PIX pois o upsell ja foi pago
                     await sendOrderBumpOffer({
                       botToken: bot.token,
                       chatId,
@@ -1205,7 +1218,10 @@ export async function POST(request: NextRequest) {
                       acceptText: orderBumpToUse.acceptText,
                       rejectText: orderBumpToUse.rejectText,
                       medias: orderBumpToUse.medias,
-                      mainAmountCents: Math.round(payment.amount * 100)
+                      mainAmountCents: Math.round(orderBumpToUse.price * 100), // Usar preco do OB como base
+                      callbackPrefix: "uob", // Prefixo especifico para order bump de upsell
+                      userFirstName: payment.telegram_first_name || "",
+                      userUsername: payment.telegram_username || ""
                     })
                     
                     return NextResponse.json({ received: true })
