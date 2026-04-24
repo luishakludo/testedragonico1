@@ -296,14 +296,30 @@ interface Deliverable {
 async function sendDeliverable(
   botToken: string,
   chatId: number,
-  deliverable: Deliverable
+  deliverable: Deliverable,
+  isOrderBump: boolean = false // Indica se e entregavel do order bump
 ) {
   console.log(`[v0] DELIVERY: ========== sendDeliverable INICIO ==========`)
   console.log(`[v0] DELIVERY: Deliverable name: "${deliverable.name}"`)
   console.log(`[v0] DELIVERY: Deliverable type: "${deliverable.type}"`)
   console.log(`[v0] DELIVERY: Deliverable id: "${deliverable.id}"`)
   console.log(`[v0] DELIVERY: chatId: ${chatId}`)
+  console.log(`[v0] DELIVERY: isOrderBump: ${isOrderBump}`)
   console.log(`[v0] DELIVERY: Deliverable data:`, JSON.stringify(deliverable))
+
+  // Mensagens diferentes para produto principal e order bump
+  const thankYouMessage = isOrderBump 
+    ? "Sua oferta especial foi liberada!" 
+    : "Obrigado pela compra!"
+  const accessMessage = isOrderBump 
+    ? "Acesse o conteudo da sua oferta especial:" 
+    : "Clique no botao abaixo para acessar:"
+  const contentMessage = isOrderBump 
+    ? "Seu conteudo da oferta especial foi liberado acima." 
+    : "Seu conteudo foi liberado acima."
+  const defaultMessage = isOrderBump 
+    ? "Sua oferta especial foi liberada!" 
+    : "Obrigado pela compra! Seu acesso foi liberado."
 
   try {
     switch (deliverable.type) {
@@ -312,6 +328,11 @@ async function sendDeliverable(
         console.log(`[v0] DELIVERY: Processando tipo MEDIA`)
         console.log(`[v0] DELIVERY: Medias count: ${deliverable.medias?.length || 0}`)
         if (deliverable.medias && deliverable.medias.length > 0) {
+          // Enviar mensagem de introducao se for order bump
+          if (isOrderBump) {
+            await sendTelegramMessage(botToken, chatId, "Agora, acesse o conteudo da sua <b>oferta especial</b>:")
+            await sleep(500)
+          }
           console.log(`[v0] DELIVERY: Enviando ${deliverable.medias.length} midias...`)
           for (let i = 0; i < deliverable.medias.length; i++) {
             const mediaUrl = deliverable.medias[i]
@@ -324,10 +345,10 @@ async function sendDeliverable(
             await sleep(500)
           }
           console.log(`[v0] DELIVERY: Todas as midias enviadas com sucesso!`)
-          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu conteudo foi liberado acima.")
+          await sendTelegramMessage(botToken, chatId, `${thankYouMessage} ${contentMessage}`)
         } else {
           console.log(`[v0] DELIVERY: AVISO - Nenhuma midia configurada no entregavel!`)
-          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+          await sendTelegramMessage(botToken, chatId, defaultMessage)
         }
         break
 
@@ -337,18 +358,20 @@ async function sendDeliverable(
         console.log(`[v0] DELIVERY: Link: ${deliverable.link}`)
         console.log(`[v0] DELIVERY: LinkText: ${deliverable.linkText}`)
         if (deliverable.link) {
-          const buttonText = deliverable.linkText || "Acessar conteudo"
+          const buttonText = isOrderBump 
+            ? (deliverable.linkText || "Acessar Oferta Especial") 
+            : (deliverable.linkText || "Acessar conteudo")
           const keyboard = {
             inline_keyboard: [
               [{ text: buttonText, url: deliverable.link }]
             ]
           }
           console.log(`[v0] DELIVERY: Enviando link com botao "${buttonText}"`)
-          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Clique no botao abaixo para acessar:", keyboard)
+          await sendTelegramMessage(botToken, chatId, `${thankYouMessage} ${accessMessage}`, keyboard)
           console.log(`[v0] DELIVERY: Link enviado com sucesso!`)
         } else {
           console.log(`[v0] DELIVERY: AVISO - Nenhum link configurado no entregavel!`)
-          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+          await sendTelegramMessage(botToken, chatId, defaultMessage)
         }
         break
 
@@ -362,37 +385,35 @@ async function sendDeliverable(
           const inviteLink = await createVipInviteLink(botToken, deliverable.vipGroupChatId)
           console.log(`[v0] DELIVERY: Invite link criado: ${inviteLink}`)
           if (inviteLink) {
-            const groupName = deliverable.vipGroupName || "Grupo VIP"
+            const groupName = deliverable.vipGroupName || (isOrderBump ? "Grupo da Oferta Especial" : "Grupo VIP")
             const keyboard = {
               inline_keyboard: [
                 [{ text: `Entrar no ${groupName}`, url: inviteLink }]
               ]
             }
+            const vipMessage = isOrderBump
+              ? `Sua oferta especial foi liberada! Seu acesso ao <b>${groupName}</b> esta disponivel.\n\n<i>Este link e unico e pode ser usado apenas uma vez.</i>`
+              : `Obrigado pela compra! Seu acesso ao <b>${groupName}</b> foi liberado.\n\n<i>Este link e unico e pode ser usado apenas uma vez.</i>`
             console.log(`[v0] DELIVERY: Enviando mensagem com link de convite para ${groupName}`)
-            await sendTelegramMessage(
-              botToken,
-              chatId,
-              `Obrigado pela compra! Seu acesso ao <b>${groupName}</b> foi liberado.\n\n<i>Este link e unico e pode ser usado apenas uma vez.</i>`,
-              keyboard
-            )
+            await sendTelegramMessage(botToken, chatId, vipMessage, keyboard)
             console.log(`[v0] DELIVERY: Link de grupo VIP enviado com sucesso!`)
           } else {
             console.log(`[v0] DELIVERY: ERRO - Falha ao criar link de convite!`)
-            await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Houve um problema ao gerar seu link de acesso. Entre em contato com o suporte.")
+            await sendTelegramMessage(botToken, chatId, `${thankYouMessage} Houve um problema ao gerar seu link de acesso. Entre em contato com o suporte.`)
           }
         } else {
           console.log(`[v0] DELIVERY: AVISO - Nenhum vipGroupChatId configurado!`)
-          await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+          await sendTelegramMessage(botToken, chatId, defaultMessage)
         }
         break
       
       default:
         console.log(`[v0] DELIVERY: AVISO - Tipo de entregavel desconhecido: ${deliverable.type}`)
-        await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+        await sendTelegramMessage(botToken, chatId, defaultMessage)
     }
   } catch (error) {
     console.error(`[v0] DELIVERY: ERRO ao enviar entregavel:`, error)
-    await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+    await sendTelegramMessage(botToken, chatId, defaultMessage)
   }
 
   console.log(`[v0] DELIVERY: ========== sendDeliverable FIM ==========`)
@@ -406,10 +427,11 @@ async function sendDelivery(
   chatId: number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   flowConfig: Record<string, any> | null,
-  deliverableId?: string // ID do entregavel especifico (para upsell/downsell)
+  deliverableId?: string, // ID do entregavel especifico (para upsell/downsell)
+  isOrderBump: boolean = false // Indica se e entrega de order bump
 ) {
   console.log(`[v0] DELIVERY: ========== INICIO sendDelivery ==========`)
-  console.log(`[v0] DELIVERY: chatId=${chatId}, deliverableId=${deliverableId || "main"}`)
+  console.log(`[v0] DELIVERY: chatId=${chatId}, deliverableId=${deliverableId || "main"}, isOrderBump=${isOrderBump}`)
   console.log(`[v0] DELIVERY: flowConfig existe?`, !!flowConfig)
   console.log(`[v0] DELIVERY: flowConfig.deliverables?`, flowConfig?.deliverables?.length || 0)
   console.log(`[v0] DELIVERY: flowConfig.mainDeliverableId?`, flowConfig?.mainDeliverableId || "NAO DEFINIDO")
@@ -429,7 +451,7 @@ async function sendDelivery(
     const deliverable = flowConfig.deliverables.find((d: Deliverable) => d.id === deliverableId)
     if (deliverable) {
       console.log(`[v0] DELIVERY: Encontrado entregavel especifico: ${deliverable.name} (${deliverable.type})`)
-      await sendDeliverable(botToken, chatId, deliverable)
+      await sendDeliverable(botToken, chatId, deliverable, isOrderBump)
       console.log(`[v0] DELIVERY: ========== FIM sendDelivery (via ID especifico) ==========`)
       return
     } else {
@@ -443,7 +465,7 @@ async function sendDelivery(
     const mainDeliverable = flowConfig.deliverables.find((d: Deliverable) => d.id === flowConfig.mainDeliverableId)
     if (mainDeliverable) {
       console.log(`[v0] DELIVERY: Encontrado entregavel principal: ${mainDeliverable.name} (${mainDeliverable.type})`)
-      await sendDeliverable(botToken, chatId, mainDeliverable)
+      await sendDeliverable(botToken, chatId, mainDeliverable, isOrderBump)
       console.log(`[v0] DELIVERY: ========== FIM sendDelivery (via mainDeliverableId) ==========`)
       return
     } else {
@@ -840,13 +862,15 @@ export async function POST(request: NextRequest) {
                   
                   if (orderBumpDeliverableId && orderBumpDeliverableId !== "") {
                     console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump com deliverableId: ${orderBumpDeliverableId}`)
-                    await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpDeliverableId)
+                    // Passar isOrderBump=true para enviar mensagem diferenciada
+                    await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpDeliverableId, true)
                   } else if (payment.product_type === "plan_order_bump" || payment.product_type === "order_bump") {
                     // Se for order_bump mas nao tem deliverableId especifico, verificar no config
                     const orderBumpConfig = flowConfig?.orderBump?.inicial
                     if (orderBumpConfig?.deliverableId && orderBumpConfig.deliverableId !== "" && orderBumpConfig.deliveryType === "custom") {
                       console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump global com deliverableId: ${orderBumpConfig.deliverableId}`)
-                      await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpConfig.deliverableId)
+                      // Passar isOrderBump=true para enviar mensagem diferenciada
+                      await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpConfig.deliverableId, true)
                     } else {
                       console.log(`[v0] ORDER BUMP DELIVERY: Order bump sem entregavel especifico configurado`)
                     }
