@@ -52,9 +52,23 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
   }, ref) => {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null)
     const [linkUrl, setLinkUrl] = React.useState("")
+    const [linkText, setLinkText] = React.useState("")
     const [linkPopoverOpen, setLinkPopoverOpen] = React.useState(false)
     const [emojiPopoverOpen, setEmojiPopoverOpen] = React.useState(false)
     const [savedSelection, setSavedSelection] = React.useState<{ start: number; end: number } | null>(null)
+
+    // Converte HTML para formato amigavel para exibicao
+    const htmlToDisplay = (html: string): string => {
+      return html.replace(/<a href="([^"]+)">([^<]+)<\/a>/g, '[LINK: $2 | $1]')
+    }
+
+    // Converte formato amigavel de volta para HTML
+    const displayToHtml = (display: string): string => {
+      return display.replace(/\[LINK: ([^|]+) \| ([^\]]+)\]/g, '<a href="$2">$1</a>')
+    }
+
+    // Valor exibido no textarea (formato amigavel)
+    const displayValue = htmlToDisplay(value)
 
     // Combine refs
     React.useImperativeHandle(ref, () => textareaRef.current as HTMLTextAreaElement)
@@ -65,13 +79,13 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
 
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
-      const selectedText = value.substring(start, end)
+      const selectedText = displayValue.substring(start, end)
 
-      const before = value.substring(0, start)
-      const after = value.substring(end)
+      const before = displayValue.substring(0, start)
+      const after = displayValue.substring(end)
 
-      const newValue = before + tagOpen + selectedText + tagClose + after
-      onChange(newValue)
+      const newDisplayValue = before + tagOpen + selectedText + tagClose + after
+      onChange(displayToHtml(newDisplayValue))
 
       // Reposition cursor
       setTimeout(() => {
@@ -99,8 +113,12 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
     const handleLinkClick = () => {
       const textarea = textareaRef.current
       if (!textarea) return
-      setSavedSelection({ start: textarea.selectionStart, end: textarea.selectionEnd })
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const selectedText = value.substring(start, end)
+      setSavedSelection({ start, end })
       setLinkUrl("")
+      setLinkText(selectedText) // Pre-fill with selected text if any
       setLinkPopoverOpen(true)
     }
 
@@ -111,17 +129,17 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
       if (!textarea) return
 
       const { start, end } = savedSelection
-      const selectedText = value.substring(start, end)
-      const linkText = selectedText || linkUrl
+      const displayText = linkText.trim() || linkUrl
 
       const before = value.substring(0, start)
       const after = value.substring(end)
 
-      const newValue = before + `<a href="${linkUrl}">${linkText}</a>` + after
+      const newValue = before + `<a href="${linkUrl}">${displayText}</a>` + after
       onChange(newValue)
 
       setLinkPopoverOpen(false)
       setLinkUrl("")
+      setLinkText("")
       setSavedSelection(null)
 
       setTimeout(() => {
@@ -252,21 +270,37 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-80 p-4" align="start">
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Inserir Link</Label>
-                <Input
-                  value={linkUrl}
-                  onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder="https://exemplo.com"
-                  className="h-9"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      handleLinkInsert()
-                    }
-                  }}
-                />
-                <div className="flex justify-end gap-2">
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold text-gray-900">Inserir Link</h4>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="link-text" className="text-xs font-medium text-gray-600">Texto do link</Label>
+                    <Input
+                      id="link-text"
+                      value={linkText}
+                      onChange={(e) => setLinkText(e.target.value)}
+                      placeholder="Clique aqui"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="link-url" className="text-xs font-medium text-gray-600">URL</Label>
+                    <Input
+                      id="link-url"
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      placeholder="https://exemplo.com"
+                      className="h-9"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          handleLinkInsert()
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
                   <Button
                     type="button"
                     variant="outline"
@@ -331,8 +365,8 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
         {/* Textarea */}
         <textarea
           ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={displayValue}
+          onChange={(e) => onChange(displayToHtml(e.target.value))}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={rows}
