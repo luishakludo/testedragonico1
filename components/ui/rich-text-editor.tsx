@@ -57,6 +57,19 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
     const [emojiPopoverOpen, setEmojiPopoverOpen] = React.useState(false)
     const [savedSelection, setSavedSelection] = React.useState<{ start: number; end: number } | null>(null)
 
+    // Converte HTML para formato amigavel para exibicao
+    const htmlToDisplay = (html: string): string => {
+      return html.replace(/<a href="([^"]+)">([^<]+)<\/a>/g, '[LINK: $2 | $1]')
+    }
+
+    // Converte formato amigavel de volta para HTML
+    const displayToHtml = (display: string): string => {
+      return display.replace(/\[LINK: ([^|]+) \| ([^\]]+)\]/g, '<a href="$2">$1</a>')
+    }
+
+    // Valor exibido no textarea (formato amigavel)
+    const displayValue = htmlToDisplay(value)
+
     // Combine refs
     React.useImperativeHandle(ref, () => textareaRef.current as HTMLTextAreaElement)
 
@@ -66,13 +79,13 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
 
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
-      const selectedText = value.substring(start, end)
+      const selectedText = displayValue.substring(start, end)
 
-      const before = value.substring(0, start)
-      const after = value.substring(end)
+      const before = displayValue.substring(0, start)
+      const after = displayValue.substring(end)
 
-      const newValue = before + tagOpen + selectedText + tagClose + after
-      onChange(newValue)
+      const newDisplayValue = before + tagOpen + selectedText + tagClose + after
+      onChange(displayToHtml(newDisplayValue))
 
       // Reposition cursor
       setTimeout(() => {
@@ -352,8 +365,8 @@ const RichTextEditor = React.forwardRef<HTMLTextAreaElement, RichTextEditorProps
         {/* Textarea */}
         <textarea
           ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={displayValue}
+          onChange={(e) => onChange(displayToHtml(e.target.value))}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={rows}
