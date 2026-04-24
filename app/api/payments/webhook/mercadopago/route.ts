@@ -794,14 +794,45 @@ export async function POST(request: NextRequest) {
                     )
                   }
 
-                  // SEMPRE enviar entregavel inicial primeiro (produto principal)
+                  // ========== ENTREGAR PRODUTO PRINCIPAL ==========
+                  // Verificar se o pagamento tem deliverableId especifico do plano no metadata
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const paymentMetadata = payment.metadata as Record<string, any> | null
+                  const planDeliverableId = paymentMetadata?.plan_deliverable_id
+                  const planIdFromPayment = paymentMetadata?.plan_id
+                  
                   console.log(`[v0] DELIVERY: Enviando entregavel inicial para usuario ${chatId}`)
-                  await sendDelivery(supabase, bot.token, chatId, flowConfig)
+                  console.log(`[v0] DELIVERY: paymentMetadata=`, JSON.stringify(paymentMetadata))
+                  console.log(`[v0] DELIVERY: planDeliverableId="${planDeliverableId}", planIdFromPayment="${planIdFromPayment}"`)
+                  
+                  // Se o plano tem deliverableId especifico, usar ele
+                  // Senao, usar o mainDeliverableId global (que sendDelivery ja faz)
+                  if (planDeliverableId && planDeliverableId !== "") {
+                    console.log(`[v0] DELIVERY: Usando deliverableId ESPECIFICO do plano: ${planDeliverableId}`)
+                    await sendDelivery(supabase, bot.token, chatId, flowConfig, planDeliverableId)
+                  } else {
+                    // Se nao tem deliverableId no metadata, tentar buscar do plano no config
+                    let foundPlanDeliverableId = ""
+                    
+                    if (planIdFromPayment) {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const configPlans = (flowConfig?.plans as Array<Record<string, any>>) || []
+                      const planFromConfig = configPlans.find(p => p.id === planIdFromPayment)
+                      foundPlanDeliverableId = planFromConfig?.deliverableId || ""
+                      console.log(`[v0] DELIVERY: Buscou deliverableId do plan "${planIdFromPayment}" no config: "${foundPlanDeliverableId}"`)
+                    }
+                    
+                    if (foundPlanDeliverableId) {
+                      console.log(`[v0] DELIVERY: Usando deliverableId do plano encontrado no config: ${foundPlanDeliverableId}`)
+                      await sendDelivery(supabase, bot.token, chatId, flowConfig, foundPlanDeliverableId)
+                    } else {
+                      console.log(`[v0] DELIVERY: Usando mainDeliverableId GLOBAL (fallback)`)
+                      await sendDelivery(supabase, bot.token, chatId, flowConfig)
+                    }
+                  }
                   
                   // ========== ENTREGAR ORDER BUMP SE HOUVER ==========
                   // Verifica se o pagamento inclui order bump e entrega o entregavel do order bump tambem
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const paymentMetadata = payment.metadata as Record<string, any> | null
                   const orderBumpDeliverableId = paymentMetadata?.order_bump_deliverable_id
                   
                   console.log(`[v0] ORDER BUMP CHECK: product_type=${payment.product_type}, metadata=`, JSON.stringify(paymentMetadata))
