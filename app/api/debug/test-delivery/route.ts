@@ -51,7 +51,7 @@ export async function GET() {
     debug.step = "buscando_fluxos"
     const { data: flows, error: flowsError } = await supabase
       .from("flows")
-      .select("id, name, type, config, is_active")
+      .select("id, name, config, is_active")
       .eq("bot_id", bot.id)
       .limit(5)
 
@@ -85,7 +85,6 @@ export async function GET() {
     debug.selected_flow = {
       id: activeFlow.id,
       name: activeFlow.name,
-      type: activeFlow.type,
       is_active: activeFlow.is_active
     }
 
