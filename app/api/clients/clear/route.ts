@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const SUPABASE_URL = "https://izvulojnfvgsbmhyvqtn.supabase.co"
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dnVsb2puZnZnc2JtaHl2cXRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTk0NTMsImV4cCI6MjA4ODgzNTQ1M30.Djnn3tsrxSGLBR-Bm1dWOpQe0NHCSOWJFZkbbTOk2oM"
+import { getSupabaseAdmin } from "@/lib/supabase"
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +10,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "userId obrigatorio" }, { status: 400 })
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    // Usar admin client para bypassar RLS
+    const supabase = getSupabaseAdmin()
 
     // Buscar bots do usuario
     const { data: bots, error: botsError } = await supabase
