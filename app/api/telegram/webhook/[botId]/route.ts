@@ -2185,15 +2185,15 @@ Escaneie o QR Code ou copie o codigo abaixo:
       }
       // ========== FIM ORDER BUMP CALLBACKS ==========
 
-      // ========== ORDER BUMP DO DOWNSELL CALLBACKS ==========
-      // dsob_accept_{mainPriceCents}_{obPriceCents} ou dsob_reject_{mainPriceCents}_0
+        // ========== ORDER BUMP DO DOWNSELL CALLBACKS ==========
+        // dsob_accept_{mainPriceCents}_{obPriceCents} ou dsob_decline_{mainPriceCents}_0
       if (callbackData.startsWith("dsob_")) {
         console.log("[v0] Order Bump Downsell Callback recebido:", callbackData)
 
         await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
 
         const isAccept = callbackData.startsWith("dsob_accept_")
-        const obParts = callbackData.replace("dsob_accept_", "").replace("dsob_reject_", "").split("_")
+        const obParts = callbackData.replace("dsob_accept_", "").replace("dsob_decline_", "").split("_")
         const mainPriceCents = parseInt(obParts[0]) || 0
         const obPriceCents = parseInt(obParts[1]) || 0
         const mainPrice = mainPriceCents / 100
@@ -2553,15 +2553,15 @@ Escaneie o QR Code ou copie o codigo abaixo:
       }
       // ========== FIM DOWNSELL CALLBACKS ==========
 
-      // ========== ORDER BUMP DO UPSELL CALLBACKS ==========
-      // upob_accept_{mainPriceCents}_{obPriceCents} ou upob_reject_{mainPriceCents}_0
+        // ========== ORDER BUMP DO UPSELL CALLBACKS ==========
+        // upob_accept_{mainPriceCents}_{obPriceCents} ou upob_decline_{mainPriceCents}_0
       if (callbackData.startsWith("upob_")) {
         console.log("[v0] Order Bump Upsell Callback recebido:", callbackData)
 
         await answerCallback(botToken, callbackQueryId, "Gerando pagamento...")
 
         const isAccept = callbackData.startsWith("upob_accept_")
-        const obParts = callbackData.replace("upob_accept_", "").replace("upob_reject_", "").split("_")
+        const obParts = callbackData.replace("upob_accept_", "").replace("upob_decline_", "").split("_")
         const mainPriceCents = parseInt(obParts[0]) || 0
         const obPriceCents = parseInt(obParts[1]) || 0
         const mainPrice = mainPriceCents / 100
