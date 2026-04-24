@@ -21,7 +21,7 @@ export async function GET() {
     debug.step = "buscando_bots"
     const { data: bots, error: botsError } = await supabase
       .from("bots")
-      .select("id, name, username, user_id")
+      .select("id, name, user_id, token")
       .limit(10)
 
     if (botsError) {
