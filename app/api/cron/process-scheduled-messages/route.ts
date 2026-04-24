@@ -158,17 +158,25 @@ export async function GET(request: NextRequest) {
         
         if (messageType === "downsell") {
           // DOWNSELL: Verificar se o usuario ja pagou (cancelar se ja pagou)
-          // 1. Verificar status no user_flow_state
-          const { data: userState } = await supabaseAdmin
+          // Verificacoes em ordem de prioridade:
+          
+          // 1. Verificar status no user_flow_state (com flow_id se disponivel)
+          let userStateQuery = supabaseAdmin
             .from("user_flow_state")
-            .select("status")
+            .select("status, flow_id")
             .eq("bot_id", msg.bot_id)
             .eq("telegram_user_id", msg.telegram_user_id)
-            .single()
+          
+          // Se msg tem flow_id, filtrar por ele
+          if (msg.flow_id) {
+            userStateQuery = userStateQuery.eq("flow_id", msg.flow_id)
+          }
+          
+          const { data: userState } = await userStateQuery.maybeSingle()
           
           if (userState?.status === "paid" || userState?.status === "completed") {
             // Usuario ja pagou, cancelar downsell
-            console.log(`[CRON] User ${msg.telegram_user_id} already paid (user_flow_state), cancelling downsell`)
+            console.log(`[CRON] User ${msg.telegram_user_id} already paid (user_flow_state status=${userState.status}), cancelling downsell ${msg.id}`)
             await supabaseAdmin
               .from("scheduled_messages")
               .update({ status: "cancelled" })
@@ -177,27 +185,59 @@ export async function GET(request: NextRequest) {
           }
           
           // 2. Verificar se existe pagamento aprovado na tabela payments
-          // APENAS verificar pagamentos do MESMO FLUXO e criados DEPOIS do agendamento
-          const { data: approvedPayment } = await supabaseAdmin
+          // Verificar pagamentos do MESMO FLUXO OU sem flow_id (para compatibilidade)
+          let paymentsQuery = supabaseAdmin
             .from("payments")
-            .select("id, status, created_at")
+            .select("id, status, created_at, flow_id")
             .eq("bot_id", msg.bot_id)
             .eq("telegram_user_id", msg.telegram_user_id)
-            .eq("flow_id", msg.flow_id)
             .eq("status", "approved")
-            .in("product_type", ["main_product", "plan"])
-            .gte("created_at", msg.created_at) // Apenas pagamentos apos o agendamento do downsell
-            .limit(1)
-            .maybeSingle()
+            .in("product_type", ["main_product", "plan", "pack"])
           
-          if (approvedPayment) {
-            // Usuario ja tem pagamento aprovado NESTE FLUXO, cancelar downsell
-            console.log(`[CRON] User ${msg.telegram_user_id} has approved payment in this flow, cancelling downsell`)
+          // Se msg tem flow_id, verificar pagamentos desse fluxo
+          if (msg.flow_id) {
+            paymentsQuery = paymentsQuery.eq("flow_id", msg.flow_id)
+          }
+          
+          const { data: approvedPayments } = await paymentsQuery.limit(5)
+          
+          // Verificar se algum pagamento aprovado foi feito APOS o agendamento do downsell
+          const msgCreatedAt = new Date(msg.created_at).getTime()
+          const hasRecentPayment = approvedPayments?.some(p => {
+            const paymentTime = new Date(p.created_at).getTime()
+            return paymentTime >= msgCreatedAt
+          })
+          
+          if (hasRecentPayment) {
+            // Usuario ja tem pagamento aprovado, cancelar downsell
+            console.log(`[CRON] User ${msg.telegram_user_id} has approved payment after downsell was scheduled, cancelling downsell ${msg.id}`)
             await supabaseAdmin
               .from("scheduled_messages")
               .update({ status: "cancelled" })
               .eq("id", msg.id)
-            
+            continue
+          }
+          
+          // 3. Verificar se existe QUALQUER pagamento aprovado recente (ultimos 30 min) para este usuario/bot
+          // Isso pega casos onde flow_id nao foi salvo no pagamento
+          const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+          const { data: recentAnyPayment } = await supabaseAdmin
+            .from("payments")
+            .select("id")
+            .eq("bot_id", msg.bot_id)
+            .eq("telegram_user_id", msg.telegram_user_id)
+            .eq("status", "approved")
+            .in("product_type", ["main_product", "plan", "pack"])
+            .gte("created_at", thirtyMinutesAgo)
+            .limit(1)
+            .maybeSingle()
+          
+          if (recentAnyPayment) {
+            console.log(`[CRON] User ${msg.telegram_user_id} has recent approved payment (last 30min), cancelling downsell ${msg.id}`)
+            await supabaseAdmin
+              .from("scheduled_messages")
+              .update({ status: "cancelled" })
+              .eq("id", msg.id)
             continue
           }
         } else if (messageType === "upsell") {
