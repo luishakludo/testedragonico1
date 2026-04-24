@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
+import { getSupabaseAdmin } from "@/lib/supabase"
 import { NextResponse } from "next/server"
 
 // API de teste para debugar entrega de order bump
@@ -14,22 +14,8 @@ export async function GET() {
   }
 
   try {
-    // Criar cliente Supabase diretamente
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({
-        success: false,
-        error: "Supabase não configurado",
-        env_check: {
-          has_url: !!supabaseUrl,
-          has_key: !!supabaseKey
-        }
-      }, { status: 500 })
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    // Usar cliente Supabase Admin do projeto (tem credenciais hardcoded)
+    const supabase = getSupabaseAdmin()
 
     // 1. Buscar todos os bots
     debug.step = "buscando_bots"
