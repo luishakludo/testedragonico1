@@ -856,23 +856,43 @@ export async function POST(request: NextRequest) {
                   // ========== ENTREGAR ORDER BUMP SE HOUVER ==========
                   // Verifica se o pagamento inclui order bump e entrega o entregavel do order bump tambem
                   const orderBumpDeliverableId = paymentMetadata?.order_bump_deliverable_id
+                  const orderBumpConfigGlobal = flowConfig?.orderBump?.inicial as Record<string, unknown> | undefined
                   
-                  console.log(`[v0] ORDER BUMP CHECK: product_type=${payment.product_type}, metadata=`, JSON.stringify(paymentMetadata))
-                  console.log(`[v0] ORDER BUMP CHECK: orderBumpDeliverableId="${orderBumpDeliverableId}"`)
+                  console.log(`[v0] ORDER BUMP CHECK: product_type=${payment.product_type}`)
+                  console.log(`[v0] ORDER BUMP CHECK: metadata=`, JSON.stringify(paymentMetadata))
+                  console.log(`[v0] ORDER BUMP CHECK: orderBumpDeliverableId (metadata)="${orderBumpDeliverableId}"`)
+                  console.log(`[v0] ORDER BUMP CHECK: orderBumpConfig global=`, JSON.stringify(orderBumpConfigGlobal))
+                  
+                  // Determinar qual deliverableId usar para o order bump
+                  // Prioridade: 1) metadata do pagamento, 2) config global do order bump
+                  let finalOrderBumpDeliverableId = ""
                   
                   if (orderBumpDeliverableId && orderBumpDeliverableId !== "") {
-                    console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump com deliverableId: ${orderBumpDeliverableId}`)
+                    finalOrderBumpDeliverableId = orderBumpDeliverableId
+                    console.log(`[v0] ORDER BUMP: Usando deliverableId do METADATA: ${finalOrderBumpDeliverableId}`)
+                  } else if (orderBumpConfigGlobal?.deliverableId && orderBumpConfigGlobal.deliverableId !== "") {
+                    // Verificar se o config tem deliverableId, independente do deliveryType
+                    // Se tem deliverableId configurado, usar ele
+                    finalOrderBumpDeliverableId = orderBumpConfigGlobal.deliverableId as string
+                    console.log(`[v0] ORDER BUMP: Usando deliverableId do CONFIG GLOBAL: ${finalOrderBumpDeliverableId}`)
+                  }
+                  
+                  // Se é um pagamento de order bump, entregar o entregavel do order bump
+                  const isOrderBumpPayment = payment.product_type === "plan_order_bump" || payment.product_type === "order_bump" || payment.product_type === "pack_order_bump"
+                  
+                  console.log(`[v0] ORDER BUMP DECISION: isOrderBumpPayment=${isOrderBumpPayment}, finalDeliverableId="${finalOrderBumpDeliverableId}"`)
+                  
+                  if (isOrderBumpPayment && finalOrderBumpDeliverableId && finalOrderBumpDeliverableId !== "") {
+                    console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump com deliverableId: ${finalOrderBumpDeliverableId}`)
                     // Passar isOrderBump=true para enviar mensagem diferenciada
-                    await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpDeliverableId, true)
-                  } else if (payment.product_type === "plan_order_bump" || payment.product_type === "order_bump") {
-                    // Se for order_bump mas nao tem deliverableId especifico, verificar no config
-                    const orderBumpConfig = flowConfig?.orderBump?.inicial
-                    if (orderBumpConfig?.deliverableId && orderBumpConfig.deliverableId !== "" && orderBumpConfig.deliveryType === "custom") {
-                      console.log(`[v0] ORDER BUMP DELIVERY: Entregando order bump global com deliverableId: ${orderBumpConfig.deliverableId}`)
-                      // Passar isOrderBump=true para enviar mensagem diferenciada
-                      await sendDelivery(supabase, bot.token, chatId, flowConfig, orderBumpConfig.deliverableId, true)
+                    await sendDelivery(supabase, bot.token, chatId, flowConfig, finalOrderBumpDeliverableId, true)
+                  } else if (isOrderBumpPayment) {
+                    // Se for pagamento de order bump mas nao tem entregavel especifico
+                    const deliveryType = orderBumpConfigGlobal?.deliveryType || "same"
+                    if (deliveryType === "same") {
+                      console.log(`[v0] ORDER BUMP DELIVERY: deliveryType=same, order bump usa MESMO entregavel do principal (ja foi entregue acima)`)
                     } else {
-                      console.log(`[v0] ORDER BUMP DELIVERY: Order bump sem entregavel especifico configurado`)
+                      console.log(`[v0] ORDER BUMP DELIVERY: AVISO - Order bump configurado como custom mas sem deliverableId!`)
                     }
                   }
 
