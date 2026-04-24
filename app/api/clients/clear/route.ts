@@ -31,37 +31,54 @@ export async function POST(request: NextRequest) {
     }
 
     const botIds = bots.map(b => b.id)
+    console.log("[v0] clear-clients - botIds:", botIds)
 
-    // Deletar pagamentos dos bots do usuario
-    const { error: paymentsError, count: paymentsCount } = await supabase
+    // Verificar quantos pagamentos existem antes de deletar
+    const { data: existingPayments, count: existingCount } = await supabase
       .from("payments")
-      .delete({ count: "exact" })
+      .select("id", { count: "exact" })
       .in("bot_id", botIds)
+    
+    console.log("[v0] clear-clients - existing payments:", existingCount, existingPayments?.length)
 
-    if (paymentsError) {
-      console.error("[clear-clients] Error deleting payments:", paymentsError)
-      return NextResponse.json({ error: "Erro ao deletar pagamentos" }, { status: 500 })
+    // Deletar pagamentos dos bots do usuario - usar loop para garantir
+    let totalPaymentsDeleted = 0
+    for (const botId of botIds) {
+      const { error: delError, count } = await supabase
+        .from("payments")
+        .delete({ count: "exact" })
+        .eq("bot_id", botId)
+      
+      console.log("[v0] clear-clients - delete payments for bot", botId, "count:", count, "error:", delError?.message || "none")
+      
+      if (!delError && count) {
+        totalPaymentsDeleted += count
+      }
     }
 
     // Deletar bot_users dos bots do usuario
-    const { error: botUsersError, count: botUsersCount } = await supabase
-      .from("bot_users")
-      .delete({ count: "exact" })
-      .in("bot_id", botIds)
-
-    if (botUsersError) {
-      console.error("[clear-clients] Error deleting bot_users:", botUsersError)
-      // Nao retornar erro, apenas logar
+    let totalBotUsersDeleted = 0
+    for (const botId of botIds) {
+      const { error: delError, count } = await supabase
+        .from("bot_users")
+        .delete({ count: "exact" })
+        .eq("bot_id", botId)
+      
+      console.log("[v0] clear-clients - delete bot_users for bot", botId, "count:", count, "error:", delError?.message || "none")
+      
+      if (!delError && count) {
+        totalBotUsersDeleted += count
+      }
     }
 
-    console.log(`[clear-clients] Deleted ${paymentsCount || 0} payments and ${botUsersCount || 0} bot_users for user ${userId}`)
+    console.log(`[clear-clients] Deleted ${totalPaymentsDeleted} payments and ${totalBotUsersDeleted} bot_users for user ${userId}`)
 
     return NextResponse.json({
       success: true,
-      message: `Todos os clientes foram removidos`,
+      message: `Removidos ${totalPaymentsDeleted} pagamentos e ${totalBotUsersDeleted} usuarios`,
       deleted: {
-        payments: paymentsCount || 0,
-        botUsers: botUsersCount || 0
+        payments: totalPaymentsDeleted,
+        botUsers: totalBotUsersDeleted
       }
     })
   } catch (error) {
