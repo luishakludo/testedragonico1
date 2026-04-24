@@ -57,27 +57,46 @@ export async function GET() {
     const orderBumpInicial = orderBumpConfig.inicial as Record<string, unknown> || {}
     debug.orderBump_inicial = orderBumpInicial
 
-    // 4. Buscar pagamentos
+    // 4. Buscar pagamentos - Se bot_id é null, buscar todos os recentes
     debug.step = "buscando_pagamentos"
-    const { data: payments, error: paymentsError } = await supabase
-      .from("payments")
-      .select("id, status, product_type, amount, telegram_user_id, metadata, created_at")
-      .eq("bot_id", botId)
-      .order("created_at", { ascending: false })
-      .limit(10)
-
-    if (paymentsError) {
-      debug.payments_error = paymentsError.message
+    let payments: Array<Record<string, unknown>> = []
+    let paymentsError: string | null = null
+    
+    if (botId) {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, status, product_type, amount, telegram_user_id, metadata, created_at, bot_id")
+        .eq("bot_id", botId)
+        .order("created_at", { ascending: false })
+        .limit(10)
+      
+      if (error) paymentsError = error.message
+      payments = data || []
+    } else {
+      // bot_id é null, buscar TODOS os pagamentos recentes
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, status, product_type, amount, telegram_user_id, metadata, created_at, bot_id")
+        .order("created_at", { ascending: false })
+        .limit(20)
+      
+      if (error) paymentsError = error.message
+      payments = data || []
+      debug.aviso = "bot_id do fluxo é NULL - buscando TODOS os pagamentos recentes"
     }
 
-    debug.pagamentos = payments || []
+    if (paymentsError) {
+      debug.payments_error = paymentsError
+    }
+
+    debug.pagamentos = payments
 
     // 5. Filtrar order bumps
-    const obPayments = payments?.filter(p => 
+    const obPayments = payments.filter(p => 
       p.product_type === "plan_order_bump" || 
       p.product_type === "order_bump" ||
       p.product_type === "pack_order_bump"
-    ) || []
+    )
 
     debug.pagamentos_order_bump = obPayments
 
@@ -171,14 +190,27 @@ export async function GET() {
 
     // 7. Buscar user_flow_state
     debug.step = "buscando_states"
-    const { data: states } = await supabase
-      .from("user_flow_state")
-      .select("telegram_user_id, status, metadata, updated_at")
-      .eq("bot_id", botId)
-      .order("updated_at", { ascending: false })
-      .limit(5)
+    let states: Array<Record<string, unknown>> = []
+    
+    if (botId) {
+      const { data } = await supabase
+        .from("user_flow_state")
+        .select("telegram_user_id, status, metadata, updated_at, bot_id")
+        .eq("bot_id", botId)
+        .order("updated_at", { ascending: false })
+        .limit(5)
+      states = data || []
+    } else {
+      // Buscar todos os states recentes
+      const { data } = await supabase
+        .from("user_flow_state")
+        .select("telegram_user_id, status, metadata, updated_at, bot_id")
+        .order("updated_at", { ascending: false })
+        .limit(10)
+      states = data || []
+    }
 
-    debug.user_flow_states = states || []
+    debug.user_flow_states = states
 
     debug.step = "concluido"
     debug.success = true
