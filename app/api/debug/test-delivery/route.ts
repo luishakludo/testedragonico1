@@ -114,16 +114,41 @@ export async function GET() {
       const planDeliverableIdFromMetadata = paymentMetadata?.plan_deliverable_id as string || ""
       const planIdFromMetadata = paymentMetadata?.plan_id as string || ""
       
+      // DEBUG: mostrar valores raw
+      debug.debug_valores = {
+        orderBumpConfig_tipo: typeof orderBumpConfig,
+        orderBumpConfig_keys: Object.keys(orderBumpConfig),
+        orderBumpInicial_tipo: typeof orderBumpInicial,
+        orderBumpInicial_keys: Object.keys(orderBumpInicial),
+        orderBumpInicial_deliverableId: orderBumpInicial.deliverableId,
+        orderBumpInicial_deliverableId_tipo: typeof orderBumpInicial.deliverableId
+      }
+      
       // Determinar deliverableId do order bump (mesma logica do webhook)
+      // FALLBACK COMPLETO: 1) metadata, 2) config global, 3) order bump do plano
       let finalOrderBumpDeliverableId = ""
       let fonte_ob_deliverable = ""
       
+      // 1. Tentar do metadata do pagamento
       if (orderBumpDeliverableIdFromMetadata) {
         finalOrderBumpDeliverableId = orderBumpDeliverableIdFromMetadata
         fonte_ob_deliverable = "METADATA_DO_PAGAMENTO"
-      } else if (orderBumpInicial.deliverableId) {
+      } 
+      // 2. Tentar do config global do order bump
+      else if (orderBumpInicial.deliverableId && orderBumpInicial.deliverableId !== "") {
         finalOrderBumpDeliverableId = orderBumpInicial.deliverableId as string
-        fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP"
+        fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP (orderBump.inicial)"
+      }
+      // 3. Tentar do primeiro plano que tem order bump
+      else {
+        for (const plan of plans) {
+          const planOrderBumps = (plan.order_bumps as Array<Record<string, unknown>>) || []
+          if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
+            finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
+            fonte_ob_deliverable = `ORDER_BUMP_DO_PLANO (${plan.name})`
+            break
+          }
+        }
       }
       
       // Verificar se o deliverableId existe
