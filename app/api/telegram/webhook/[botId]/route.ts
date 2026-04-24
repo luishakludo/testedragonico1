@@ -1952,6 +1952,16 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
           if (planIdFromState) paymentMetadataOB.plan_id = planIdFromState
           if (planDeliverableIdFromState) paymentMetadataOB.plan_deliverable_id = planDeliverableIdFromState
           if (isAccept && orderBumpDeliverableId) paymentMetadataOB.order_bump_deliverable_id = orderBumpDeliverableId
+          // Adicionar order_bump_id para que o webhook possa encontrar o order bump correto
+          if (isAccept && selectedOrderBump) {
+            // Se tem o order bump selecionado pelo índice, pegar o ID
+            const orderBumpsFromMetadata = metadata?.order_bumps as Array<{ id?: string }> | undefined
+            const selectedObId = orderBumpsFromMetadata?.[orderBumpIndex]?.id
+            if (selectedObId) {
+              paymentMetadataOB.order_bump_id = selectedObId
+              console.log("[v0] Order Bump - Adicionando order_bump_id ao metadata:", selectedObId)
+            }
+          }
           
           const hasMetadata = Object.keys(paymentMetadataOB).length > 0
           
@@ -2963,7 +2973,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
             // Salvar estado USANDO MESMO STATUS DO ORDER BUMP GLOBAL (waiting_order_bump)
             // Salvar TODOS os order bumps para poder buscar o correto pelo índice depois
             console.log("[v0] Salvando estado Plan Order Bump - bot_id:", botUuid, "telegram_user_id:", String(telegramUserId))
-            const orderBumpsData = activePlanOrderBumps.map((ob: { name?: string; price?: number; deliverableId?: string; deliveryType?: string }) => ({
+            const orderBumpsData = activePlanOrderBumps.map((ob: { id?: string; name?: string; price?: number; deliverableId?: string; deliveryType?: string }) => ({
+              id: ob.id || "", // IMPORTANTE: incluir ID para o webhook encontrar o order bump correto
               name: ob.name || "Order Bump",
               price: ob.price || 0,
               deliverableId: ob.deliverableId || "",

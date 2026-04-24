@@ -50,6 +50,23 @@ export async function GET() {
 
     const plans = (flowConfig.plans as Array<Record<string, unknown>>) || []
     debug.plans = plans
+    
+    // Mostrar order bumps de cada plano de forma clara
+    const plansWithOrderBumps = plans.map((p: Record<string, unknown>) => {
+      const planOrderBumps = (p.order_bumps as Array<Record<string, unknown>>) || []
+      return {
+        plan_id: p.id,
+        plan_name: p.name,
+        plan_deliverableId: p.deliverableId || "NAO_DEFINIDO",
+        order_bumps: planOrderBumps.map((ob: Record<string, unknown>) => ({
+          id: ob.id,
+          name: ob.name,
+          price: ob.price,
+          deliverableId: ob.deliverableId || "NAO_DEFINIDO"
+        }))
+      }
+    })
+    debug.plans_com_order_bumps = plansWithOrderBumps
 
     const orderBumpConfig = flowConfig.orderBump as Record<string, unknown> || {}
     debug.orderBump_config_completo = orderBumpConfig
@@ -124,31 +141,43 @@ export async function GET() {
         orderBumpInicial_deliverableId_tipo: typeof orderBumpInicial.deliverableId
       }
       
-      // Determinar deliverableId do order bump (mesma logica do webhook)
-      // FALLBACK COMPLETO: 1) metadata, 2) config global, 3) order bump do plano
+      // Determinar deliverableId do order bump (mesma logica do webhook CORRIGIDA)
+      // ORDEM DE PRIORIDADE: 1) metadata, 2) order bump especifico do plano pelo ID, 3) primeiro order bump do plano, 4) config global
       let finalOrderBumpDeliverableId = ""
       let fonte_ob_deliverable = ""
       
-      // 1. Tentar do metadata do pagamento
+      const orderBumpIdFromMetadata = paymentMetadata?.order_bump_id as string || ""
+      
+      // 1. Tentar do metadata do pagamento (order_bump_deliverable_id)
       if (orderBumpDeliverableIdFromMetadata) {
         finalOrderBumpDeliverableId = orderBumpDeliverableIdFromMetadata
-        fonte_ob_deliverable = "METADATA_DO_PAGAMENTO"
+        fonte_ob_deliverable = "METADATA_DO_PAGAMENTO (order_bump_deliverable_id)"
       } 
-      // 2. Tentar do config global do order bump
-      else if (orderBumpInicial.deliverableId && orderBumpInicial.deliverableId !== "") {
-        finalOrderBumpDeliverableId = orderBumpInicial.deliverableId as string
-        fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP (orderBump.inicial)"
-      }
-      // 3. Tentar do primeiro plano que tem order bump
-      else {
+      // 2. Tentar encontrar pelo order_bump_id do metadata
+      else if (orderBumpIdFromMetadata) {
         for (const plan of plans) {
           const planOrderBumps = (plan.order_bumps as Array<Record<string, unknown>>) || []
-          if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
-            finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
-            fonte_ob_deliverable = `ORDER_BUMP_DO_PLANO (${plan.name})`
+          const matchingOb = planOrderBumps.find((ob: Record<string, unknown>) => ob.id === orderBumpIdFromMetadata)
+          if (matchingOb?.deliverableId) {
+            finalOrderBumpDeliverableId = matchingOb.deliverableId as string
+            fonte_ob_deliverable = `ORDER_BUMP_ESPECIFICO_DO_PLANO pelo ID "${orderBumpIdFromMetadata}" (${plan.name})`
             break
           }
         }
+      }
+      // 3. Tentar pelo plan_id do metadata - pegar primeiro order bump do plano
+      if (!finalOrderBumpDeliverableId && planIdFromMetadata) {
+        const planFromConfig = plans.find(p => p.id === planIdFromMetadata)
+        const planOrderBumps = (planFromConfig?.order_bumps as Array<Record<string, unknown>>) || []
+        if (planOrderBumps.length > 0 && planOrderBumps[0].deliverableId) {
+          finalOrderBumpDeliverableId = planOrderBumps[0].deliverableId as string
+          fonte_ob_deliverable = `PRIMEIRO_ORDER_BUMP_DO_PLANO "${planFromConfig?.name}" (plan_id: ${planIdFromMetadata})`
+        }
+      }
+      // 4. Fallback: config global do order bump
+      if (!finalOrderBumpDeliverableId && orderBumpInicial.deliverableId && orderBumpInicial.deliverableId !== "") {
+        finalOrderBumpDeliverableId = orderBumpInicial.deliverableId as string
+        fonte_ob_deliverable = "CONFIG_GLOBAL_ORDER_BUMP (orderBump.inicial)"
       }
       
       // Verificar se o deliverableId existe
