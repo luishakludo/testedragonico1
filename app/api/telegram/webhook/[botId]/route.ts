@@ -3728,12 +3728,25 @@ Escaneie o QR Code ou copie o codigo abaixo:
             .eq("status", "pending")
 
           // Buscar planos do flow principal (para usar quando useDefaultPlans = true)
+          // Primeiro tenta da tabela flow_plans, se vazio usa o config JSON
           const { data: mainFlowPlans } = await supabase
             .from("flow_plans")
             .select("id, name, price")
             .eq("flow_id", startFlow.id)
             .eq("is_active", true)
             .order("position", { ascending: true })
+
+          // Fallback: se nao tem planos na tabela, pegar do config JSON (planos legados)
+          let defaultPlansToUse = mainFlowPlans || []
+          if (defaultPlansToUse.length === 0) {
+            const configPlans = (flowConfig.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+            defaultPlansToUse = configPlans.filter(p => p.active !== false).map(p => ({
+              id: p.id,
+              name: p.name,
+              price: p.price
+            }))
+            console.log(`[DOWNSELL] Usando planos do config JSON (fallback):`, JSON.stringify(defaultPlansToUse))
+          }
 
           // Processar todas as sequencias de downsell
           for (const seq of downsellConfig.sequences) {
@@ -3750,9 +3763,9 @@ Escaneie o QR Code ou copie o codigo abaixo:
             const useDefaultPlans = seq.useDefaultPlans !== false // default true
             const discountPercent = seq.discountPercent || 20 // default 20%
 
-            if (useDefaultPlans && mainFlowPlans && mainFlowPlans.length > 0) {
+            if (useDefaultPlans && defaultPlansToUse && defaultPlansToUse.length > 0) {
               // Usar planos do fluxo principal com desconto aplicado
-              plansToUse = mainFlowPlans.map(plan => {
+              plansToUse = defaultPlansToUse.map(plan => {
                 const discountedPrice = plan.price * (1 - discountPercent / 100)
                 return {
                   id: plan.id,
