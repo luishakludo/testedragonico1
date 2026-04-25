@@ -3219,10 +3219,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                     }}
                                   >
                                     <SelectTrigger className="bg-white border-neutral-200">
-                                      <div className="flex items-center gap-2">
-                                        <Gift className="h-4 w-4 text-neutral-500" />
-                                        <SelectValue />
-                                      </div>
+                                      <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="default">Usar entregavel principal</SelectItem>
@@ -3254,12 +3251,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                             <SelectItem value="none">Nenhum selecionado</SelectItem>
                                   {deliverables.map((d) => (
                                     <SelectItem key={d.id} value={d.id}>
-                                      <span className="flex items-center gap-2">
-                                        {d.type === "media" && <ImageIcon className="h-3 w-3" />}
-                                        {d.type === "link" && <Link2 className="h-3 w-3" />}
-                                        {d.type === "vip_group" && <Users className="h-3 w-3" />}
-                                        {d.name}
-                                      </span>
+                                      {d.name}
                                     </SelectItem>
                                   ))}
                                           </SelectContent>
@@ -3698,12 +3690,9 @@ const handleAddUpsellPlan = (seqId: string) => {
                             markChange()
                           }}
                         >
-                          <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
-                            <div className="flex items-center gap-2">
-                              <RefreshCw className="h-4 w-4 text-neutral-500" />
-                              <SelectValue />
-                            </div>
-                          </SelectTrigger>
+  <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
+  <SelectValue />
+  </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
                             <SelectItem value="custom">Entrega personalizada</SelectItem>
@@ -4221,12 +4210,9 @@ const handleAddUpsellPlan = (seqId: string) => {
                             markChange()
                           }}
                         >
-                          <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
-                            <div className="flex items-center gap-2">
-                              <RefreshCw className="h-4 w-4 text-neutral-500" />
-                              <SelectValue />
-                            </div>
-                          </SelectTrigger>
+  <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
+  <SelectValue />
+  </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
                             <SelectItem value="custom">Entrega personalizada</SelectItem>
@@ -4613,12 +4599,9 @@ const handleAddUpsellPlan = (seqId: string) => {
                                     }
                                   }}
                                 >
-                                  <SelectTrigger className="bg-white border-neutral-200">
-                                    <div className="flex items-center gap-2">
-                                      <RefreshCw className="h-4 w-4 text-neutral-500" />
-                                      <SelectValue />
-                                    </div>
-                                  </SelectTrigger>
+  <SelectTrigger className="bg-white border-neutral-200">
+  <SelectValue />
+  </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="global">Usar entregavel principal</SelectItem>
                                     <SelectItem value="custom">Selecionar entregavel</SelectItem>
@@ -4654,12 +4637,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                             <SelectItem value="none">Nenhum selecionado</SelectItem>
                                   {deliverables.map((d) => (
                                     <SelectItem key={d.id} value={d.id}>
-                                      <span className="flex items-center gap-2">
-                                        {d.type === "media" && <ImageIcon className="h-3 w-3" />}
-                                        {d.type === "link" && <Link2 className="h-3 w-3" />}
-                                        {d.type === "vip_group" && <Users className="h-3 w-3" />}
-                                        {d.name}
-                                      </span>
+                                      {d.name}
                                     </SelectItem>
                                   ))}
                                           </SelectContent>
@@ -4711,12 +4689,9 @@ const handleAddUpsellPlan = (seqId: string) => {
                             markChange()
                           }}
                         >
-                          <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
-                            <div className="flex items-center gap-2">
-                              <RefreshCw className="h-4 w-4 text-neutral-500" />
-                              <SelectValue />
-                            </div>
-                          </SelectTrigger>
+  <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
+  <SelectValue />
+  </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="same">Mesmo do fluxo principal</SelectItem>
                             <SelectItem value="custom">Entrega personalizada</SelectItem>
