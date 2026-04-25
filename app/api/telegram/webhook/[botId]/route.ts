@@ -1692,8 +1692,8 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 if (downsellPixConfigPack?.enabled && downsellPixConfigPack.sequences && downsellPixConfigPack.sequences.length > 0) {
                   const now = new Date()
                   
-const { data: mainFlowPlansPack } = await supabase
-.from("flow_plans").select("id, name, price, deliverable_id").eq("flow_id", flowForPack.id).eq("is_active", true).order("position", { ascending: true })
+                  const { data: mainFlowPlansPack } = await supabase
+                    .from("flow_plans").select("id, name, price").eq("flow_id", flowForPack.id).eq("is_active", true).order("position", { ascending: true })
                   
                   let defaultPlansPack = mainFlowPlansPack || []
                   if (defaultPlansPack.length === 0) {
@@ -1708,17 +1708,13 @@ const { data: mainFlowPlansPack } = await supabase
                     
                     const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
                     
-                    // IMPORTANTE: Incluir deliverableId de cada plano para entrega correta
-                    let plansToUsePack: Array<{ id: string; buttonText?: string; name?: string; price: number; deliverableId?: string }> = []
+                    let plansToUsePack: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
                     const useDefaultPlans = seq.useDefaultPlans !== false
                     const discountPercent = seq.discountPercent || 20
                     
                     if (useDefaultPlans && defaultPlansPack.length > 0) {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      plansToUsePack = defaultPlansPack.map((plan: any) => ({
-                        id: plan.id, buttonText: plan.name, name: plan.name, 
-                        price: Math.round(plan.price * (1 - discountPercent / 100) * 100) / 100,
-                        deliverableId: plan.deliverable_id || ""
+                      plansToUsePack = defaultPlansPack.map(plan => ({
+                        id: plan.id, buttonText: plan.name, name: plan.name, price: Math.round(plan.price * (1 - discountPercent / 100) * 100) / 100
                       }))
                     } else {
                       plansToUsePack = seq.plans || []
@@ -1731,7 +1727,6 @@ const { data: mainFlowPlansPack } = await supabase
                       metadata: {
                         message: seq.message, medias: seq.medias || [], plans: plansToUsePack, botToken: botToken,
                         showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
-                        deliveryType: seq.deliveryType, deliverableId: seq.deliverableId, // Adicionar info de entrega
                         source: "pix_generated"
                       }
                     })
@@ -2231,11 +2226,10 @@ Escaneie o QR Code ou copie o codigo abaixo:
 
           const hasMetadata = Object.keys(paymentMetadataOB).length > 0
 
-          console.log("[v0] Saving OB payment - user_id:", ownerUserId, "bot_id:", botUuid, "flow_id:", flowIdForPayment, "amount:", totalAmount, "productType:", productType, "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "metadata:", JSON.stringify(paymentMetadataOB))
+          console.log("[v0] Saving OB payment - user_id:", ownerUserId, "bot_id:", botUuid, "amount:", totalAmount, "productType:", productType, "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "metadata:", JSON.stringify(paymentMetadataOB))
           const { error: obPaymentError } = await supabase.from("payments").insert({
             bot_id: botUuid,
             user_id: ownerUserId,
-            flow_id: flowIdForPayment || null, // IMPORTANTE: Incluir flow_id para aparecer no painel de vendas
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -2285,8 +2279,8 @@ Escaneie o QR Code ou copie o codigo abaixo:
             if (downsellPixConfigOB?.enabled && downsellPixConfigOB.sequences && downsellPixConfigOB.sequences.length > 0) {
               const now = new Date()
               
-const { data: mainFlowPlansOB } = await supabase
-.from("flow_plans").select("id, name, price, deliverable_id").eq("flow_id", flowIdForPayment).eq("is_active", true).order("position", { ascending: true })
+              const { data: mainFlowPlansOB } = await supabase
+                .from("flow_plans").select("id, name, price").eq("flow_id", flowIdForPayment).eq("is_active", true).order("position", { ascending: true })
               
               let defaultPlansOB = mainFlowPlansOB || []
               if (defaultPlansOB.length === 0) {
@@ -2301,17 +2295,13 @@ const { data: mainFlowPlansOB } = await supabase
                 
                 const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
                 
-                // IMPORTANTE: Incluir deliverableId de cada plano para entrega correta
-                let plansToUseOB: Array<{ id: string; buttonText?: string; name?: string; price: number; deliverableId?: string }> = []
+                let plansToUseOB: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
                 const useDefaultPlans = seq.useDefaultPlans !== false
                 const discountPercent = seq.discountPercent || 20
                 
                 if (useDefaultPlans && defaultPlansOB.length > 0) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  plansToUseOB = defaultPlansOB.map((plan: any) => ({
-                    id: plan.id, buttonText: plan.name, name: plan.name, 
-                    price: Math.round(plan.price * (1 - discountPercent / 100) * 100) / 100,
-                    deliverableId: plan.deliverable_id || ""
+                  plansToUseOB = defaultPlansOB.map(plan => ({
+                    id: plan.id, buttonText: plan.name, name: plan.name, price: Math.round(plan.price * (1 - discountPercent / 100) * 100) / 100
                   }))
                 } else {
                   plansToUseOB = seq.plans || []
@@ -2324,7 +2314,6 @@ const { data: mainFlowPlansOB } = await supabase
                   metadata: {
                     message: seq.message, medias: seq.medias || [], plans: plansToUseOB, botToken: botToken,
                     showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
-                    deliveryType: seq.deliveryType, deliverableId: seq.deliverableId, // Adicionar info de entrega
                     source: "pix_generated"
                   }
                 })
@@ -2420,15 +2409,13 @@ const { data: mainFlowPlansOB } = await supabase
             return
           }
 
-          // Salvar pagamento COM flow_id para aparecer no painel de vendas
+          // Salvar pagamento
           const productType = isAccept ? "downsell_with_bump" : "downsell"
-          const dsObFlowId = userState?.flow_id || null
-          console.log("[v0] Saving downsell+OB payment - user_id:", botOwnerDsOb.user_id, "flow_id:", dsObFlowId, "amount:", totalPrice, "product_type:", productType)
+          console.log("[v0] Saving downsell+OB payment - user_id:", botOwnerDsOb.user_id, "amount:", totalPrice, "product_type:", productType)
 
           await supabase.from("payments").insert({
             user_id: botOwnerDsOb.user_id,
             bot_id: botUuid,
-            flow_id: dsObFlowId, // IMPORTANTE: Incluir flow_id para aparecer no painel de vendas
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -2530,18 +2517,9 @@ const { data: mainFlowPlansOB } = await supabase
         }
 
         const msgMetadata = scheduledMsg?.metadata as Record<string, unknown> | null
-        const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number; deliverableId?: string }>) || []
+        const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number }>) || []
         const selectedPlan = plans[planIndex]
         const planName = selectedPlan?.buttonText || "Oferta Especial"
-        
-        // IMPORTANTE: Pegar deliverableId do plano especifico ou da sequencia
-        // Prioridade: 1) deliverableId do plano selecionado, 2) deliverableId da sequencia
-        const dsDeliverableId = selectedPlan?.deliverableId || (msgMetadata?.deliverableId as string) || ""
-        const dsDeliveryType = (msgMetadata?.deliveryType as string) || "global"
-        const dsSequenceId = scheduledMsg?.sequence_id || ""
-        const dsSequenceIndex = scheduledMsg?.sequence_index ?? 0
-        
-        console.log(`[DOWNSELL] deliverableId=${dsDeliverableId}, deliveryType=${dsDeliveryType}, sequenceId=${dsSequenceId}`)
 
         // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
@@ -2652,14 +2630,11 @@ const { data: mainFlowPlansOB } = await supabase
             return
           }
 
-          // Salvar pagamento do downsell COM flow_id para aparecer corretamente no painel de vendas
-          // IMPORTANTE: Salvar deliverableId, sequenceId e deliveryType no metadata para a entrega correta
-          const downsellFlowId = flowId || flowDs?.id || null
-          console.log("[v0] Saving downsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "flow_id:", downsellFlowId, "amount:", price, "product_type: downsell", "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "external_payment_id:", pixResult.paymentId, "deliverableId:", dsDeliverableId, "deliveryType:", dsDeliveryType)
+          // Salvar pagamento do downsell (igual ao plano normal - SEM flow_id para evitar problema de FK)
+          console.log("[v0] Saving downsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: downsell", "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "external_payment_id:", pixResult.paymentId)
           const { data: savedDsPayment, error: dsPaymentError } = await supabase.from("payments").insert({
             user_id: botOwner.user_id,
             bot_id: botUuid,
-            flow_id: downsellFlowId, // IMPORTANTE: Incluir flow_id para aparecer no painel de vendas
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -2676,15 +2651,6 @@ const { data: mainFlowPlansOB } = await supabase
             qr_code_url: pixResult.qrCodeUrl,
             copy_paste: pixResult.copyPaste,
             pix_code: pixResult.copyPaste || pixResult.qrCode,
-            // METADATA: Salvar info do entregavel especifico do downsell
-            metadata: {
-              deliverable_id: dsDeliverableId,
-              delivery_type: dsDeliveryType,
-              sequence_id: dsSequenceId,
-              sequence_index: dsSequenceIndex,
-              plan_index: planIndex,
-              plan_id: selectedPlan?.id || "",
-            },
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }).select().single()
@@ -2811,15 +2777,13 @@ const { data: mainFlowPlansOB } = await supabase
             return
           }
 
-          // Salvar pagamento COM flow_id para aparecer no painel de vendas
+          // Salvar pagamento
           const productType = isAccept ? "upsell_with_bump" : "upsell"
-          const upObFlowId = userState?.flow_id || null
-          console.log("[v0] Saving upsell+OB payment - user_id:", botOwnerUpOb.user_id, "flow_id:", upObFlowId, "amount:", totalPrice, "product_type:", productType)
+          console.log("[v0] Saving upsell+OB payment - user_id:", botOwnerUpOb.user_id, "amount:", totalPrice, "product_type:", productType)
 
           await supabase.from("payments").insert({
             user_id: botOwnerUpOb.user_id,
             bot_id: botUuid,
-            flow_id: upObFlowId, // IMPORTANTE: Incluir flow_id para aparecer no painel de vendas
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -3680,10 +3644,9 @@ const { data: mainFlowPlansOB } = await supabase
               const now = new Date()
               
               // Buscar planos do flow principal (para usar quando useDefaultPlans = true)
-              // IMPORTANTE: Incluir deliverable_id para copiar o entregavel especifico de cada plano
               const { data: mainFlowPlans } = await supabase
                 .from("flow_plans")
-                .select("id, name, price, deliverable_id")
+                .select("id, name, price")
                 .eq("flow_id", flowForDownsell.id)
                 .eq("is_active", true)
                 .order("position", { ascending: true })
@@ -3710,22 +3673,18 @@ const { data: mainFlowPlansOB } = await supabase
                 const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
                 
                 // Determinar quais planos usar
-                // IMPORTANTE: Incluir deliverableId de cada plano para entrega correta
-                let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number; deliverableId?: string }> = []
+                let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
                 const useDefaultPlans = seq.useDefaultPlans !== false
                 const discountPercent = seq.discountPercent || 20
                 
                 if (useDefaultPlans && defaultPlansToUse && defaultPlansToUse.length > 0) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  plansToUse = defaultPlansToUse.map((plan: any) => {
+                  plansToUse = defaultPlansToUse.map(plan => {
                     const discountedPrice = plan.price * (1 - discountPercent / 100)
                     return {
                       id: plan.id,
                       buttonText: plan.name,
                       name: plan.name,
-                      price: Math.round(discountedPrice * 100) / 100,
-                      // COPIAR deliverable_id do plano original para o downsell
-                      deliverableId: plan.deliverable_id || ""
+                      price: Math.round(discountedPrice * 100) / 100
                     }
                   })
                   console.log(`[DOWNSELL PIX] Usando planos do fluxo principal com ${discountPercent}% desconto:`, JSON.stringify(plansToUse))
@@ -4051,10 +4010,9 @@ const { data: mainFlowPlansOB } = await supabase
 
           // Buscar planos do flow principal (para usar quando useDefaultPlans = true)
           // Primeiro tenta da tabela flow_plans, se vazio usa o config JSON
-          // IMPORTANTE: Incluir deliverable_id para copiar o entregavel especifico de cada plano
           const { data: mainFlowPlans } = await supabase
             .from("flow_plans")
-            .select("id, name, price, deliverable_id")
+            .select("id, name, price")
             .eq("flow_id", startFlow.id)
             .eq("is_active", true)
             .order("position", { ascending: true })
@@ -4082,23 +4040,19 @@ const { data: mainFlowPlansOB } = await supabase
             const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
 
             // Determinar quais planos usar: se useDefaultPlans = true, usa os planos do fluxo principal com desconto
-            // IMPORTANTE: Incluir deliverableId de cada plano para entrega correta
-            let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number; deliverableId?: string }> = []
+            let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
             const useDefaultPlans = seq.useDefaultPlans !== false // default true
             const discountPercent = seq.discountPercent || 20 // default 20%
 
             if (useDefaultPlans && defaultPlansToUse && defaultPlansToUse.length > 0) {
               // Usar planos do fluxo principal com desconto aplicado
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              plansToUse = defaultPlansToUse.map((plan: any) => {
+              plansToUse = defaultPlansToUse.map(plan => {
                 const discountedPrice = plan.price * (1 - discountPercent / 100)
                 return {
                   id: plan.id,
                   buttonText: plan.name,
                   name: plan.name,
-                  price: Math.round(discountedPrice * 100) / 100, // Arredondar para 2 casas decimais
-                  // COPIAR deliverable_id do plano original para o downsell
-                  deliverableId: plan.deliverable_id || ""
+                  price: Math.round(discountedPrice * 100) / 100 // Arredondar para 2 casas decimais
                 }
               })
               console.log(`[DOWNSELL] Usando planos do fluxo principal com ${discountPercent}% desconto:`, JSON.stringify(plansToUse))
