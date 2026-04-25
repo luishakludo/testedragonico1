@@ -440,6 +440,8 @@ export default function FlowEditorPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [activeTab, setActiveTab] = useState("bots")
   const [hasChanges, setHasChanges] = useState(false)
+  const [changeCount, setChangeCount] = useState(0)
+  const [showSavedNotification, setShowSavedNotification] = useState(false)
 
   // Edit name
   const [isEditingName, setIsEditingName] = useState(false)
@@ -583,12 +585,18 @@ Voce ja tem acesso ao conteudo!`)
   const pixGeneratedMessageRef = useRef<HTMLTextAreaElement>(null)
   const approvedMessageRef = useRef<HTMLTextAreaElement>(null)
 
+  // Helper function to mark changes
+  const markChange = useCallback(() => {
+    markChange()
+    setChangeCount(prev => prev + 1)
+  }, [])
+
   // Insert variable at cursor position
   const insertVariable = (variable: string, textareaRef: React.RefObject<HTMLTextAreaElement | null>, setValue: (value: string) => void, currentValue: string) => {
     const textarea = textareaRef.current
     if (!textarea) {
       setValue(currentValue + variable)
-      setHasChanges(true)
+      markChange()
       return
     }
 
@@ -596,7 +604,7 @@ Voce ja tem acesso ao conteudo!`)
     const end = textarea.selectionEnd
     const newValue = currentValue.substring(0, start) + variable + currentValue.substring(end)
     setValue(newValue)
-    setHasChanges(true)
+    markChange()
 
     // Restore cursor position after the inserted variable
     setTimeout(() => {
@@ -1269,11 +1277,11 @@ plans,
       })
     } else {
       console.log("[v0] SUCESSO! Dados salvos:", JSON.stringify(data[0]?.config?.orderBump, null, 2))
-      toast({
-        title: "Sucesso",
-        description: "Configuracoes salvas com sucesso!",
-      })
       setHasChanges(false)
+      setChangeCount(0)
+      // Mostrar notificacao de sucesso
+      setShowSavedNotification(true)
+      setTimeout(() => setShowSavedNotification(false), 3000)
     }
 
     setIsSaving(false)
@@ -1558,19 +1566,19 @@ plans,
       },
     ])
     setExpandedPlan(newPlanId)
-    setHasChanges(true)
+    markChange()
   }
 
   // Remove plan
   const handleRemovePlan = (id: string) => {
     setPlans(plans.filter(p => p.id !== id))
-    setHasChanges(true)
+    markChange()
   }
 
 // Update plan
   const handleUpdatePlan = (id: string, field: keyof FlowPlan, value: FlowPlan[keyof FlowPlan]) => {
   setPlans(prevPlans => prevPlans.map(p => p.id === id ? { ...p, [field]: value } : p))
-  setHasChanges(true)
+  markChange()
   }
 
   // Add upsell sequence (mesma estrutura do downsell)
@@ -1590,7 +1598,7 @@ plans,
   }
   setUpsellSequences([...upsellSequences, newSequence])
   setExpandedSequence(newSequence.id)
-  setHasChanges(true)
+  markChange()
   }
 
 // Add plan to upsell sequence
@@ -1634,13 +1642,13 @@ const handleAddUpsellPlan = (seqId: string) => {
   const handleRemoveUpsellSequence = (id: string) => {
     setUpsellSequences(upsellSequences.filter(s => s.id !== id))
     if (expandedSequence === id) setExpandedSequence(null)
-    setHasChanges(true)
+    markChange()
   }
 
   // Update upsell sequence
   const handleUpdateUpsellSequence = (id: string, field: keyof UpsellSequence, value: unknown) => {
     setUpsellSequences(upsellSequences.map(s => s.id === id ? { ...s, [field]: value } : s))
-    setHasChanges(true)
+    markChange()
   }
 
   // Duplicate upsell sequence
@@ -1648,7 +1656,7 @@ const handleAddUpsellPlan = (seqId: string) => {
   if (upsellSequences.length >= 20) return
   const newSequence = { ...seq, id: `seq-${Date.now()}` }
   setUpsellSequences([...upsellSequences, newSequence])
-  setHasChanges(true)
+  markChange()
   }
 
   // Upload media for upsell sequence
@@ -1735,7 +1743,7 @@ const handleAddUpsellPlan = (seqId: string) => {
   }
   setDownsellSequences([...downsellSequences, newSequence])
   setExpandedDownsellSequence(newSequence.id)
-  setHasChanges(true)
+  markChange()
   }
 
   // Add plan to downsell sequence
@@ -1779,13 +1787,13 @@ const handleAddUpsellPlan = (seqId: string) => {
   const handleRemoveDownsellSequence = (id: string) => {
     setDownsellSequences(downsellSequences.filter(s => s.id !== id))
     if (expandedDownsellSequence === id) setExpandedDownsellSequence(null)
-    setHasChanges(true)
+    markChange()
   }
 
   // Update downsell sequence
   const handleUpdateDownsellSequence = (id: string, field: keyof DownsellSequence, value: unknown) => {
     setDownsellSequences(downsellSequences.map(s => s.id === id ? { ...s, [field]: value } : s))
-    setHasChanges(true)
+    markChange()
   }
 
   // Duplicate downsell sequence
@@ -1793,7 +1801,7 @@ const handleAddUpsellPlan = (seqId: string) => {
   if (downsellSequences.length >= 20) return
   const newSequence = { ...seq, id: `ds-seq-${Date.now()}` }
   setDownsellSequences([...downsellSequences, newSequence])
-  setHasChanges(true)
+  markChange()
   }
 
   // Upload media for downsell sequence
@@ -1878,7 +1886,7 @@ const handleAddUpsellPlan = (seqId: string) => {
   }
   setDownsellPixSequences([...downsellPixSequences, newSequence])
   setExpandedDownsellPixSequence(newSequence.id)
-  setHasChanges(true)
+  markChange()
   }
 
 // Add plan to downsell PIX sequence
@@ -1922,13 +1930,13 @@ const handleAddUpsellPlan = (seqId: string) => {
   const handleRemoveDownsellPixSequence = (id: string) => {
     setDownsellPixSequences(downsellPixSequences.filter(s => s.id !== id))
     if (expandedDownsellPixSequence === id) setExpandedDownsellPixSequence(null)
-    setHasChanges(true)
+    markChange()
   }
 
   // Update downsell PIX sequence
   const handleUpdateDownsellPixSequence = (id: string, field: keyof DownsellPixSequence, value: unknown) => {
     setDownsellPixSequences(downsellPixSequences.map(s => s.id === id ? { ...s, [field]: value } : s))
-    setHasChanges(true)
+    markChange()
   }
 
   // Duplicate downsell PIX sequence
@@ -1936,7 +1944,7 @@ const handleAddUpsellPlan = (seqId: string) => {
     if (downsellPixSequences.length >= 20) return
     const newSequence = { ...seq, id: `dspix-seq-${Date.now()}` }
     setDownsellPixSequences([...downsellPixSequences, newSequence])
-    setHasChanges(true)
+    markChange()
   }
 
   // Upload media for downsell PIX sequence
@@ -2032,7 +2040,7 @@ const handleAddUpsellPlan = (seqId: string) => {
         case "downsell": setOrderBumpDownsell({ ...orderBumpDownsell, medias: updatedMedias }); break
         case "packs": setOrderBumpPacks({ ...orderBumpPacks, medias: updatedMedias }); break
       }
-      setHasChanges(true)
+      markChange()
     } catch { toast({ title: "Erro", description: "Falha ao fazer upload", variant: "destructive" }) }
     finally { setUploadingOrderBumpMedia(null) }
   }
@@ -2045,7 +2053,7 @@ const handleAddUpsellPlan = (seqId: string) => {
       case "downsell": { const m = (orderBumpDownsell.medias || []).filter((_, i) => i !== mediaIndex); setOrderBumpDownsell({ ...orderBumpDownsell, medias: m }); break }
       case "packs": { const m = (orderBumpPacks.medias || []).filter((_, i) => i !== mediaIndex); setOrderBumpPacks({ ...orderBumpPacks, medias: m }); break }
     }
-    setHasChanges(true)
+    markChange()
   }
 
 
@@ -2066,14 +2074,14 @@ const handleAddUpsellPlan = (seqId: string) => {
   }
   setPacksList([...packsList, newPack])
   setExpandedPack(newPack.id)
-  setHasChanges(true)
+  markChange()
   }
 
   // Remove pack
   const handleRemovePack = (id: string) => {
   setPacksList(packsList.filter(p => p.id !== id))
   if (expandedPack === id) setExpandedPack(null)
-  setHasChanges(true)
+  markChange()
   }
   
   // Estado para upload de midia do pack
@@ -2145,7 +2153,7 @@ const handleAddUpsellPlan = (seqId: string) => {
   // Update pack
   const handleUpdatePack = (id: string, field: keyof Pack, value: unknown) => {
     setPacksList(packsList.map(p => p.id === id ? { ...p, [field]: value } : p))
-    setHasChanges(true)
+    markChange()
   }
 
   // Delete flow
@@ -2248,7 +2256,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                     value={editName}
                     onChange={(e) => {
                       setEditName(e.target.value)
-                      setHasChanges(true)
+                      markChange()
                     }}
                     onBlur={() => setIsEditingName(false)}
                     onKeyDown={(e) => e.key === "Enter" && setIsEditingName(false)}
@@ -2267,18 +2275,37 @@ const handleAddUpsellPlan = (seqId: string) => {
               </div>
             </div>
 
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-2 bg-[#bfff00] hover:bg-[#d4ff4d] text-neutral-900 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-[0_0_20px_rgba(190,255,0,0.25)] hover:shadow-[0_0_25px_rgba(190,255,0,0.4)] disabled:opacity-50"
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
+            <div className="flex items-center gap-3">
+              {/* Contador de mudancas */}
+              {changeCount > 0 && (
+                <span className="text-xs text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg">
+                  {changeCount} {changeCount === 1 ? 'mudanca' : 'mudancas'}
+                </span>
               )}
-              Salvar
-            </button>
+              
+              {/* Notificacao de salvo */}
+              {showSavedNotification && (
+                <span className="text-xs text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in slide-in-from-right-2 duration-200">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Salvo
+                </span>
+              )}
+
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-[#bfff00] hover:bg-[#d4ff4d] text-neutral-900 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-[0_0_20px_rgba(190,255,0,0.25)] hover:shadow-[0_0_25px_rgba(190,255,0,0.4)] disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Salvar
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2742,7 +2769,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         <button
                           onClick={() => {
                             setWelcomeMedias(welcomeMedias.filter((_, i) => i !== index))
-                            setHasChanges(true)
+                            markChange()
                           }}
                           className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                         >
@@ -2787,7 +2814,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   .getPublicUrl(fileName)
                                 
                                 setWelcomeMedias([...welcomeMedias, urlData.publicUrl])
-                                setHasChanges(true)
+                                markChange()
                               } catch (err) {
                                 console.error('Upload failed:', err)
                                 toast({
@@ -2823,7 +2850,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                     value={welcomeMessage}
                     onChange={(value) => {
                       setWelcomeMessage(value)
-                      setHasChanges(true)
+                      markChange()
                     }}
                     placeholder="Ola {nome}! Bem-vindo ao @{bot.username}"
                     rows={6}
@@ -2858,7 +2885,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                       checked={ctaButtonEnabled}
                       onCheckedChange={(checked) => {
                         setCtaButtonEnabled(checked)
-                        setHasChanges(true)
+                        markChange()
                       }}
                       className="data-[state=checked]:bg-[#bfff00]"
                     />
@@ -2873,7 +2900,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={ctaButtonText}
                           onChange={(e) => {
                             setCtaButtonText(e.target.value)
-                            setHasChanges(true)
+                            markChange()
                           }}
                           placeholder="Ver Planos"
                           className="bg-neutral-50 border-neutral-200 focus:border-[#bfff00] focus:ring-[#bfff00]/20"
@@ -2919,7 +2946,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={secondaryMessageEnabled}
                         onCheckedChange={(checked) => {
                           setSecondaryMessageEnabled(checked)
-                          setHasChanges(true)
+                          markChange()
                         }}
                         className="data-[state=checked]:bg-[#bfff00]"
                       />
@@ -2930,7 +2957,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={secondaryMessage}
                           onChange={(value) => {
                             setSecondaryMessage(value)
-                            setHasChanges(true)
+                            markChange()
                           }}
                           placeholder="Digite a mensagem secundaria..."
                           rows={3}
@@ -2963,7 +2990,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={redirectButtonEnabled}
                         onCheckedChange={(checked) => {
                           setRedirectButtonEnabled(checked)
-                          setHasChanges(true)
+                          markChange()
                         }}
                         className="data-[state=checked]:bg-[#bfff00]"
                       />
@@ -2974,7 +3001,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={redirectButtonText}
                           onChange={(e) => {
                             setRedirectButtonText(e.target.value)
-                            setHasChanges(true)
+                            markChange()
                           }}
                           placeholder="Texto do botao"
                           className="bg-neutral-50 border-neutral-200 focus:border-[#bfff00] focus:ring-[#bfff00]"
@@ -2983,7 +3010,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={redirectButtonUrl}
                           onChange={(e) => {
                             setRedirectButtonUrl(e.target.value)
-                            setHasChanges(true)
+                            markChange()
                           }}
                           placeholder="@canal ou https://t.me/canal"
                           className="bg-neutral-50 border-neutral-200 focus:border-[#bfff00] focus:ring-[#bfff00]"
@@ -3036,7 +3063,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                       </div>
                       <Switch
                         checked={showPriceInButton}
-                        onCheckedChange={(checked) => { setShowPriceInButton(checked); setHasChanges(true) }}
+                        onCheckedChange={(checked) => { setShowPriceInButton(checked); markChange() }}
                       />
                     </div>
                   )}
@@ -3627,7 +3654,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={upsellEnabled}
                         onCheckedChange={(checked) => {
                           setUpsellEnabled(checked)
-                          setHasChanges(true)
+                          markChange()
                         }}
                       />
                     </div>
@@ -3651,7 +3678,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={upsellDeliveryType}
                           onValueChange={(value: "same" | "custom") => {
                             setUpsellDeliveryType(value)
-                            setHasChanges(true)
+                            markChange()
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
@@ -4119,7 +4146,7 @@ const handleAddUpsellPlan = (seqId: string) => {
   } else {
     setDownsellPixEnabled(checked)
   }
-  setHasChanges(true)
+  markChange()
   }}
   />
   </div>
@@ -4174,7 +4201,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={downsellDeliveryType}
                           onValueChange={(value: "same" | "custom") => {
                             setDownsellDeliveryType(value)
-                            setHasChanges(true)
+                            markChange()
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
@@ -4664,7 +4691,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={downsellPixDeliveryType}
                           onValueChange={(value: "same" | "custom") => {
                             setDownsellPixDeliveryType(value)
-                            setHasChanges(true)
+                            markChange()
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200 mt-1.5">
@@ -5125,7 +5152,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             checked={applyInicialTo.upsell}
                             onChange={(e) => {
                               setApplyInicialTo({...applyInicialTo, upsell: e.target.checked})
-                              setHasChanges(true)
+                              markChange()
                             }}
                           />
                           <TrendingUp className="h-3.5 w-3.5 text-[#8fb300]" />
@@ -5138,7 +5165,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             checked={applyInicialTo.downsell}
                             onChange={(e) => {
                               setApplyInicialTo({...applyInicialTo, downsell: e.target.checked})
-                              setHasChanges(true)
+                              markChange()
                             }}
                           />
                           <TrendingDown className="h-3.5 w-3.5 text-pink-500" />
@@ -5151,7 +5178,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             checked={applyInicialTo.packs}
                             onChange={(e) => {
                               setApplyInicialTo({...applyInicialTo, packs: e.target.checked})
-                              setHasChanges(true)
+                              markChange()
                             }}
                           />
                           <Package className="h-3.5 w-3.5 text-emerald-500" />
@@ -5176,7 +5203,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={orderBumpInicial.enabled}
                         onCheckedChange={(checked) => {
                           setOrderBumpInicial({...orderBumpInicial, enabled: checked})
-                          setHasChanges(true)
+                          markChange()
                         }}
                       />
                     </div>
@@ -5194,7 +5221,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             value={orderBumpInicial.name}
                             onChange={(e) => {
                               setOrderBumpInicial({...orderBumpInicial, name: e.target.value})
-                              setHasChanges(true)
+                              markChange()
                             }}
                             placeholder="Ex: Acesso ao grupo exclusivo"
                             className="bg-white border-neutral-200"
@@ -5209,7 +5236,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   onChange={(e) => {
                                     const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".")
                                     setOrderBumpInicial({...orderBumpInicial, price: val === "" ? 0 : val as unknown as number})
-                                    setHasChanges(true)
+                                    markChange()
                                   }}
                                   onBlur={() => {
                                     const num = parseFloat(String(orderBumpInicial.price).replace(",", ".")) || 0
@@ -5228,7 +5255,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={orderBumpInicial.description}
                           onChange={(value) => {
                             setOrderBumpInicial({...orderBumpInicial, description: value})
-                            setHasChanges(true)
+                            markChange()
                           }}
                           placeholder="Descricao completa do produto adicional que sera enviada ao cliente..."
                           rows={4}
@@ -5251,7 +5278,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               value={orderBumpInicial.acceptText}
                               onChange={(e) => {
                                 setOrderBumpInicial({...orderBumpInicial, acceptText: e.target.value})
-                                setHasChanges(true)
+                                markChange()
                               }}
                               className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
                             />
@@ -5265,7 +5292,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               value={orderBumpInicial.rejectText}
                               onChange={(e) => {
                                 setOrderBumpInicial({...orderBumpInicial, rejectText: e.target.value})
-                                setHasChanges(true)
+                                markChange()
                               }}
                               className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
                             />
@@ -5286,7 +5313,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={orderBumpInicial.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpInicial({...orderBumpInicial, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpInicial.deliverableId})
-                            setHasChanges(true)
+                            markChange()
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200">
@@ -5315,7 +5342,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 value={orderBumpInicial.deliverableId || "none"}
                                 onValueChange={(value) => {
                                   setOrderBumpInicial({...orderBumpInicial, deliverableId: value === "none" ? "" : value})
-                                  setHasChanges(true)
+                                  markChange()
                                 }}
                               >
                                 <SelectTrigger className="bg-white border-neutral-200">
@@ -5391,7 +5418,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={orderBumpUpsell.enabled}
                         onCheckedChange={(checked) => {
                           setOrderBumpUpsell({...orderBumpUpsell, enabled: checked})
-                          setHasChanges(true)
+                          markChange()
                         }}
                       />
                     </div>
@@ -5404,18 +5431,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Nome do Produto</Label>
-                          <Input value={orderBumpUpsell.name} onChange={(e) => { setOrderBumpUpsell({...orderBumpUpsell, name: e.target.value}); setHasChanges(true) }} placeholder="Ex: Pack Extra" className="bg-white border-neutral-200" />
+                          <Input value={orderBumpUpsell.name} onChange={(e) => { setOrderBumpUpsell({...orderBumpUpsell, name: e.target.value}); markChange() }} placeholder="Ex: Pack Extra" className="bg-white border-neutral-200" />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Preco (R$)</Label>
-                          <Input type="text" inputMode="decimal" value={orderBumpUpsell.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpUpsell({...orderBumpUpsell, price: val === "" ? 0 : val as unknown as number}); setHasChanges(true) }} onBlur={() => { const num = parseFloat(String(orderBumpUpsell.price).replace(",", ".")) || 0; setOrderBumpUpsell({...orderBumpUpsell, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
+                          <Input type="text" inputMode="decimal" value={orderBumpUpsell.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpUpsell({...orderBumpUpsell, price: val === "" ? 0 : val as unknown as number}); markChange() }} onBlur={() => { const num = parseFloat(String(orderBumpUpsell.price).replace(",", ".")) || 0; setOrderBumpUpsell({...orderBumpUpsell, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
                         </div>
                       </div>
 <div className="space-y-2">
                       <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
                       <RichTextEditor
                         value={orderBumpUpsell.description || ""}
-                        onChange={(value) => { setOrderBumpUpsell({...orderBumpUpsell, description: value}); setHasChanges(true) }}
+                        onChange={(value) => { setOrderBumpUpsell({...orderBumpUpsell, description: value}); markChange() }}
                         placeholder="Descricao completa do produto adicional que sera enviada ao cliente..."
                         rows={3}
                         maxLength={4000}
@@ -5437,7 +5464,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               value={orderBumpUpsell.acceptText}
                               onChange={(e) => {
                                 setOrderBumpUpsell({...orderBumpUpsell, acceptText: e.target.value})
-                                setHasChanges(true)
+                                markChange()
                               }}
                               className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
                             />
@@ -5451,7 +5478,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               value={orderBumpUpsell.rejectText}
                               onChange={(e) => {
                                 setOrderBumpUpsell({...orderBumpUpsell, rejectText: e.target.value})
-                                setHasChanges(true)
+                                markChange()
                               }}
                               className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
                             />
@@ -5469,7 +5496,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={orderBumpUpsell.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpUpsell({...orderBumpUpsell, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpUpsell.deliverableId})
-                            setHasChanges(true)
+                            markChange()
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200">
@@ -5486,7 +5513,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             value={orderBumpUpsell.deliverableId || "none"}
                             onValueChange={(value) => {
                               setOrderBumpUpsell({...orderBumpUpsell, deliverableId: value === "none" ? "" : value})
-                              setHasChanges(true)
+                              markChange()
                             }}
                           >
                             <SelectTrigger className="bg-white border-neutral-200">
@@ -5560,7 +5587,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={orderBumpDownsell.enabled}
                         onCheckedChange={(checked) => {
                           setOrderBumpDownsell({...orderBumpDownsell, enabled: checked})
-                          setHasChanges(true)
+                          markChange()
                         }}
                       />
                     </div>
@@ -5573,18 +5600,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Nome do Produto</Label>
-                          <Input value={orderBumpDownsell.name} onChange={(e) => { setOrderBumpDownsell({...orderBumpDownsell, name: e.target.value}); setHasChanges(true) }} placeholder="Ex: Pack Extra" className="bg-white border-neutral-200" />
+                          <Input value={orderBumpDownsell.name} onChange={(e) => { setOrderBumpDownsell({...orderBumpDownsell, name: e.target.value}); markChange() }} placeholder="Ex: Pack Extra" className="bg-white border-neutral-200" />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Preco (R$)</Label>
-                          <Input type="text" inputMode="decimal" value={orderBumpDownsell.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpDownsell({...orderBumpDownsell, price: val === "" ? 0 : val as unknown as number}); setHasChanges(true) }} onBlur={() => { const num = parseFloat(String(orderBumpDownsell.price).replace(",", ".")) || 0; setOrderBumpDownsell({...orderBumpDownsell, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
+                          <Input type="text" inputMode="decimal" value={orderBumpDownsell.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpDownsell({...orderBumpDownsell, price: val === "" ? 0 : val as unknown as number}); markChange() }} onBlur={() => { const num = parseFloat(String(orderBumpDownsell.price).replace(",", ".")) || 0; setOrderBumpDownsell({...orderBumpDownsell, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
                         </div>
                       </div>
 <div className="space-y-2">
                       <Label className="text-neutral-500">Descricao/Mensagem do Order Bump</Label>
                       <RichTextEditor
                         value={orderBumpDownsell.description || ""}
-                        onChange={(value) => { setOrderBumpDownsell({...orderBumpDownsell, description: value}); setHasChanges(true) }}
+                        onChange={(value) => { setOrderBumpDownsell({...orderBumpDownsell, description: value}); markChange() }}
                         placeholder="Descricao completa do produto adicional que sera enviada ao cliente..."
                         rows={3}
                         maxLength={4000}
@@ -5606,7 +5633,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               value={orderBumpDownsell.acceptText}
                               onChange={(e) => {
                                 setOrderBumpDownsell({...orderBumpDownsell, acceptText: e.target.value})
-                                setHasChanges(true)
+                                markChange()
                               }}
                               className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
                             />
@@ -5620,7 +5647,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               value={orderBumpDownsell.rejectText}
                               onChange={(e) => {
                                 setOrderBumpDownsell({...orderBumpDownsell, rejectText: e.target.value})
-                                setHasChanges(true)
+                                markChange()
                               }}
                               className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 uppercase font-medium"
                             />
@@ -5638,7 +5665,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={orderBumpDownsell.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpDownsell({...orderBumpDownsell, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpDownsell.deliverableId})
-                            setHasChanges(true)
+                            markChange()
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200">
@@ -5655,7 +5682,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             value={orderBumpDownsell.deliverableId || "none"}
                             onValueChange={(value) => {
                               setOrderBumpDownsell({...orderBumpDownsell, deliverableId: value === "none" ? "" : value})
-                              setHasChanges(true)
+                              markChange()
                             }}
                           >
                             <SelectTrigger className="bg-white border-neutral-200">
@@ -5729,7 +5756,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={orderBumpPacks.enabled}
                         onCheckedChange={(checked) => {
                           setOrderBumpPacks({...orderBumpPacks, enabled: checked})
-                          setHasChanges(true)
+                          markChange()
                         }}
                       />
                     </div>
@@ -5742,18 +5769,18 @@ const handleAddUpsellPlan = (seqId: string) => {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Nome do Produto</Label>
-                          <Input value={orderBumpPacks.name} onChange={(e) => { setOrderBumpPacks({...orderBumpPacks, name: e.target.value}); setHasChanges(true) }} placeholder="Ex: Pack Extra" className="bg-white border-neutral-200" />
+                          <Input value={orderBumpPacks.name} onChange={(e) => { setOrderBumpPacks({...orderBumpPacks, name: e.target.value}); markChange() }} placeholder="Ex: Pack Extra" className="bg-white border-neutral-200" />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Preco (R$)</Label>
-                          <Input type="text" inputMode="decimal" value={orderBumpPacks.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpPacks({...orderBumpPacks, price: val === "" ? 0 : val as unknown as number}); setHasChanges(true) }} onBlur={() => { const num = parseFloat(String(orderBumpPacks.price).replace(",", ".")) || 0; setOrderBumpPacks({...orderBumpPacks, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
+                          <Input type="text" inputMode="decimal" value={orderBumpPacks.price || ""} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); setOrderBumpPacks({...orderBumpPacks, price: val === "" ? 0 : val as unknown as number}); markChange() }} onBlur={() => { const num = parseFloat(String(orderBumpPacks.price).replace(",", ".")) || 0; setOrderBumpPacks({...orderBumpPacks, price: num}) }} placeholder="0.00" className="bg-white border-neutral-200" />
                         </div>
                       </div>
 <div className="space-y-2">
                       <Label className="text-neutral-500">Descricao</Label>
                       <RichTextEditor
                         value={orderBumpPacks.description || ""}
-                        onChange={(value) => { setOrderBumpPacks({...orderBumpPacks, description: value}); setHasChanges(true) }}
+                        onChange={(value) => { setOrderBumpPacks({...orderBumpPacks, description: value}); markChange() }}
                         placeholder="Descricao do pack que sera exibida na previa..."
                         rows={3}
                         maxLength={4000}
@@ -5769,11 +5796,11 @@ const handleAddUpsellPlan = (seqId: string) => {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Botao Aceitar</Label>
-                          <Input value={orderBumpPacks.acceptText} onChange={(e) => { setOrderBumpPacks({...orderBumpPacks, acceptText: e.target.value}); setHasChanges(true) }} placeholder="QUERO" className="bg-secondary/50 uppercase font-medium" />
+                          <Input value={orderBumpPacks.acceptText} onChange={(e) => { setOrderBumpPacks({...orderBumpPacks, acceptText: e.target.value}); markChange() }} placeholder="QUERO" className="bg-secondary/50 uppercase font-medium" />
                         </div>
                         <div className="space-y-2">
                           <Label className="text-neutral-500">Botao Recusar</Label>
-                          <Input value={orderBumpPacks.rejectText} onChange={(e) => { setOrderBumpPacks({...orderBumpPacks, rejectText: e.target.value}); setHasChanges(true) }} placeholder="NAO QUERO" className="bg-secondary/50 uppercase font-medium" />
+                          <Input value={orderBumpPacks.rejectText} onChange={(e) => { setOrderBumpPacks({...orderBumpPacks, rejectText: e.target.value}); markChange() }} placeholder="NAO QUERO" className="bg-secondary/50 uppercase font-medium" />
                         </div>
                       </div>
                       
@@ -5788,7 +5815,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           value={orderBumpPacks.deliveryType || "same"}
                           onValueChange={(value: OrderBumpItem["deliveryType"]) => {
                             setOrderBumpPacks({...orderBumpPacks, deliveryType: value, deliverableId: value === "same" ? "" : orderBumpPacks.deliverableId})
-                            setHasChanges(true)
+                            markChange()
                           }}
                         >
                           <SelectTrigger className="bg-white border-neutral-200">
@@ -5805,7 +5832,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             value={orderBumpPacks.deliverableId || "none"}
                             onValueChange={(value) => {
                               setOrderBumpPacks({...orderBumpPacks, deliverableId: value === "none" ? "" : value})
-                              setHasChanges(true)
+                              markChange()
                             }}
                           >
                             <SelectTrigger className="bg-white border-neutral-200">
@@ -5893,7 +5920,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         checked={packsEnabled}
                         onCheckedChange={(checked) => {
                           setPacksEnabled(checked)
-                          setHasChanges(true)
+                          markChange()
                         }}
                       />
                     </div>
@@ -5911,7 +5938,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             value={packsButtonText}
                             onChange={(e) => {
                               setPacksButtonText(e.target.value)
-                              setHasChanges(true)
+                              markChange()
                             }}
                             className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0 font-medium"
                           />
@@ -6226,7 +6253,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                   <Label className="text-neutral-500">Mensagem Personalizada</Label>
                   <RichTextEditor
                     value={pixGeneratedMessage}
-                    onChange={(value) => { setPixGeneratedMessage(value); setHasChanges(true) }}
+                    onChange={(value) => { setPixGeneratedMessage(value); markChange() }}
                     rows={6}
                     maxLength={4000}
                     className="bg-white border border-neutral-200 font-mono text-sm"
@@ -6244,7 +6271,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                 
                 <div className="space-y-2">
                   <Label className="text-neutral-500">Exibicao do QR Code</Label>
-                  <Select value={qrCodeDisplay} onValueChange={(v) => { setQrCodeDisplay(v); setHasChanges(true) }}>
+                  <Select value={qrCodeDisplay} onValueChange={(v) => { setQrCodeDisplay(v); markChange() }}>
                     <SelectTrigger className="bg-white border border-neutral-200">
                       <SelectValue />
                     </SelectTrigger>
@@ -6259,7 +6286,7 @@ const handleAddUpsellPlan = (seqId: string) => {
 
                 <div className="space-y-2">
                   <Label className="text-neutral-500">Formato do Codigo PIX</Label>
-                  <Select value={pixCodeFormat} onValueChange={(v) => { setPixCodeFormat(v); setHasChanges(true) }}>
+                  <Select value={pixCodeFormat} onValueChange={(v) => { setPixCodeFormat(v); markChange() }}>
                     <SelectTrigger className="bg-white border border-neutral-200">
                       <SelectValue />
                     </SelectTrigger>
@@ -6287,7 +6314,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                     </div>
                     <Switch 
                       checked={showCopyButton} 
-                      onCheckedChange={(c) => { setShowCopyButton(c); setHasChanges(true) }} 
+                      onCheckedChange={(c) => { setShowCopyButton(c); markChange() }} 
                     />
                   </div>
                   <p className="text-xs text-neutral-500 bg-neutral-50 p-3 rounded-lg">
@@ -6315,7 +6342,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                     <Label className="text-neutral-700 font-medium">Texto da Mensagem</Label>
                     <Input
                       value={messageBeforeCode}
-                      onChange={(e) => { setMessageBeforeCode(e.target.value); setHasChanges(true) }}
+                      onChange={(e) => { setMessageBeforeCode(e.target.value); markChange() }}
                       placeholder="Ex: Copie o código abaixo:"
                       className="bg-white border border-neutral-200"
                     />
@@ -6341,7 +6368,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                     <Label className="text-neutral-700 font-medium">Texto do Botão</Label>
                     <Input
                       value={verifyStatusButtonText}
-                      onChange={(e) => { setVerifyStatusButtonText(e.target.value); setHasChanges(true) }}
+                      onChange={(e) => { setVerifyStatusButtonText(e.target.value); markChange() }}
                       placeholder="Ex: Verificar Status"
                       className="bg-white border border-neutral-200"
                     />
@@ -6376,7 +6403,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <button
                             onClick={() => {
                               setApprovedMedias(approvedMedias.filter((_, i) => i !== index))
-                              setHasChanges(true)
+                              markChange()
                             }}
                             className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                           >
@@ -6430,7 +6457,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   .getPublicUrl(fileName)
                                 
                                 setApprovedMedias([...approvedMedias, urlData.publicUrl])
-                                setHasChanges(true)
+                                markChange()
                               } catch (err) {
                                 console.error('Upload failed:', err)
                                 toast({
@@ -6456,7 +6483,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                     <Label className="text-neutral-500">Mensagem Personalizada</Label>
                     <RichTextEditor
                       value={approvedMessage}
-                      onChange={(value) => { setApprovedMessage(value); setHasChanges(true) }}
+                      onChange={(value) => { setApprovedMessage(value); markChange() }}
                       rows={5}
                       maxLength={4000}
                       className="bg-white border border-neutral-200 font-mono text-sm"
@@ -6478,7 +6505,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         <Gift className="h-4 w-4 text-orange-500" />
                         <Input
                           value={accessButtonText}
-                          onChange={(e) => { setAccessButtonText(e.target.value); setHasChanges(true) }}
+                          onChange={(e) => { setAccessButtonText(e.target.value); markChange() }}
                           className="bg-transparent border-0 p-0 h-auto focus-visible:ring-0"
                         />
                       </div>
@@ -6488,7 +6515,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                       <Label className="text-neutral-500">Link do Entregavel (opcional)</Label>
                       <Input
                         value={accessButtonUrl}
-                        onChange={(e) => { setAccessButtonUrl(e.target.value); setHasChanges(true) }}
+                        onChange={(e) => { setAccessButtonUrl(e.target.value); markChange() }}
                         placeholder="https://exemplo.com/conteudo ou deixe vazio para usar Entregaveis"
                         className="bg-white border border-neutral-200"
                       />
@@ -6532,7 +6559,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <p className="text-xs text-neutral-500">Envie lembretes antes da assinatura expirar</p>
                         </div>
                       </div>
-                      <Switch checked={notifyBeforeExpireEnabled} onCheckedChange={(c) => { setNotifyBeforeExpireEnabled(c); setHasChanges(true) }} />
+                      <Switch checked={notifyBeforeExpireEnabled} onCheckedChange={(c) => { setNotifyBeforeExpireEnabled(c); markChange() }} />
                     </div>
 
                   {notifyBeforeExpireEnabled && (
@@ -6551,7 +6578,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 } else {
                                   setDaysBeforeExpire([...daysBeforeExpire, day])
                                 }
-                                setHasChanges(true)
+                                markChange()
                               }}
                               className={`px-4 py-2 rounded-lg border text-sm transition-colors ${
                                 daysBeforeExpire.includes(day)
@@ -6581,7 +6608,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               onClick={() => { 
                                 setRenewalMediaType(type.id)
                                 if (type.id === "none") setRenewalMediaUrl("")
-                                setHasChanges(true) 
+                                markChange() 
                               }}
                               className={`px-4 py-2 rounded-lg border text-sm flex items-center gap-2 transition-colors ${
                                 renewalMediaType === type.id
@@ -6612,7 +6639,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 <button
                                   onClick={() => {
                                     setRenewalMediaUrl("")
-                                    setHasChanges(true)
+                                    markChange()
                                   }}
                                   className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                                 >
@@ -6664,7 +6691,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                         .getPublicUrl(fileName)
                                       
                                       setRenewalMediaUrl(urlData.publicUrl)
-                                      setHasChanges(true)
+                                      markChange()
                                     } catch (err) {
                                       console.error('Upload failed:', err)
                                       toast({
@@ -6690,7 +6717,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         <Label className="text-neutral-500">Mensagem de Renovacao</Label>
                         <RichTextEditor
                           value={renewalMessage}
-                          onChange={(value) => { setRenewalMessage(value); setHasChanges(true) }}
+                          onChange={(value) => { setRenewalMessage(value); markChange() }}
                           rows={5}
                           maxLength={4000}
                           className="bg-secondary/50 border-neutral-200 font-mono text-sm"
@@ -6720,7 +6747,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <p className="text-xs text-neutral-500">Envie notificacoes no dia que a assinatura expirar</p>
                         </div>
                       </div>
-                      <Switch checked={notifyOnDayEnabled} onCheckedChange={(c) => { setNotifyOnDayEnabled(c); setHasChanges(true) }} />
+                      <Switch checked={notifyOnDayEnabled} onCheckedChange={(c) => { setNotifyOnDayEnabled(c); markChange() }} />
                     </div>
 
                   {notifyOnDayEnabled && (
@@ -6732,7 +6759,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                       {/* Quantidade */}
                       <div className="space-y-2">
                         <Label className="text-neutral-500">Quantas notificacoes enviar</Label>
-                        <Select value={notificationCount} onValueChange={(v) => { setNotificationCount(v); setHasChanges(true) }}>
+                        <Select value={notificationCount} onValueChange={(v) => { setNotificationCount(v); markChange() }}>
                           <SelectTrigger className="bg-white border-neutral-200">
                             <SelectValue />
                           </SelectTrigger>
@@ -6767,7 +6794,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                   } else {
                                     setSelectedHours([...selectedHours, hour])
                                   }
-                                  setHasChanges(true)
+                                  markChange()
                                 }}
                                 className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
                                   isSelected
@@ -6810,7 +6837,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <p className="text-xs text-neutral-500">Mensagem enviada quando a assinatura expira</p>
                         </div>
                       </div>
-                      <Switch checked={expireMessageEnabled} onCheckedChange={(c) => { setExpireMessageEnabled(c); setHasChanges(true) }} />
+                      <Switch checked={expireMessageEnabled} onCheckedChange={(c) => { setExpireMessageEnabled(c); markChange() }} />
                     </div>
 
                   {expireMessageEnabled && (
@@ -6831,7 +6858,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               onClick={() => { 
                                 setExpireMediaType(type.id)
                                 if (type.id === "none") setExpireMediaUrl("")
-                                setHasChanges(true) 
+                                markChange() 
                               }}
                               className={`px-4 py-2 rounded-lg border text-sm flex items-center gap-2 transition-colors ${
                                 expireMediaType === type.id
@@ -6862,7 +6889,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 <button
                                   onClick={() => {
                                     setExpireMediaUrl("")
-                                    setHasChanges(true)
+                                    markChange()
                                   }}
                                   className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                                 >
@@ -6914,7 +6941,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                         .getPublicUrl(fileName)
                                       
                                       setExpireMediaUrl(urlData.publicUrl)
-                                      setHasChanges(true)
+                                      markChange()
                                     } catch (err) {
                                       console.error('Upload failed:', err)
                                       toast({
@@ -6940,7 +6967,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                         <Label className="text-neutral-500">Mensagem de Expiracao</Label>
                         <RichTextEditor
                           value={expireMessage}
-                          onChange={(value) => { setExpireMessage(value); setHasChanges(true) }}
+                          onChange={(value) => { setExpireMessage(value); markChange() }}
                           rows={5}
                           maxLength={4000}
                           className="bg-secondary/50 border-neutral-200 font-mono text-sm"
@@ -6967,12 +6994,12 @@ const handleAddUpsellPlan = (seqId: string) => {
 
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm text-neutral-500">Usar planos do fluxo</span>
-                      <Switch checked={useFlowPlans} onCheckedChange={(c) => { setUseFlowPlans(c); setHasChanges(true) }} />
+                      <Switch checked={useFlowPlans} onCheckedChange={(c) => { setUseFlowPlans(c); markChange() }} />
                     </div>
 
                     <div className="space-y-2">
                       <Label className="text-neutral-500 text-sm">Desconto na renovacao</Label>
-                      <Select value={renewalDiscount} onValueChange={(v) => { setRenewalDiscount(v); setHasChanges(true) }}>
+                      <Select value={renewalDiscount} onValueChange={(v) => { setRenewalDiscount(v); markChange() }}>
                         <SelectTrigger className="bg-white border-neutral-200">
                           <SelectValue />
                         </SelectTrigger>
@@ -7004,7 +7031,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <p className="font-medium text-sm text-neutral-900">Expulsar do grupo</p>
                           <p className="text-xs text-neutral-500">Remove o usuario do grupo VIP quando expirar</p>
                         </div>
-                        <Switch checked={kickFromGroup} onCheckedChange={(c) => { setKickFromGroup(c); setHasChanges(true) }} />
+                        <Switch checked={kickFromGroup} onCheckedChange={(c) => { setKickFromGroup(c); markChange() }} />
                       </div>
 
                       <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-neutral-100">
@@ -7012,7 +7039,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                           <p className="font-medium text-sm text-neutral-900">Remover status VIP</p>
                           <p className="text-xs text-neutral-500">Marca o lead como nao-VIP no sistema</p>
                         </div>
-                        <Switch checked={removeVipStatus} onCheckedChange={(c) => { setRemoveVipStatus(c); setHasChanges(true) }} />
+                        <Switch checked={removeVipStatus} onCheckedChange={(c) => { setRemoveVipStatus(c); markChange() }} />
                       </div>
                     </div>
                   </div>
@@ -7097,7 +7124,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                       value={mainDeliverableId || "none"}
                       onValueChange={(v) => {
                         setMainDeliverableId(v === "none" ? "" : v)
-                        setHasChanges(true)
+                        markChange()
                       }}
                     >
                       <SelectTrigger className="w-52 bg-neutral-50 border-neutral-200">
@@ -7169,7 +7196,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                               e.stopPropagation()
                               if (mainDeliverableId === del.id) setMainDeliverableId("")
                               setDeliverables(deliverables.filter((d) => d.id !== del.id))
-                              setHasChanges(true)
+                              markChange()
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -7710,7 +7737,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                       setDeliverables([...deliverables, tempDeliverable])
                     }
                     setDeliverableModalOpen(false)
-                    setHasChanges(true)
+                    markChange()
                   }}
                 >
                   Salvar
