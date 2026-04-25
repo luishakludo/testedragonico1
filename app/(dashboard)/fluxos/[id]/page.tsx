@@ -3249,7 +3249,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           </SelectTrigger>
                                           <SelectContent>
                                             <SelectItem value="none">Nenhum selecionado</SelectItem>
-                                  {deliverables.map((d) => (
+                                  {deliverables.filter(d => d && d.id).map((d) => (
                                     <SelectItem key={d.id} value={d.id}>
                                       {d.name}
                                     </SelectItem>
@@ -3480,7 +3480,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                   <SelectItem value="none">Nenhum (nao entrega nada)</SelectItem>
-                                                  {deliverables.map((d) => (
+                                                  {deliverables.filter(d => d && d.id).map((d) => (
                                                     <SelectItem key={d.id} value={d.id}>
                                                       <div className="flex items-center gap-2">
                                                         {d.type === "media" && <ImageIcon className="h-3 w-3 text-purple-500" />}
@@ -4095,7 +4095,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                       <SelectValue placeholder="Selecione um entregavel" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {deliverables.map((d) => (
+                                      {deliverables.filter(d => d && d.id).map((d) => (
                                         <SelectItem key={d.id} value={d.id}>
                                           {d.name} ({d.type === "media" ? "Midia" : d.type === "link" ? "Link" : "Grupo VIP"})
                                         </SelectItem>
@@ -4592,16 +4592,16 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 </p>
                                 <Select
                                   value={seq.deliveryType || "global"}
-                                  onValueChange={(value: "global" | "custom") => {
-                                    handleUpdateDownsellSequence(seq.id, "deliveryType", value)
+                                  onValueChange={(value: string) => {
+                                    handleUpdateDownsellSequence(seq.id, "deliveryType", value as "global" | "custom")
                                     if (value === "global") {
                                       handleUpdateDownsellSequence(seq.id, "deliverableId", "")
                                     }
                                   }}
                                 >
-  <SelectTrigger className="bg-white border-neutral-200">
-  <SelectValue />
-  </SelectTrigger>
+                                  <SelectTrigger className="bg-white border-neutral-200">
+                                    <SelectValue placeholder="Selecione..." />
+                                  </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="global">Usar entregavel principal</SelectItem>
                                     <SelectItem value="custom">Selecionar entregavel</SelectItem>
@@ -4628,18 +4628,20 @@ const handleAddUpsellPlan = (seqId: string) => {
                                         <Label className="text-sm">Selecione o entregavel</Label>
                                         <Select
                                           value={seq.deliverableId || "none"}
-                                          onValueChange={(value) => handleUpdateDownsellSequence(seq.id, "deliverableId", value === "none" ? "" : value)}
+                                          onValueChange={(value) => {
+                                            handleUpdateDownsellSequence(seq.id, "deliverableId", value === "none" ? "" : value)
+                                          }}
                                         >
                                           <SelectTrigger className="bg-white border-neutral-200">
                                             <SelectValue placeholder="Selecione..." />
                                           </SelectTrigger>
                                           <SelectContent>
                                             <SelectItem value="none">Nenhum selecionado</SelectItem>
-                                  {deliverables.map((d) => (
-                                    <SelectItem key={d.id} value={d.id}>
-                                      {d.name}
-                                    </SelectItem>
-                                  ))}
+                                            {deliverables.filter(d => d && d.id).map((d) => (
+                                              <SelectItem key={d.id} value={d.id}>
+                                                {d.name || "Sem nome"}
+                                              </SelectItem>
+                                            ))}
                                           </SelectContent>
                                         </Select>
                                         {seq.deliverableId && (
@@ -5074,7 +5076,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                         <SelectValue placeholder="Selecione um entregavel" />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {deliverables.map((d) => (
+                                        {deliverables.filter(d => d && d.id).map((d) => (
                                           <SelectItem key={d.id} value={d.id}>
                                             {d.name} ({d.type === "media" ? "Midia" : d.type === "link" ? "Link" : "Grupo VIP"})
                                           </SelectItem>
@@ -5342,7 +5344,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="none">Nenhum selecionado</SelectItem>
-                                  {deliverables.map((d) => (
+                                  {deliverables.filter(d => d && d.id).map((d) => (
                                     <SelectItem key={d.id} value={d.id}>
                                       <div className="flex items-center gap-2">
                                         {d.type === "media" && <ImageIcon className="h-3 w-3 text-purple-500" />}
@@ -5513,7 +5515,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Nenhum</SelectItem>
-                              {deliverables.map((d) => (
+                              {deliverables.filter(d => d && d.id).map((d) => (
                                 <SelectItem key={d.id} value={d.id}>
                                   <div className="flex items-center gap-2">
                                     {d.type === "media" && <ImageIcon className="h-3 w-3" />}
@@ -5682,7 +5684,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Nenhum</SelectItem>
-                              {deliverables.map((d) => (
+                              {deliverables.filter(d => d && d.id).map((d) => (
                                 <SelectItem key={d.id} value={d.id}>
                                   <div className="flex items-center gap-2">
                                     {d.type === "media" && <ImageIcon className="h-3 w-3" />}
@@ -5832,7 +5834,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Nenhum</SelectItem>
-                              {deliverables.map((d) => (
+                              {deliverables.filter(d => d && d.id).map((d) => (
                                 <SelectItem key={d.id} value={d.id}>
                                   <div className="flex items-center gap-2">
                                     {d.type === "media" && <ImageIcon className="h-3 w-3" />}
@@ -6108,7 +6110,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="none">Nenhum (usar principal)</SelectItem>
-                                      {deliverables.map((d) => (
+                                      {deliverables.filter(d => d && d.id).map((d) => (
                                         <SelectItem key={d.id} value={d.id}>
                                           <div className="flex items-center gap-2">
                                             {d.type === "media" && <ImageIcon className="h-3 w-3" />}
@@ -7124,7 +7126,7 @@ const handleAddUpsellPlan = (seqId: string) => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Nenhum</SelectItem>
-                        {deliverables.map((d) => (
+                        {deliverables.filter(d => d && d.id).map((d) => (
                           <SelectItem key={d.id} value={d.id}>
                             {d.name} ({d.type === "media" ? "Midia" : d.type === "link" ? "Link" : "Grupo VIP"})
                           </SelectItem>
