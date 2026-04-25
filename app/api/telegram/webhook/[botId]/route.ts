@@ -2645,7 +2645,6 @@ Escaneie o QR Code ou copie o codigo abaixo:
           const { data: savedDsPayment, error: dsPaymentError } = await supabase.from("payments").insert({
             user_id: botOwner.user_id,
             bot_id: botUuid,
-            flow_id: flowId || null, // Adicionar flow_id para referencia
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
