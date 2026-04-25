@@ -587,7 +587,7 @@ Voce ja tem acesso ao conteudo!`)
 
   // Helper function to mark changes
   const markChange = useCallback(() => {
-    markChange()
+    setHasChanges(true)
     setChangeCount(prev => prev + 1)
   }, [])
 
