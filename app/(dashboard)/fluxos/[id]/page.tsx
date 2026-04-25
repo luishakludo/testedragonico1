@@ -3252,16 +3252,16 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           </SelectTrigger>
                                           <SelectContent>
                                             <SelectItem value="none">Nenhum selecionado</SelectItem>
-                                            {deliverables.map((d) => (
-                                              <SelectItem key={d.id} value={d.id}>
-                                                <div className="flex items-center gap-2">
-                                                  {d.type === "media" && <ImageIcon className="h-3 w-3" />}
-                                                  {d.type === "link" && <Link2 className="h-3 w-3" />}
-                                                  {d.type === "vip_group" && <Users className="h-3 w-3" />}
-                                                  {d.name}
-                                                </div>
-                                              </SelectItem>
-                                            ))}
+                                  {deliverables.map((d) => (
+                                    <SelectItem key={d.id} value={d.id}>
+                                      <span className="flex items-center gap-2">
+                                        {d.type === "media" && <ImageIcon className="h-3 w-3" />}
+                                        {d.type === "link" && <Link2 className="h-3 w-3" />}
+                                        {d.type === "vip_group" && <Users className="h-3 w-3" />}
+                                        {d.name}
+                                      </span>
+                                    </SelectItem>
+                                  ))}
                                           </SelectContent>
                                         </Select>
                                       )}
@@ -4652,16 +4652,16 @@ const handleAddUpsellPlan = (seqId: string) => {
                                           </SelectTrigger>
                                           <SelectContent>
                                             <SelectItem value="none">Nenhum selecionado</SelectItem>
-                                            {deliverables.map((d) => (
-                                              <SelectItem key={d.id} value={d.id}>
-                                                <div className="flex items-center gap-2">
-                                                  {d.type === "media" && <ImageIcon className="h-3 w-3" />}
-                                                  {d.type === "link" && <Link2 className="h-3 w-3" />}
-                                                  {d.type === "vip_group" && <Users className="h-3 w-3" />}
-                                                  {d.name}
-                                                </div>
-                                              </SelectItem>
-                                            ))}
+                                  {deliverables.map((d) => (
+                                    <SelectItem key={d.id} value={d.id}>
+                                      <span className="flex items-center gap-2">
+                                        {d.type === "media" && <ImageIcon className="h-3 w-3" />}
+                                        {d.type === "link" && <Link2 className="h-3 w-3" />}
+                                        {d.type === "vip_group" && <Users className="h-3 w-3" />}
+                                        {d.name}
+                                      </span>
+                                    </SelectItem>
+                                  ))}
                                           </SelectContent>
                                         </Select>
                                         {seq.deliverableId && (
