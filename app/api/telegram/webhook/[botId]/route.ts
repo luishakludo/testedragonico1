@@ -1662,6 +1662,79 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                 config: paymentMessages,
                 userName: userFirstName || "Cliente"
               })
+
+              // ========== DOWNSELL PIX GERADO (PACK) ==========
+              if (flowForPack?.id) {
+                const supabaseAdminPack = getSupabaseAdmin()
+                
+                // 1. CANCELAR downsells normais
+                const { data: cancelledNormalDownsellsPack } = await supabaseAdminPack
+                  .from("scheduled_messages")
+                  .update({ status: "cancelled" })
+                  .eq("bot_id", botUuid)
+                  .eq("telegram_user_id", String(telegramUserId))
+                  .eq("flow_id", flowForPack.id)
+                  .eq("message_type", "downsell")
+                  .eq("status", "pending")
+                  .select("id")
+                
+                console.log(`[DOWNSELL PIX PACK] Cancelled ${cancelledNormalDownsellsPack?.length || 0} normal downsells`)
+                
+                // 2. AGENDAR downsells de PIX gerado
+                const downsellPixConfigPack = flowConfig.downsellPix as {
+                  enabled?: boolean
+                  sequences?: Array<{
+                    id: string; message: string; medias?: string[]; sendDelayValue?: number; sendDelayUnit?: string;
+                    plans?: Array<{ id: string; buttonText: string; price: number }>; useDefaultPlans?: boolean; discountPercent?: number; showPriceInButton?: boolean
+                  }>
+                } | undefined
+                
+                if (downsellPixConfigPack?.enabled && downsellPixConfigPack.sequences && downsellPixConfigPack.sequences.length > 0) {
+                  const now = new Date()
+                  
+                  const { data: mainFlowPlansPack } = await supabase
+                    .from("flow_plans").select("id, name, price").eq("flow_id", flowForPack.id).eq("is_active", true).order("position", { ascending: true })
+                  
+                  let defaultPlansPack = mainFlowPlansPack || []
+                  if (defaultPlansPack.length === 0) {
+                    const configPlansPack = (flowConfig.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+                    defaultPlansPack = configPlansPack.filter(p => p.active !== false).map(p => ({ id: p.id, name: p.name, price: p.price }))
+                  }
+                  
+                  for (const seq of downsellPixConfigPack.sequences) {
+                    let delayMinutes = seq.sendDelayValue || 1
+                    if (seq.sendDelayUnit === "hours") delayMinutes = (seq.sendDelayValue || 1) * 60
+                    else if (seq.sendDelayUnit === "days") delayMinutes = (seq.sendDelayValue || 1) * 60 * 24
+                    
+                    const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
+                    
+                    let plansToUsePack: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
+                    const useDefaultPlans = seq.useDefaultPlans !== false
+                    const discountPercent = seq.discountPercent || 20
+                    
+                    if (useDefaultPlans && defaultPlansPack.length > 0) {
+                      plansToUsePack = defaultPlansPack.map(plan => ({
+                        id: plan.id, buttonText: plan.name, name: plan.name, price: Math.round(plan.price * (1 - discountPercent / 100) * 100) / 100
+                      }))
+                    } else {
+                      plansToUsePack = seq.plans || []
+                    }
+                    
+                    await supabaseAdminPack.from("scheduled_messages").insert({
+                      bot_id: botUuid, flow_id: flowForPack.id, telegram_user_id: String(telegramUserId), telegram_chat_id: String(chatId),
+                      message_type: "downsell", sequence_id: seq.id, sequence_index: downsellPixConfigPack.sequences.indexOf(seq),
+                      scheduled_for: scheduledFor.toISOString(), status: "pending",
+                      metadata: {
+                        message: seq.message, medias: seq.medias || [], plans: plansToUsePack, botToken: botToken,
+                        showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
+                        source: "pix_generated"
+                      }
+                    })
+                    console.log(`[DOWNSELL PIX PACK] Agendado para ${scheduledFor.toISOString()}`)
+                  }
+                }
+              }
+              // ========== FIM DOWNSELL PIX GERADO (PACK) ==========
             } else {
               console.error("[v0] Erro PIX Pack:", pixData)
               await sendTelegramMessage(botToken, chatId, "Erro ao gerar pagamento. Tente novamente.")
@@ -2175,6 +2248,80 @@ Escaneie o QR Code ou copie o codigo abaixo:
           } else {
             console.log("[v0] OB payment saved successfully - bot_id:", botUuid, "user_id:", ownerUserId, "amount:", totalAmount, "product_type:", productType)
           }
+
+          // ========== DOWNSELL PIX GERADO (ORDER BUMP) ==========
+          // Cancelar downsells normais e agendar downsells de PIX gerado
+          if (flowIdForPayment) {
+            const supabaseAdminOB = getSupabaseAdmin()
+            
+            // 1. CANCELAR downsells normais
+            const { data: cancelledNormalDownsellsOB } = await supabaseAdminOB
+              .from("scheduled_messages")
+              .update({ status: "cancelled" })
+              .eq("bot_id", botUuid)
+              .eq("telegram_user_id", String(telegramUserId))
+              .eq("flow_id", flowIdForPayment)
+              .eq("message_type", "downsell")
+              .eq("status", "pending")
+              .select("id")
+            
+            console.log(`[DOWNSELL PIX OB] Cancelled ${cancelledNormalDownsellsOB?.length || 0} normal downsells`)
+            
+            // 2. AGENDAR downsells de PIX gerado
+            const downsellPixConfigOB = flowConfigOB.downsellPix as {
+              enabled?: boolean
+              sequences?: Array<{
+                id: string; message: string; medias?: string[]; sendDelayValue?: number; sendDelayUnit?: string;
+                plans?: Array<{ id: string; buttonText: string; price: number }>; useDefaultPlans?: boolean; discountPercent?: number; showPriceInButton?: boolean
+              }>
+            } | undefined
+            
+            if (downsellPixConfigOB?.enabled && downsellPixConfigOB.sequences && downsellPixConfigOB.sequences.length > 0) {
+              const now = new Date()
+              
+              const { data: mainFlowPlansOB } = await supabase
+                .from("flow_plans").select("id, name, price").eq("flow_id", flowIdForPayment).eq("is_active", true).order("position", { ascending: true })
+              
+              let defaultPlansOB = mainFlowPlansOB || []
+              if (defaultPlansOB.length === 0) {
+                const configPlansOB = (flowConfigOB.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+                defaultPlansOB = configPlansOB.filter(p => p.active !== false).map(p => ({ id: p.id, name: p.name, price: p.price }))
+              }
+              
+              for (const seq of downsellPixConfigOB.sequences) {
+                let delayMinutes = seq.sendDelayValue || 1
+                if (seq.sendDelayUnit === "hours") delayMinutes = (seq.sendDelayValue || 1) * 60
+                else if (seq.sendDelayUnit === "days") delayMinutes = (seq.sendDelayValue || 1) * 60 * 24
+                
+                const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
+                
+                let plansToUseOB: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
+                const useDefaultPlans = seq.useDefaultPlans !== false
+                const discountPercent = seq.discountPercent || 20
+                
+                if (useDefaultPlans && defaultPlansOB.length > 0) {
+                  plansToUseOB = defaultPlansOB.map(plan => ({
+                    id: plan.id, buttonText: plan.name, name: plan.name, price: Math.round(plan.price * (1 - discountPercent / 100) * 100) / 100
+                  }))
+                } else {
+                  plansToUseOB = seq.plans || []
+                }
+                
+                await supabaseAdminOB.from("scheduled_messages").insert({
+                  bot_id: botUuid, flow_id: flowIdForPayment, telegram_user_id: String(telegramUserId), telegram_chat_id: String(chatId),
+                  message_type: "downsell", sequence_id: seq.id, sequence_index: downsellPixConfigOB.sequences.indexOf(seq),
+                  scheduled_for: scheduledFor.toISOString(), status: "pending",
+                  metadata: {
+                    message: seq.message, medias: seq.medias || [], plans: plansToUseOB, botToken: botToken,
+                    showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
+                    source: "pix_generated"
+                  }
+                })
+                console.log(`[DOWNSELL PIX OB] Agendado para ${scheduledFor.toISOString()}`)
+              }
+            }
+          }
+          // ========== FIM DOWNSELL PIX GERADO (ORDER BUMP) ==========
 
         } catch (pixError) {
           console.error("[v0] Erro ao gerar PIX para Order Bump:", pixError)
@@ -3450,9 +3597,143 @@ Escaneie o QR Code ou copie o codigo abaixo:
             userName: userFirstName || "Cliente"
           })
 
-          // DOWNSELLS DO TIPO "PIX" (para quem gerou pix mas nao pagou)
-          // Buscar flow para pegar config de downsell
-          // Downsell agora e processado apenas no /start (nao mais no pix gerado)
+          // ========== DOWNSELL PIX GERADO ==========
+          // Quando PIX é gerado:
+          // 1. Cancelar downsells NORMAIS (que foram agendados no /start)
+          // 2. Agendar downsells de PIX GERADO (downsellPix)
+          
+          const supabaseAdmin = getSupabaseAdmin()
+          const flowForDownsell = flowPlan
+          const flowConfigDs = flowConfigPlan
+          
+          if (flowForDownsell?.id) {
+            // 1. CANCELAR downsells normais para este usuario
+            const { data: cancelledNormalDownsells } = await supabaseAdmin
+              .from("scheduled_messages")
+              .update({ status: "cancelled" })
+              .eq("bot_id", botUuid)
+              .eq("telegram_user_id", String(telegramUserId))
+              .eq("flow_id", flowForDownsell.id)
+              .eq("message_type", "downsell")
+              .eq("status", "pending")
+              .select("id")
+            
+            console.log(`[DOWNSELL PIX] Cancelled ${cancelledNormalDownsells?.length || 0} normal downsells for user ${telegramUserId}`)
+            
+            // 2. AGENDAR downsells de PIX gerado (downsellPix)
+            const downsellPixConfig = flowConfigDs.downsellPix as {
+              enabled?: boolean
+              sequences?: Array<{
+                id: string
+                message: string
+                medias?: string[]
+                sendTiming?: string
+                sendDelayValue?: number
+                sendDelayUnit?: string
+                plans?: Array<{ id: string; buttonText: string; price: number }>
+                deliveryType?: string
+                deliverableId?: string
+                customDelivery?: string
+                useDefaultPlans?: boolean
+                discountPercent?: number
+                showPriceInButton?: boolean
+              }>
+            } | undefined
+            
+            if (downsellPixConfig?.enabled && downsellPixConfig.sequences && downsellPixConfig.sequences.length > 0) {
+              const now = new Date()
+              
+              // Buscar planos do flow principal (para usar quando useDefaultPlans = true)
+              const { data: mainFlowPlans } = await supabase
+                .from("flow_plans")
+                .select("id, name, price")
+                .eq("flow_id", flowForDownsell.id)
+                .eq("is_active", true)
+                .order("position", { ascending: true })
+              
+              // Fallback: se nao tem planos na tabela, pegar do config JSON
+              let defaultPlansToUse = mainFlowPlans || []
+              if (defaultPlansToUse.length === 0) {
+                const configPlans = (flowConfigDs.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+                defaultPlansToUse = configPlans.filter(p => p.active !== false).map(p => ({
+                  id: p.id,
+                  name: p.name,
+                  price: p.price
+                }))
+              }
+              
+              // Agendar cada sequencia de downsell PIX gerado
+              for (const seq of downsellPixConfig.sequences) {
+                // Calcular delay em minutos
+                let delayMinutes = seq.sendDelayValue || 1
+                if (seq.sendDelayUnit === "hours") delayMinutes = (seq.sendDelayValue || 1) * 60
+                else if (seq.sendDelayUnit === "days") delayMinutes = (seq.sendDelayValue || 1) * 60 * 24
+                
+                // Calcular horario exato para envio
+                const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
+                
+                // Determinar quais planos usar
+                let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
+                const useDefaultPlans = seq.useDefaultPlans !== false
+                const discountPercent = seq.discountPercent || 20
+                
+                if (useDefaultPlans && defaultPlansToUse && defaultPlansToUse.length > 0) {
+                  plansToUse = defaultPlansToUse.map(plan => {
+                    const discountedPrice = plan.price * (1 - discountPercent / 100)
+                    return {
+                      id: plan.id,
+                      buttonText: plan.name,
+                      name: plan.name,
+                      price: Math.round(discountedPrice * 100) / 100
+                    }
+                  })
+                  console.log(`[DOWNSELL PIX] Usando planos do fluxo principal com ${discountPercent}% desconto:`, JSON.stringify(plansToUse))
+                } else {
+                  plansToUse = seq.plans || []
+                  console.log(`[DOWNSELL PIX] Usando planos personalizados da sequencia:`, JSON.stringify(plansToUse))
+                }
+                
+                // Inserir na tabela scheduled_messages
+                console.log(`[DOWNSELL PIX] Agendando para ${scheduledFor.toISOString()} (delay: ${delayMinutes} min)`)
+                
+                const { error: insertError } = await supabaseAdmin.from("scheduled_messages").insert({
+                  bot_id: botUuid,
+                  flow_id: flowForDownsell.id,
+                  telegram_user_id: String(telegramUserId),
+                  telegram_chat_id: String(chatId),
+                  message_type: "downsell", // Usa o mesmo tipo para o cron processar igual
+                  sequence_id: seq.id,
+                  sequence_index: downsellPixConfig.sequences.indexOf(seq),
+                  scheduled_for: scheduledFor.toISOString(),
+                  status: "pending",
+                  metadata: {
+                    message: seq.message,
+                    medias: seq.medias || [],
+                    plans: plansToUse,
+                    deliveryType: seq.deliveryType,
+                    deliverableId: seq.deliverableId,
+                    customDelivery: seq.customDelivery,
+                    botToken: botToken,
+                    showPriceInButton: seq.showPriceInButton === true,
+                    userFirstName: userFirstName || "",
+                    userUsername: userUsername || "",
+                    useDefaultPlans: useDefaultPlans,
+                    discountPercent: useDefaultPlans ? discountPercent : undefined,
+                    source: "pix_generated" // Identificar que veio do PIX gerado
+                  }
+                })
+                
+                if (insertError) {
+                  console.error(`[DOWNSELL PIX] ERRO ao agendar: ${insertError.message}`)
+                } else {
+                  console.log(`[DOWNSELL PIX] Agendado com sucesso para user ${telegramUserId}`)
+                }
+              }
+              
+              console.log(`[DOWNSELL PIX] Total: ${downsellPixConfig.sequences.length} downsell(s) de PIX gerado agendados para user ${telegramUserId}`)
+            }
+          }
+          // ========== FIM DOWNSELL PIX GERADO ==========
 
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
