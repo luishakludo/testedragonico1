@@ -442,7 +442,6 @@ export default function FlowEditorPage() {
   const [hasChanges, setHasChanges] = useState(false)
   const [changeCount, setChangeCount] = useState(0)
   const [showSavedNotification, setShowSavedNotification] = useState(false)
-  const [isDiscarding, setIsDiscarding] = useState(false)
 
   // Edit name
   const [isEditingName, setIsEditingName] = useState(false)
@@ -2277,27 +2276,11 @@ const handleAddUpsellPlan = (seqId: string) => {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Contador de mudancas e botao desfazer */}
+              {/* Contador de mudancas */}
               {changeCount > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg">
-                    {changeCount} {changeCount === 1 ? 'mudanca' : 'mudancas'}
-                  </span>
-                  <button
-                    onClick={discardChanges}
-                    disabled={isDiscarding}
-                    className="text-xs text-neutral-500 hover:text-neutral-700 bg-neutral-100 hover:bg-neutral-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
-                  >
-                    {isDiscarding ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                      </svg>
-                    )}
-                    Desfazer
-                  </button>
-                </div>
+                <span className="text-xs text-neutral-500 bg-neutral-100 px-2.5 py-1 rounded-lg">
+                  {changeCount} {changeCount === 1 ? 'mudanca' : 'mudancas'}
+                </span>
               )}
               
               {/* Notificacao de salvo */}
