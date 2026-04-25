@@ -2517,9 +2517,18 @@ Escaneie o QR Code ou copie o codigo abaixo:
         }
 
         const msgMetadata = scheduledMsg?.metadata as Record<string, unknown> | null
-        const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number }>) || []
+        const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number; deliverableId?: string }>) || []
         const selectedPlan = plans[planIndex]
         const planName = selectedPlan?.buttonText || "Oferta Especial"
+        
+        // IMPORTANTE: Pegar deliverableId do plano especifico ou da sequencia
+        // Prioridade: 1) deliverableId do plano selecionado, 2) deliverableId da sequencia
+        const dsDeliverableId = selectedPlan?.deliverableId || (msgMetadata?.deliverableId as string) || ""
+        const dsDeliveryType = (msgMetadata?.deliveryType as string) || "global"
+        const dsSequenceId = scheduledMsg?.sequence_id || ""
+        const dsSequenceIndex = scheduledMsg?.sequence_index ?? 0
+        
+        console.log(`[v0] Downsell: deliverableId=${dsDeliverableId}, deliveryType=${dsDeliveryType}, sequenceId=${dsSequenceId}`)
 
         // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
@@ -2631,10 +2640,12 @@ Escaneie o QR Code ou copie o codigo abaixo:
           }
 
           // Salvar pagamento do downsell (igual ao plano normal - SEM flow_id para evitar problema de FK)
-          console.log("[v0] Saving downsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: downsell", "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "external_payment_id:", pixResult.paymentId)
+          // IMPORTANTE: Salvar deliverableId, sequenceId e deliveryType no metadata para a entrega correta
+          console.log("[v0] Saving downsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: downsell", "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "external_payment_id:", pixResult.paymentId, "deliverableId:", dsDeliverableId, "deliveryType:", dsDeliveryType)
           const { data: savedDsPayment, error: dsPaymentError } = await supabase.from("payments").insert({
             user_id: botOwner.user_id,
             bot_id: botUuid,
+            flow_id: flowId || null, // Adicionar flow_id para referencia
             telegram_user_id: String(telegramUserId),
             telegram_username: userUsername || null,
             telegram_first_name: userFirstName || null,
@@ -2651,6 +2662,15 @@ Escaneie o QR Code ou copie o codigo abaixo:
             qr_code_url: pixResult.qrCodeUrl,
             copy_paste: pixResult.copyPaste,
             pix_code: pixResult.copyPaste || pixResult.qrCode,
+            // METADATA: Salvar info do entregavel especifico do downsell
+            metadata: {
+              deliverable_id: dsDeliverableId,
+              delivery_type: dsDeliveryType,
+              sequence_id: dsSequenceId,
+              sequence_index: dsSequenceIndex,
+              plan_index: planIndex,
+              plan_id: selectedPlan?.id || "",
+            },
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }).select().single()
