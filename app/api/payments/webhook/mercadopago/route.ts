@@ -1446,57 +1446,27 @@ export async function POST(request: NextRequest) {
                     )
                   }
                   
-                  // 7. Enviar entrega - PRIORIDADE: usar deliverableId do metadata do pagamento
-                  // O metadata foi salvo quando o PIX do downsell foi gerado, com o deliverableId correto
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const dsPaymentMetadata = payment.metadata as Record<string, any> | null
+                  // 7. Enviar entrega - verificar se downsell tem entregavel especifico ou usa o global
+                  // Buscar a sequencia de downsell que foi comprada (pelo preco ou metadata)
+                  const dsSequences = dsConfig?.sequences || []
                   let dsDeliverableId: string | undefined = undefined
                   
-                  // PRIORIDADE 1: Usar deliverable_id salvo no metadata do pagamento (mais confiavel)
-                  if (dsPaymentMetadata?.deliverable_id && dsPaymentMetadata.deliverable_id !== "") {
-                    dsDeliverableId = dsPaymentMetadata.deliverable_id
-                    console.log(`[DOWNSELL] Usando deliverable_id do METADATA do pagamento: ${dsDeliverableId}`)
-                  } else {
-                    // FALLBACK: Tentar encontrar a sequencia pelo sequence_id ou preco
-                    const dsSequences = dsConfig?.sequences || []
-                    const dsSequenceId = dsPaymentMetadata?.sequence_id
-                    
-                    // Tentar pelo sequence_id primeiro
-                    if (dsSequenceId) {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const matchingSeq = dsSequences.find((seq: any) => seq.id === dsSequenceId)
-                      if (matchingSeq?.deliveryType === "custom" && matchingSeq?.deliverableId) {
-                        dsDeliverableId = matchingSeq.deliverableId
-                        console.log(`[DOWNSELL] Encontrado deliverableId pelo sequence_id "${dsSequenceId}": ${dsDeliverableId}`)
-                      }
-                    }
-                    
-                    // Se ainda nao encontrou, tentar pelo preco (fallback antigo)
-                    if (!dsDeliverableId) {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      for (const seq of dsSequences as any[]) {
-                        const seqPlans = seq.plans || []
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        for (const plan of seqPlans as any[]) {
-                          if (Math.abs(plan.price - payment.amount) < 0.01) {
-                            // Encontrou o plano que foi comprado
-                            // Prioridade: deliverableId do plano > deliverableId da sequencia
-                            if (plan.deliverableId) {
-                              dsDeliverableId = plan.deliverableId
-                              console.log(`[DOWNSELL] Encontrado deliverableId do PLANO pelo preco: ${dsDeliverableId}`)
-                            } else if (seq.deliveryType === "custom" && seq.deliverableId) {
-                              dsDeliverableId = seq.deliverableId
-                              console.log(`[DOWNSELL] Encontrado deliverableId da SEQUENCIA pelo preco: ${dsDeliverableId}`)
-                            }
-                            break
-                          }
+                  // Tentar encontrar a sequencia que corresponde ao preco pago
+                  for (const seq of dsSequences) {
+                    const seqPlans = seq.plans || []
+                    for (const plan of seqPlans) {
+                      if (Math.abs(plan.price - payment.amount) < 0.01) {
+                        // Encontrou o plano que foi comprado
+                        if (seq.deliveryType === "custom" && seq.deliverableId) {
+                          dsDeliverableId = seq.deliverableId
                         }
-                        if (dsDeliverableId) break
+                        break
                       }
                     }
+                    if (dsDeliverableId) break
                   }
                   
-                  console.log(`[DOWNSELL] Sending delivery (deliverableId: ${dsDeliverableId || "main/global"}, deliveryType: ${dsPaymentMetadata?.delivery_type || "global"})`)
+                  console.log(`[DOWNSELL] Sending delivery (deliverableId: ${dsDeliverableId || "main/global"})`)
                   await sendDelivery(supabase, bot.token, chatId, dsFlowConfig, dsDeliverableId)
                   
                   // 8. Marcar usuario como VIP
