@@ -592,15 +592,6 @@ Voce ja tem acesso ao conteudo!`)
     setChangeCount(prev => prev + 1)
   }, [])
 
-  // Discard all unsaved changes by reloading from database
-  const discardChanges = useCallback(async () => {
-    setIsDiscarding(true)
-    await fetchFlow()
-    setHasChanges(false)
-    setChangeCount(0)
-    setIsDiscarding(false)
-  }, [fetchFlow])
-
   // Insert variable at cursor position
   const insertVariable = (variable: string, textareaRef: React.RefObject<HTMLTextAreaElement | null>, setValue: (value: string) => void, currentValue: string) => {
     const textarea = textareaRef.current
