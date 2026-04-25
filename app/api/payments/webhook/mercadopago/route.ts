@@ -739,12 +739,25 @@ export async function POST(request: NextRequest) {
                   const upsellSequences = upsellConfig?.sequences || []
                   
                   // Buscar planos do flow principal (para usar quando useDefaultPlans = true no upsell)
-                  const { data: mainFlowPlansForUpsell } = await supabase
+                  // Primeiro tenta da tabela flow_plans, se vazio usa o config JSON
+                  const { data: mainFlowPlansForUpsellDb } = await supabase
                     .from("flow_plans")
                     .select("id, name, price")
                     .eq("flow_id", flowId)
                     .eq("is_active", true)
                     .order("position", { ascending: true })
+
+                  // Fallback: se nao tem planos na tabela, pegar do config JSON (planos legados)
+                  let mainFlowPlansForUpsell = mainFlowPlansForUpsellDb || []
+                  if (mainFlowPlansForUpsell.length === 0) {
+                    const configPlans = (flowConfig?.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+                    mainFlowPlansForUpsell = configPlans.filter(p => p.active !== false).map(p => ({
+                      id: p.id,
+                      name: p.name,
+                      price: p.price
+                    }))
+                    console.log(`[UPSELL] Usando planos do config JSON (fallback):`, JSON.stringify(mainFlowPlansForUpsell))
+                  }
                   const paymentMessages = flowConfig?.paymentMessages as {
                     approvedMessage?: string
                     approvedMedias?: string[]
