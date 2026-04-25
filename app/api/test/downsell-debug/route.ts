@@ -1,209 +1,202 @@
 import { NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/supabase"
 
-export async function GET() {
+// API de debug para verificar o estado completo do downsell
+// GET /api/test/downsell-debug?flowId=206cbb10-efeb-4f59-a153-9c9d420b4e84
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const flowId = searchParams.get("flowId") || "206cbb10-efeb-4f59-a153-9c9d420b4e84"
+  
   const supabase = getSupabaseAdmin()
   
-  const results: Record<string, unknown> = {
+  const debug: Record<string, unknown> = {
+    flowId,
     timestamp: new Date().toISOString(),
-    tests: []
   }
-
+  
   try {
-    // 1. Buscar todos os bots ativos
-    const { data: bots, error: botsError } = await supabase
-      .from("bots")
-      .select("id, name, telegram_bot_id, user_id, is_active")
-      .eq("is_active", true)
-      .limit(10)
-
-    if (botsError) {
-      return NextResponse.json({ error: "Erro ao buscar bots", details: botsError.message })
+    // 1. Buscar o flow e sua config de downsell
+    const { data: flow, error: flowError } = await supabase
+      .from("flows")
+      .select("id, name, config, status")
+      .eq("id", flowId)
+      .single()
+    
+    if (flowError) {
+      debug.flowError = flowError.message
+    } else {
+      const config = flow?.config as Record<string, unknown> || {}
+      debug.flow = {
+        id: flow?.id,
+        name: flow?.name,
+        status: flow?.status,
+        hasDownsellConfig: !!config.downsell,
+        downsellEnabled: (config.downsell as Record<string, unknown>)?.enabled,
+        downsellSequences: ((config.downsell as Record<string, unknown>)?.sequences as unknown[])?.length || 0,
+      }
+      debug.downsellConfigFull = config.downsell
     }
-
-    if (!bots || bots.length === 0) {
-      return NextResponse.json({ error: "Nenhum bot ativo encontrado" })
+    
+    // 2. Buscar planos do fluxo na tabela flow_plans
+    const { data: flowPlans, error: plansError } = await supabase
+      .from("flow_plans")
+      .select("id, name, price, position, is_active")
+      .eq("flow_id", flowId)
+      .order("position", { ascending: true })
+    
+    if (plansError) {
+      debug.flowPlansError = plansError.message
+    } else {
+      debug.flowPlans = flowPlans || []
+      debug.flowPlansCount = flowPlans?.length || 0
     }
-
-    results.total_bots = bots.length
-
-    // 2. Para cada bot, verificar tudo
-    for (const bot of bots) {
-      const botTest: Record<string, unknown> = {
-        bot_id: bot.id,
-        bot_name: bot.name,
-        telegram_bot_id: bot.telegram_bot_id,
-        user_id: bot.user_id,
-        checks: {}
-      }
-
-      // Check 1: Gateway do usuario
-      const { data: gateway, error: gatewayError } = await supabase
-        .from("user_gateways")
-        .select("id, gateway_name, is_active, access_token")
-        .eq("user_id", bot.user_id)
-        .eq("is_active", true)
-        .limit(1)
-        .single()
-
-      botTest.checks = {
-        ...botTest.checks as object,
-        gateway: {
-          found: !!gateway,
-          error: gatewayError?.message || null,
-          gateway_name: gateway?.gateway_name || null,
-          has_access_token: !!gateway?.access_token,
-          is_active: gateway?.is_active || false
-        }
-      }
-
-      // Check 2: Flow vinculado
-      const { data: directFlow } = await supabase
-        .from("flows")
-        .select("id, name")
-        .eq("bot_id", bot.id)
-        .limit(1)
-        .single()
-
-      let flowId = directFlow?.id || null
-      let flowName = directFlow?.name || null
-
-      if (!flowId) {
-        const { data: flowBot } = await supabase
-          .from("flow_bots")
-          .select("flow_id, flows(id, name)")
-          .eq("bot_id", bot.id)
-          .limit(1)
-          .single()
-
-        if (flowBot) {
-          flowId = flowBot.flow_id
-          flowName = (flowBot.flows as { name?: string })?.name || null
-        }
-      }
-
-      botTest.checks = {
-        ...botTest.checks as object,
-        flow: {
-          found: !!flowId,
-          flow_id: flowId,
-          flow_name: flowName
-        }
-      }
-
-      // Check 3: Pagamentos existentes deste bot
-      const { data: allPayments, error: paymentsError } = await supabase
-        .from("payments")
-        .select("id, product_type, status, amount, created_at")
-        .eq("bot_id", bot.id)
-        .order("created_at", { ascending: false })
-        .limit(10)
-
-      const downsellPayments = allPayments?.filter(p => p.product_type === "downsell") || []
-      const otherPayments = allPayments?.filter(p => p.product_type !== "downsell") || []
-
-      botTest.checks = {
-        ...botTest.checks as object,
-        payments: {
-          error: paymentsError?.message || null,
-          total: allPayments?.length || 0,
-          downsell_count: downsellPayments.length,
-          other_count: otherPayments.length,
-          downsell_payments: downsellPayments,
-          other_payments: otherPayments.slice(0, 3) // Apenas 3 para comparar
-        }
-      }
-
-      // Check 4: Comparar campos de um pagamento normal vs downsell
-      if (otherPayments.length > 0 && downsellPayments.length > 0) {
-        const { data: normalPaymentFull } = await supabase
-          .from("payments")
-          .select("*")
-          .eq("id", otherPayments[0].id)
-          .single()
-
-        const { data: downsellPaymentFull } = await supabase
-          .from("payments")
-          .select("*")
-          .eq("id", downsellPayments[0].id)
-          .single()
-
-        if (normalPaymentFull && downsellPaymentFull) {
-          const differences: Record<string, { normal: unknown; downsell: unknown }> = {}
-          
-          for (const key of Object.keys(normalPaymentFull)) {
-            if (key === "id" || key === "created_at" || key === "updated_at" || key === "external_payment_id") continue
-            
-            const normalVal = normalPaymentFull[key]
-            const downsellVal = downsellPaymentFull[key]
-            
-            // Verificar se o campo esta null/undefined no downsell mas preenchido no normal
-            if ((normalVal !== null && normalVal !== undefined) && (downsellVal === null || downsellVal === undefined)) {
-              differences[key] = { normal: normalVal, downsell: downsellVal }
-            }
-          }
-
-          botTest.checks = {
-            ...botTest.checks as object,
-            field_comparison: {
-              normal_payment_id: normalPaymentFull.id,
-              downsell_payment_id: downsellPaymentFull.id,
-              missing_in_downsell: differences,
-              normal_user_id: normalPaymentFull.user_id,
-              downsell_user_id: downsellPaymentFull.user_id,
-              user_id_match: normalPaymentFull.user_id === downsellPaymentFull.user_id
-            }
-          }
-        }
-      }
-
-      // Check 5: Scheduled messages de downsell
-      const { data: scheduledMsgs } = await supabase
-        .from("scheduled_messages")
-        .select("id, message_type, status, created_at")
-        .eq("bot_id", bot.id)
-        .eq("message_type", "downsell")
-        .order("created_at", { ascending: false })
-        .limit(5)
-
-      botTest.checks = {
-        ...botTest.checks as object,
-        scheduled_downsells: {
-          count: scheduledMsgs?.length || 0,
-          messages: scheduledMsgs || []
-        }
-      }
-
-      ;(results.tests as unknown[]).push(botTest)
-    }
-
-    // 3. Buscar todos os pagamentos downsell do sistema
-    const { data: allDownsells } = await supabase
-      .from("payments")
-      .select("id, bot_id, user_id, amount, status, product_type, created_at")
-      .eq("product_type", "downsell")
+    
+    // 3. Buscar planos do JSON config (legado)
+    const config = flow?.config as Record<string, unknown> || {}
+    const welcomeConfig = config.welcome as Record<string, unknown> || {}
+    const plansFromConfig = welcomeConfig.plans as unknown[] || []
+    debug.plansFromConfigJson = plansFromConfig
+    debug.plansFromConfigJsonCount = plansFromConfig.length
+    
+    // 4. Buscar mensagens agendadas deste fluxo (ultimas 10)
+    const { data: scheduledMessages, error: scheduledError } = await supabase
+      .from("scheduled_messages")
+      .select("*")
+      .eq("flow_id", flowId)
       .order("created_at", { ascending: false })
-      .limit(20)
-
-    results.all_downsell_payments = {
-      count: allDownsells?.length || 0,
-      payments: allDownsells || []
+      .limit(10)
+    
+    if (scheduledError) {
+      debug.scheduledMessagesError = scheduledError.message
+    } else {
+      debug.scheduledMessages = scheduledMessages?.map(msg => ({
+        id: msg.id,
+        status: msg.status,
+        message_type: msg.message_type,
+        sequence_id: msg.sequence_id,
+        scheduled_for: msg.scheduled_for,
+        sent_at: msg.sent_at,
+        created_at: msg.created_at,
+        telegram_user_id: msg.telegram_user_id,
+        telegram_chat_id: msg.telegram_chat_id,
+        // IMPORTANTE: O que ta salvo no metadata
+        metadata_plans: (msg.metadata as Record<string, unknown>)?.plans,
+        metadata_plans_count: ((msg.metadata as Record<string, unknown>)?.plans as unknown[])?.length || 0,
+        metadata_message: (msg.metadata as Record<string, unknown>)?.message,
+        metadata_medias: (msg.metadata as Record<string, unknown>)?.medias,
+        metadata_useDefaultPlans: (msg.metadata as Record<string, unknown>)?.useDefaultPlans,
+        metadata_discountPercent: (msg.metadata as Record<string, unknown>)?.discountPercent,
+        metadata_showPriceInButton: (msg.metadata as Record<string, unknown>)?.showPriceInButton,
+        error_message: msg.error_message,
+      })) || []
+      debug.scheduledMessagesCount = scheduledMessages?.length || 0
     }
-
-    // 4. Buscar todos os product_types distintos
-    const { data: productTypes } = await supabase
-      .from("payments")
-      .select("product_type")
-      .limit(1000)
-
-    const uniqueTypes = [...new Set(productTypes?.map(p => p.product_type) || [])]
-    results.all_product_types = uniqueTypes
-
-    return NextResponse.json(results, { status: 200 })
-  } catch (err) {
+    
+    // 5. Verificar se existe algum bot vinculado a este fluxo
+    const { data: flowBots, error: flowBotsError } = await supabase
+      .from("flow_bots")
+      .select("bot_id, bots(id, name, token)")
+      .eq("flow_id", flowId)
+    
+    if (flowBotsError) {
+      debug.flowBotsError = flowBotsError.message
+    } else {
+      debug.flowBots = flowBots?.map(fb => ({
+        bot_id: fb.bot_id,
+        bot_name: (fb.bots as Record<string, unknown>)?.name,
+        has_token: !!(fb.bots as Record<string, unknown>)?.token,
+      })) || []
+    }
+    
+    // 6. Analise do problema
+    const problems: string[] = []
+    const warnings: string[] = []
+    
+    // Verificar se flow existe
+    if (!flow) {
+      problems.push("CRITICO: Flow nao encontrado no banco de dados")
+    }
+    
+    // Verificar se downsell esta habilitado
+    const downsell = config.downsell as Record<string, unknown> | undefined
+    if (!downsell?.enabled) {
+      problems.push("Downsell NAO esta habilitado no flow config")
+    }
+    
+    // Verificar se tem sequencias de downsell
+    const sequences = (downsell?.sequences as unknown[]) || []
+    if (sequences.length === 0) {
+      problems.push("Nenhuma sequencia de downsell configurada")
+    }
+    
+    // Verificar se tem planos na tabela flow_plans
+    if (!flowPlans || flowPlans.length === 0) {
+      problems.push("PROBLEMA PRINCIPAL: Nenhum plano encontrado na tabela flow_plans!")
+      problems.push("-> A opcao 'Usar planos do Boas-Vindas' (useDefaultPlans=true) busca planos DESTA tabela")
+      problems.push("-> Os planos precisam ser salvos na tabela flow_plans para aparecerem no downsell")
+      
+      if (plansFromConfig.length > 0) {
+        warnings.push(`Existem ${plansFromConfig.length} planos no JSON config, mas NAO na tabela flow_plans`)
+        warnings.push("-> O sistema usa a tabela flow_plans, nao o JSON config")
+      }
+    }
+    
+    // Verificar mensagens agendadas
+    if (scheduledMessages && scheduledMessages.length > 0) {
+      const lastMsg = scheduledMessages[0]
+      const metadata = lastMsg.metadata as Record<string, unknown>
+      if (!metadata?.plans || (metadata.plans as unknown[]).length === 0) {
+        problems.push("Mensagens agendadas estao SEM planos no metadata!")
+        problems.push("-> Isso significa que os botoes NAO vao aparecer no Telegram")
+        problems.push("-> Causa provavel: flow_plans estava vazio quando o downsell foi agendado")
+      } else {
+        const plans = metadata.plans as unknown[]
+        debug.lastScheduledMsgPlansDetail = plans
+      }
+    } else {
+      warnings.push("Nenhuma mensagem agendada encontrada para este fluxo")
+    }
+    
+    // Verificar se sequences tem useDefaultPlans
+    for (let i = 0; i < sequences.length; i++) {
+      const seq = sequences[i] as Record<string, unknown>
+      if (seq.useDefaultPlans === false && (!seq.plans || (seq.plans as unknown[]).length === 0)) {
+        warnings.push(`Sequencia ${i}: useDefaultPlans=false mas nenhum plano personalizado configurado`)
+      }
+    }
+    
+    debug.problems = problems
+    debug.problemsCount = problems.length
+    debug.warnings = warnings
+    debug.warningsCount = warnings.length
+    
+    // Conclusao
+    if (problems.length === 0) {
+      debug.conclusion = "Tudo parece estar configurado corretamente. O downsell deveria funcionar."
+    } else {
+      debug.conclusion = "Problemas encontrados! Veja a lista de 'problems' acima."
+      
+      // Sugestao de correcao
+      if (!flowPlans || flowPlans.length === 0) {
+        debug.howToFix = [
+          "1. Va na aba 'Planos' do seu fluxo",
+          "2. Adicione os planos (nome, preco)",
+          "3. Salve os planos",
+          "4. Os planos serao salvos na tabela flow_plans",
+          "5. Agora o downsell vai conseguir buscar os planos automaticamente",
+          "OU",
+          "Se os planos ja existem na interface mas nao na tabela flow_plans, pode haver um bug no salvamento."
+        ]
+      }
+    }
+    
+    return NextResponse.json(debug, { status: 200 })
+    
+  } catch (error) {
     return NextResponse.json({
-      error: "Erro interno",
-      message: err instanceof Error ? err.message : String(err)
+      error: "Erro ao debugar downsell",
+      details: error instanceof Error ? error.message : "Unknown error",
     }, { status: 500 })
   }
 }
