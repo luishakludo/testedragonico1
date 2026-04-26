@@ -803,6 +803,71 @@ export async function GET(request: Request) {
     })
 
     // =========================================================================
+    // ETAPA 9.5: SIMULACAO PIOR CASO - QUANDO scheduledMsg NAO E ENCONTRADA
+    // =========================================================================
+    // Este e o cenario real que estava acontecendo - o shortMsgId nao bate
+    // e a scheduledMsg nao e encontrada, entao precisamos do fallback final
+    
+    let piorCasoDeliverableId = ""
+    let piorCasoDeliveryType = ""
+    let piorCasoStatus = "ERRO"
+    let piorCasoEntregavel = "NENHUM"
+    let piorCasoMetodo = "NENHUM"
+    
+    // Simular o fallback final (buscar direto do fluxo)
+    // Todas as sequencias do fluxo
+    const allSeqsFallback = [
+      ...sequences,
+      ...(downsellPixConfig?.sequences || [])
+    ]
+    
+    if (allSeqsFallback.length === 1 && allSeqsFallback[0].deliverableId) {
+      // Caso 1: So tem 1 sequencia - usar essa
+      piorCasoDeliverableId = allSeqsFallback[0].deliverableId
+      piorCasoDeliveryType = allSeqsFallback[0].deliveryType || "custom"
+      piorCasoMetodo = "UNICA_SEQUENCIA"
+    } else if (allSeqsFallback.length > 1) {
+      // Caso 2: Tem mais de 1, usar primeira com entregavel customizado
+      const firstWithDeliverable = allSeqsFallback.find(s => s.deliveryType === "custom" && s.deliverableId)
+      if (firstWithDeliverable) {
+        piorCasoDeliverableId = firstWithDeliverable.deliverableId!
+        piorCasoDeliveryType = firstWithDeliverable.deliveryType!
+        piorCasoMetodo = "PRIMEIRA_COM_ENTREGAVEL_CUSTOMIZADO"
+      }
+    }
+    
+    // Determinar resultado
+    if (piorCasoDeliveryType === "custom" && piorCasoDeliverableId) {
+      const deliv = deliverables.find(d => d.id === piorCasoDeliverableId)
+      piorCasoEntregavel = deliv ? `${deliv.name} (${deliv.type})` : `ID: ${piorCasoDeliverableId}`
+      piorCasoStatus = "OK"
+    } else if (piorCasoDeliveryType === "none") {
+      piorCasoEntregavel = "NENHUM (configurado assim)"
+      piorCasoStatus = "OK"
+    } else {
+      piorCasoStatus = "ERRO - FALLBACK NAO ENCONTROU ENTREGAVEL"
+    }
+    
+    resultado.etapas.push({
+      etapa: 9.5,
+      nome: "SIMULACAO_PIOR_CASO",
+      status: piorCasoStatus.startsWith("OK") ? "OK" : "ERRO",
+      dados: {
+        titulo: "PIOR CASO: SE A SCHEDULED_MESSAGE NAO FOR ENCONTRADA",
+        descricao: "Simula o que acontece quando o shortMsgId nao bate e a scheduledMsg nao e encontrada. Este e o novo fallback que foi adicionado.",
+        cenario: "Usuario clica no botao mas a scheduled_message original nao e encontrada pelo ID",
+        total_sequencias_no_fluxo: allSeqsFallback.length,
+        metodo_usado: piorCasoMetodo,
+        resultado: {
+          deliverableId: piorCasoDeliverableId || "NENHUM",
+          deliveryType: piorCasoDeliveryType || "NENHUM",
+          entregavel_que_seria_enviado: piorCasoEntregavel
+        },
+        veredicto: piorCasoStatus
+      }
+    })
+
+    // =========================================================================
     // ETAPA 10: DIAGNOSTICO - COMPARAR SCHEDULED_MESSAGE COM PAGAMENTO
     // =========================================================================
     // Encontrar um pagamento recente e a scheduled_message correspondente
@@ -817,7 +882,7 @@ export async function GET(request: Request) {
       const seqConfig = sequences[seqIndex] as { id: string; deliveryType?: string; deliverableId?: string } | undefined
       
       resultado.etapas.push({
-        etapa: 10,
+        etapa: 10.5,
         nome: "DIAGNOSTICO_PAGAMENTO_VS_SEQUENCIA",
         status: pagMeta.downsell_deliverable_id ? "OK" : "PROBLEMA",
         dados: {
