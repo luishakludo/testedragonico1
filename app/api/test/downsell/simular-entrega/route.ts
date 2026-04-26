@@ -264,16 +264,30 @@ export async function GET(request: Request) {
     // 4. Enviar a entrega real para o Telegram
     const chatIdNum = parseInt(chatId, 10)
     
+    // Primeiro, enviar uma mensagem de teste para verificar se o bot funciona
+    const testeMsg = await sendTelegramMessage(botToken, chatIdNum, "[TESTE] Simulando pagamento de downsell aprovado...")
+    
+    resultado.etapas.push({
+      nome: "TESTE_CONEXAO_TELEGRAM",
+      status: testeMsg.ok ? "OK" : "ERRO",
+      dados: {
+        chat_id: chatIdNum,
+        bot_token_inicio: botToken.substring(0, 10) + "...",
+        resposta_telegram: testeMsg
+      }
+    })
+    
     if (entregavelEscolhido) {
-      await sendDeliverable(botToken, chatIdNum, entregavelEscolhido)
+      const envioResult = await sendDeliverableWithResult(botToken, chatIdNum, entregavelEscolhido)
       
       resultado.etapas.push({
         nome: "ENVIAR_ENTREGAVEL",
-        status: "ENVIADO",
+        status: envioResult.ok ? "ENVIADO" : "ERRO",
         dados: {
           chat_id: chatIdNum,
           entregavel_enviado: entregavelEscolhido.name,
-          tipo: entregavelEscolhido.type
+          tipo: entregavelEscolhido.type,
+          resposta_telegram: envioResult
         }
       })
       
