@@ -4180,8 +4180,10 @@ Escaneie o QR Code ou copie o codigo abaixo:
               console.error(`[DOWNSELL] ERRO ao agendar: ${insertError.message}`)
             } else {
               console.log(`[DOWNSELL] Agendado com sucesso para user ${telegramUserId}`)
-              console.log(`[DOWNSELL] Planos salvos: ${JSON.stringify(seq.plans || [])}`)
-              console.log(`[DOWNSELL] Medias salvas: ${JSON.stringify(seq.medias || [])}`)
+              console.log(`[DOWNSELL] sequence_id salvo: ${seq.id}`)
+              console.log(`[DOWNSELL] deliveryType salvo: ${seq.deliveryType || "NAO DEFINIDO"}`)
+              console.log(`[DOWNSELL] deliverableId salvo: ${seq.deliverableId || "NAO DEFINIDO"}`)
+              console.log(`[DOWNSELL] Planos salvos: ${JSON.stringify(plansToUse)}`)
             }
           }
 
