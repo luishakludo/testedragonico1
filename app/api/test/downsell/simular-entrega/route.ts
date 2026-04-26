@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
+// ---------------------------------------------------------------------------
+// SUPABASE DIRETO (mesmo do fluxo-completo)
+// ---------------------------------------------------------------------------
+const SUPABASE_URL = "https://izvulojnfvgsbmhyvqtn.supabase.co"
+const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dnVsb2puZnZnc2JtaHl2cXRuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzI1OTQ1MywiZXhwIjoyMDg4ODM1NDUzfQ.piDbcvfzUQd8orOFUn7vE1cZ5RXMBFXTd8vKqJRA-Hg"
+
+function getDb() {
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  })
+}
+
 const TELEGRAM_API = "https://api.telegram.org/bot"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,14 +142,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "flowId obrigatorio" }, { status: 400 })
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
-    return NextResponse.json({ error: "Supabase nao configurado" }, { status: 500 })
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  const supabase = getDb()
 
   const resultado: {
     sucesso: boolean
