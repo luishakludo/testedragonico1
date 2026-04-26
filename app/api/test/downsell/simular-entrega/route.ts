@@ -175,16 +175,39 @@ export async function GET(request: Request) {
     const deliverables = (config.deliverables || []) as Deliverable[]
     const downsellConfig = config.downsell as { enabled?: boolean; sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
 
-    // 2. Buscar o bot
+    // 2. Buscar o bot (via flow_bots ou direto)
+    let botId = flow.bot_id
+    let botToken = ""
+    
+    // Se nao tem bot_id direto, buscar via flow_bots
+    if (!botId) {
+      const { data: flowBot } = await supabase
+        .from("flow_bots")
+        .select("bot_id")
+        .eq("flow_id", flowId)
+        .limit(1)
+        .single()
+      
+      if (flowBot?.bot_id) {
+        botId = flowBot.bot_id
+      }
+    }
+    
+    if (!botId) {
+      return NextResponse.json({ error: "Bot nao encontrado - flow nao tem bot vinculado" }, { status: 404 })
+    }
+    
     const { data: bot, error: botError } = await supabase
       .from("bots")
       .select("id, token")
-      .eq("id", flow.bot_id)
+      .eq("id", botId)
       .single()
 
     if (botError || !bot) {
-      return NextResponse.json({ error: "Bot nao encontrado", botError }, { status: 404 })
+      return NextResponse.json({ error: "Bot nao encontrado na tabela bots", botError }, { status: 404 })
     }
+    
+    botToken = bot.token
 
     resultado.etapas.push({
       nome: "BUSCAR_BOT",
@@ -242,7 +265,7 @@ export async function GET(request: Request) {
     const chatIdNum = parseInt(chatId, 10)
     
     if (entregavelEscolhido) {
-      await sendDeliverable(bot.token, chatIdNum, entregavelEscolhido)
+      await sendDeliverable(botToken, chatIdNum, entregavelEscolhido)
       
       resultado.etapas.push({
         nome: "ENVIAR_ENTREGAVEL",
@@ -261,7 +284,7 @@ export async function GET(request: Request) {
       const mainDeliverable = mainDeliverableId ? deliverables.find(d => d.id === mainDeliverableId) : null
       
       if (mainDeliverable) {
-        await sendDeliverable(bot.token, chatIdNum, mainDeliverable)
+        await sendDeliverable(botToken, chatIdNum, mainDeliverable)
         
         resultado.etapas.push({
           nome: "ENVIAR_ENTREGAVEL_PRINCIPAL",
@@ -277,7 +300,7 @@ export async function GET(request: Request) {
         resultado.sucesso = true
       } else {
         // Mensagem generica
-        await sendTelegramMessage(bot.token, chatIdNum, "Obrigado pela compra! Seu acesso foi liberado.")
+        await sendTelegramMessage(botToken, chatIdNum, "Obrigado pela compra! Seu acesso foi liberado.")
         
         resultado.etapas.push({
           nome: "ENVIAR_MENSAGEM_GENERICA",
