@@ -285,6 +285,41 @@ export async function GET(request: Request) {
     })
 
     // =========================================================================
+    // ETAPA 6.5: VERIFICAR SCHEDULED_MESSAGES PENDENTES
+    // =========================================================================
+    const { data: scheduledMsgs } = await db
+      .from("scheduled_messages")
+      .select("id, telegram_chat_id, message_type, sequence_id, status, metadata, scheduled_for")
+      .eq("bot_id", botId)
+      .eq("message_type", "downsell")
+      .order("created_at", { ascending: false })
+      .limit(5)
+
+    resultado.etapas.push({
+      etapa: 6.5,
+      nome: "SCHEDULED_MESSAGES_DOWNSELL",
+      status: (scheduledMsgs || []).length > 0 ? "OK" : "INFO",
+      dados: {
+        total: (scheduledMsgs || []).length,
+        mensagens: (scheduledMsgs || []).map(m => {
+          const meta = m.metadata as Record<string, unknown> | null
+          return {
+            id: m.id,
+            chat_id: m.telegram_chat_id,
+            sequence_id: m.sequence_id,
+            status: m.status,
+            scheduled_for: m.scheduled_for,
+            // IMPORTANTE: Verificar se deliverableId e deliveryType estao no metadata
+            metadata_deliverableId: meta?.deliverableId || "NAO DEFINIDO",
+            metadata_deliveryType: meta?.deliveryType || "NAO DEFINIDO",
+            metadata_keys: Object.keys(meta || {})
+          }
+        })
+      },
+      nota: "Se metadata_deliverableId e metadata_deliveryType estiverem vazios, o pagamento nao vai ter esses dados"
+    })
+
+    // =========================================================================
     // ETAPA 7: SIMULAR FLUXO DE PAGAMENTO APROVADO
     // =========================================================================
     // Simular o que aconteceria se um pagamento de downsell fosse aprovado

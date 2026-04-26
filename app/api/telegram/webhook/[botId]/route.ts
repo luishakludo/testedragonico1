@@ -2530,6 +2530,14 @@ Escaneie o QR Code ou copie o codigo abaixo:
         // Obter deliverableId e deliveryType do metadata da sequencia de downsell
         const dsDeliverableIdFromMeta = (msgMetadata?.deliverableId as string) || ""
         const dsDeliveryTypeFromMeta = (msgMetadata?.deliveryType as string) || "main"
+        
+        // DEBUG: Log para verificar se os campos estao vindo do metadata
+        console.log("[DOWNSELL-CALLBACK] scheduledMsg.id:", scheduledMsg?.id)
+        console.log("[DOWNSELL-CALLBACK] msgMetadata keys:", Object.keys(msgMetadata || {}))
+        console.log("[DOWNSELL-CALLBACK] msgMetadata.deliverableId:", msgMetadata?.deliverableId)
+        console.log("[DOWNSELL-CALLBACK] msgMetadata.deliveryType:", msgMetadata?.deliveryType)
+        console.log("[DOWNSELL-CALLBACK] dsDeliverableIdFromMeta (final):", dsDeliverableIdFromMeta)
+        console.log("[DOWNSELL-CALLBACK] dsDeliveryTypeFromMeta (final):", dsDeliveryTypeFromMeta)
 
         // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
