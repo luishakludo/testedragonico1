@@ -1450,30 +1450,51 @@ export async function POST(request: NextRequest) {
                   // PRIORIDADE 1: Usar deliverableId do metadata do pagamento (salvo quando usuario clicou para pagar)
                   const paymentMetadata = (payment as { metadata?: Record<string, string> }).metadata || {}
                   let dsDeliverableId: string | undefined = paymentMetadata.downsell_deliverable_id || undefined
-                  const dsDeliveryType = paymentMetadata.downsell_delivery_type || "main"
+                  let dsDeliveryType: string = paymentMetadata.downsell_delivery_type || ""
                   
                   console.log(`[DOWNSELL] Payment metadata:`, JSON.stringify(paymentMetadata))
+                  console.log(`[DOWNSELL] Metadata - deliverableId: ${dsDeliverableId || "NAO TEM"}, deliveryType: ${dsDeliveryType || "NAO TEM"}`)
                   
-                  // PRIORIDADE 2 (Fallback): Se nao tem no metadata, buscar pelo preco nas sequencias
-                  if (!dsDeliverableId && dsDeliveryType !== "main") {
-                    const dsSequences = dsConfig?.sequences || []
-                    for (const seq of dsSequences) {
-                      const seqPlans = seq.plans || []
-                      for (const plan of seqPlans) {
-                        if (Math.abs(plan.price - payment.amount) < 0.01) {
-                          // Encontrou o plano que foi comprado
-                          if (seq.deliveryType === "custom" && seq.deliverableId) {
-                            dsDeliverableId = seq.deliverableId
-                          }
-                          break
+                  // PRIORIDADE 2 (Fallback SEMPRE): Buscar da sequencia de downsell pelo preco
+                  // Isso garante que mesmo que o metadata nao tenha, vamos encontrar o entregavel correto
+                  const dsSequences = (dsConfig?.sequences || []) as Array<{
+                    id: string
+                    plans?: Array<{ price: number }>
+                    useDefaultPlans?: boolean
+                    deliveryType?: string
+                    deliverableId?: string
+                  }>
+                  
+                  console.log(`[DOWNSELL] Buscando sequencia pelo preco ${payment.amount} em ${dsSequences.length} sequencias`)
+                  
+                  for (const seq of dsSequences) {
+                    // Se usa planos padrao, os precos foram calculados com desconto
+                    // Buscar em seq.plans (que pode ter sido preenchido com planos padrao)
+                    const seqPlans = seq.plans || []
+                    for (const plan of seqPlans) {
+                      if (Math.abs(plan.price - payment.amount) < 0.01) {
+                        console.log(`[DOWNSELL] Encontrou sequencia ${seq.id} com plano de preco ${plan.price}`)
+                        // SEMPRE usar o entregavel da sequencia se ela tiver um configurado
+                        if (seq.deliveryType === "custom" && seq.deliverableId) {
+                          dsDeliverableId = seq.deliverableId
+                          dsDeliveryType = seq.deliveryType
+                          console.log(`[DOWNSELL] Usando entregavel da sequencia: ${dsDeliverableId}`)
+                        } else if (!dsDeliveryType) {
+                          dsDeliveryType = seq.deliveryType || "main"
                         }
+                        break
                       }
-                      if (dsDeliverableId) break
                     }
+                    if (dsDeliverableId) break
+                  }
+                  
+                  // Se ainda nao achou e nao tem deliveryType, usar main como default
+                  if (!dsDeliveryType) {
+                    dsDeliveryType = "main"
                   }
                   
                   // Se deliveryType for "main" ou "global", nao passar deliverableId (usar entrega principal)
-                  // "global" = usa entrega principal do fluxo, "custom" = usa deliverableId especifico
+                  // "custom" = usa deliverableId especifico do downsell
                   const finalDeliverableId = (dsDeliveryType === "main" || dsDeliveryType === "global") ? undefined : dsDeliverableId
                   
                   console.log(`[DOWNSELL] Entrega - deliveryType do metadata: "${dsDeliveryType}"`)
