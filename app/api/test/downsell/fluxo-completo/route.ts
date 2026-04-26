@@ -139,18 +139,26 @@ export async function GET(request: Request) {
     }
 
     // =========================================================================
-    // ETAPA 3: VERIFICAR CONFIG DOWNSELL
+    // ETAPA 3: VERIFICAR CONFIG DOWNSELL (NORMAL E PIX)
     // =========================================================================
     const config = flow.config || {}
     const downsellConfig = config.downsell || {}
+    const downsellPixConfig = config.downsellPix || {} // IMPORTANTE: Verificar downsellPix tambem!
 
-    if (!downsellConfig.enabled) {
+    const dsEnabled = downsellConfig.enabled
+    const dsPixEnabled = downsellPixConfig.enabled
+    const algumAtivo = dsEnabled || dsPixEnabled
+
+    if (!algumAtivo) {
       resultado.etapas.push({
         etapa: 3,
         nome: "VERIFICAR_DOWNSELL_CONFIG",
         status: "AVISO",
-        dados: { enabled: false },
-        problema: "Downsell esta DESATIVADO"
+        dados: { 
+          downsell_enabled: false,
+          downsellPix_enabled: false 
+        },
+        problema: "NENHUM Downsell esta ATIVADO (nem normal nem PIX)"
       })
       resultado.resumo.problemas_encontrados.push("Downsell desativado")
     } else {
@@ -159,18 +167,31 @@ export async function GET(request: Request) {
         nome: "VERIFICAR_DOWNSELL_CONFIG",
         status: "OK",
         dados: {
-          enabled: true,
-          useDefaultPlans: downsellConfig.useDefaultPlans || false,
-          discountPercentage: downsellConfig.discountPercentage || 0,
-          total_sequencias: (downsellConfig.sequences || []).length
+          downsell_normal: {
+            enabled: dsEnabled || false,
+            useDefaultPlans: downsellConfig.useDefaultPlans || false,
+            discountPercentage: downsellConfig.discountPercentage || 0,
+            total_sequencias: (downsellConfig.sequences || []).length
+          },
+          downsell_pix: {
+            enabled: dsPixEnabled || false,
+            useDefaultPlans: downsellPixConfig.useDefaultPlans || false,
+            discountPercentage: downsellPixConfig.discountPercentage || 0,
+            total_sequencias: (downsellPixConfig.sequences || []).length
+          },
+          qual_usar: dsPixEnabled ? "DOWNSELL_PIX" : "DOWNSELL_NORMAL"
         }
       })
     }
 
     // =========================================================================
-    // ETAPA 4: ANALISAR CADA SEQUENCIA
+    // ETAPA 4: ANALISAR CADA SEQUENCIA (DE AMBOS DOWNSELL)
     // =========================================================================
-    const sequences = downsellConfig.sequences || []
+    // Combinar sequencias de ambos configs - priorizar downsellPix se ativo
+    const sequencesNormal = downsellConfig.sequences || []
+    const sequencesPix = downsellPixConfig.sequences || []
+    const sequences = dsPixEnabled ? sequencesPix : sequencesNormal
+    const tipoUsado = dsPixEnabled ? "DOWNSELL_PIX" : "DOWNSELL_NORMAL"
     const sequenciasAnalisadas: Array<{
       index: number
       id: string
@@ -218,11 +239,17 @@ export async function GET(request: Request) {
     resultado.etapas.push({
       etapa: 4,
       nome: "ANALISAR_SEQUENCIAS",
-      status: sequenciasAnalisadas.some(s => s.problema) ? "AVISO" : "OK",
+      status: sequenciasAnalisadas.some(s => s.problema) ? "AVISO" : (sequenciasAnalisadas.length === 0 ? "ERRO" : "OK"),
       dados: {
+        tipo_downsell_usado: tipoUsado,
+        total_sequencias_normal: sequencesNormal.length,
+        total_sequencias_pix: sequencesPix.length,
         total: sequenciasAnalisadas.length,
         sequencias: sequenciasAnalisadas
-      }
+      },
+      problema: sequenciasAnalisadas.length === 0 
+        ? `NENHUMA SEQUENCIA CONFIGURADA no ${tipoUsado}! Configure pelo menos uma sequencia com mensagem e planos.`
+        : undefined
     })
 
     // =========================================================================
@@ -250,6 +277,78 @@ export async function GET(request: Request) {
         } : null
       },
       problema: (deliverables || []).length === 0 ? "Nenhum entregavel configurado - VOCE PRECISA CRIAR UM ENTREGAVEL NA ABA 'ENTREGA' E SELECIONA-LO NA SEQUENCIA DE DOWNSELL" : undefined
+    })
+
+    // =========================================================================
+    // ETAPA 5.5: DIAGNOSTICO CRITICO - CADA SEQUENCIA TEM ENTREGAVEL?
+    // =========================================================================
+    const diagnosticoSequencias = sequenciasAnalisadas.map((seq, idx) => {
+      const temDeliveryType = seq.delivery_type && seq.delivery_type !== "main"
+      const temDeliverableId = !!seq.deliverable_id
+      const entregavelExiste = temDeliverableId ? deliverables.some(d => d.id === seq.deliverable_id) : false
+      const entregavelInfo = temDeliverableId ? deliverables.find(d => d.id === seq.deliverable_id) : null
+      
+      let status: "OK" | "ERRO" | "AVISO" = "ERRO"
+      let veredicto = ""
+      
+      if (seq.delivery_type === "main" || seq.delivery_type === "global" || !seq.delivery_type) {
+        // Usa entregavel principal
+        const mainExists = deliverables.some(d => d.id === config.mainDeliverableId)
+        if (mainExists) {
+          status = "AVISO"
+          veredicto = "USANDO ENTREGAVEL PRINCIPAL (NAO CUSTOMIZADO)"
+        } else if (config.delivery) {
+          status = "AVISO"
+          veredicto = "USANDO SISTEMA LEGADO (NAO CUSTOMIZADO)"
+        } else {
+          status = "ERRO"
+          veredicto = "SEM ENTREGAVEL - NAO VAI ENTREGAR NADA!"
+        }
+      } else if (seq.delivery_type === "custom") {
+        if (temDeliverableId && entregavelExiste) {
+          status = "OK"
+          veredicto = `VAI ENTREGAR: ${entregavelInfo?.name || seq.deliverable_id}`
+        } else if (temDeliverableId && !entregavelExiste) {
+          status = "ERRO"
+          veredicto = `ENTREGAVEL ${seq.deliverable_id} NAO EXISTE! Foi deletado?`
+        } else {
+          status = "ERRO"
+          veredicto = "DELIVERY_TYPE=CUSTOM MAS NAO TEM DELIVERABLE_ID!"
+        }
+      }
+      
+      return {
+        sequencia: idx + 1,
+        id: seq.id,
+        delivery_type: seq.delivery_type || "NAO_DEFINIDO",
+        deliverable_id: seq.deliverable_id || "NAO_DEFINIDO",
+        entregavel_existe: entregavelExiste,
+        entregavel_nome: entregavelInfo?.name || null,
+        status,
+        veredicto
+      }
+    })
+    
+    const algumSemEntregavel = diagnosticoSequencias.some(d => d.status === "ERRO")
+    const todosCustomizados = diagnosticoSequencias.every(d => d.status === "OK")
+    
+    resultado.etapas.push({
+      etapa: 5.5,
+      nome: "DIAGNOSTICO_CRITICO_ENTREGAVEIS",
+      status: algumSemEntregavel ? "ERRO" : (todosCustomizados ? "OK" : "AVISO"),
+      dados: {
+        titulo: ">>> VERIFICACAO CRITICA: CADA SEQUENCIA TEM ENTREGAVEL? <<<",
+        resumo: {
+          total_sequencias: diagnosticoSequencias.length,
+          com_entregavel_customizado: diagnosticoSequencias.filter(d => d.status === "OK").length,
+          usando_principal: diagnosticoSequencias.filter(d => d.status === "AVISO").length,
+          SEM_ENTREGAVEL_ERRO: diagnosticoSequencias.filter(d => d.status === "ERRO").length
+        },
+        detalhes: diagnosticoSequencias
+      },
+      problema: algumSemEntregavel 
+        ? "CRITICO: Algumas sequencias NAO tem entregavel configurado! Va na config do downsell, selecione 'Entregavel Customizado' e escolha um entregavel."
+        : undefined
     })
 
     // =========================================================================
@@ -406,12 +505,12 @@ export async function GET(request: Request) {
     resultado.simulacao_pagamento = simulacaoCompleta
 
     const todosComCustomizado = simulacaoCompleta.every(s => s.resultado_final.fonte === "ENTREGAVEL_CUSTOMIZADO")
-    const algumSemEntregavel = simulacaoCompleta.some(s => s.resultado_final.entregavel_id === "NENHUM")
+    const algumSemEntregavelSimulacao = simulacaoCompleta.some(s => s.resultado_final.entregavel_id === "NENHUM")
 
     resultado.etapas.push({
       etapa: 7,
       nome: "SIMULACAO_WEBHOOK_COMPLETA",
-      status: algumSemEntregavel ? "ERRO" : (todosComCustomizado ? "OK" : "AVISO"),
+      status: algumSemEntregavelSimulacao ? "ERRO" : (todosComCustomizado ? "OK" : "AVISO"),
       dados: {
         titulo: "SIMULACAO REAL - EXATAMENTE O QUE O WEBHOOK FARIA",
         total_sequencias: simulacaoCompleta.length,
@@ -420,7 +519,7 @@ export async function GET(request: Request) {
         sem_entregavel: simulacaoCompleta.filter(s => s.resultado_final.entregavel_id === "NENHUM").length,
         detalhes: simulacaoCompleta
       },
-      problema: algumSemEntregavel 
+      problema: algumSemEntregavelSimulacao 
         ? "CRITICO: Algumas sequencias nao tem entregavel configurado!" 
         : (!todosComCustomizado ? "Algumas sequencias usam entrega principal ao inves de customizada" : undefined)
     })
