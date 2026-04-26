@@ -2712,6 +2712,14 @@ Escaneie o QR Code ou copie o codigo abaixo:
           // Guardar o sequence_index para fallback
           if (msgMetadata?.sequenceIndex !== undefined) dsPaymentMetadata.sequence_index = String(msgMetadata.sequenceIndex)
           
+          // LOG CRUCIAL: Verificar o que vai ser salvo no metadata
+          console.log("==================================================")
+          console.log("[DOWNSELL-PAYMENT] SALVANDO PAGAMENTO COM METADATA:")
+          console.log("[DOWNSELL-PAYMENT] dsDeliverableIdFromMeta:", dsDeliverableIdFromMeta || "VAZIO!")
+          console.log("[DOWNSELL-PAYMENT] dsDeliveryTypeFromMeta:", dsDeliveryTypeFromMeta || "VAZIO!")
+          console.log("[DOWNSELL-PAYMENT] dsPaymentMetadata:", JSON.stringify(dsPaymentMetadata))
+          console.log("==================================================")
+          
           console.log("[v0] Saving downsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: downsell", "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "external_payment_id:", pixResult.paymentId, "metadata:", JSON.stringify(dsPaymentMetadata))
           const { data: savedDsPayment, error: dsPaymentError } = await supabase.from("payments").insert({
             user_id: botOwner.user_id,
