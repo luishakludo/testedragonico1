@@ -2544,6 +2544,9 @@ Escaneie o QR Code ou copie o codigo abaixo:
           console.log("[DOWNSELL-CALLBACK] Metadata nao tem deliverableId/deliveryType, buscando da sequencia...")
           const seqId = scheduledMsg?.sequence_id || (msgMetadata?.sequenceId as string)
           const seqIndex = scheduledMsg?.sequence_index ?? (msgMetadata?.sequenceIndex as number | undefined)
+          // Verificar se veio do PIX gerado para buscar na config correta
+          const sourceFromMeta = (msgMetadata?.source as string) || ""
+          const isFromPixGenerated = sourceFromMeta === "pix_generated"
           
           if (seqId || seqIndex !== undefined) {
             // Buscar o fluxo para pegar a config da sequencia
@@ -2557,8 +2560,24 @@ Escaneie o QR Code ou copie o codigo abaixo:
               
               if (flowForSeq?.config) {
                 const flowConfigSeq = flowForSeq.config as Record<string, unknown>
+                
+                // IMPORTANTE: Buscar na config correta - downsellPix se veio de PIX gerado, senao downsell normal
+                const downsellPixConfigSeq = flowConfigSeq.downsellPix as { sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
                 const downsellConfigSeq = flowConfigSeq.downsell as { sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
-                const sequences = downsellConfigSeq?.sequences || []
+                
+                // Priorizar downsellPix se veio de PIX gerado, senao tentar ambos
+                let sequences = isFromPixGenerated 
+                  ? (downsellPixConfigSeq?.sequences || [])
+                  : (downsellConfigSeq?.sequences || [])
+                
+                // Se nao encontrou na primeira, tentar a outra
+                if (sequences.length === 0) {
+                  sequences = isFromPixGenerated 
+                    ? (downsellConfigSeq?.sequences || [])
+                    : (downsellPixConfigSeq?.sequences || [])
+                }
+                
+                console.log(`[DOWNSELL-CALLBACK] isFromPixGenerated=${isFromPixGenerated}, sequences encontradas: ${sequences.length}`)
                 
                 // Buscar sequencia por ID ou index
                 let foundSeq = seqId ? sequences.find(s => s.id === seqId) : undefined
@@ -2567,7 +2586,7 @@ Escaneie o QR Code ou copie o codigo abaixo:
                 }
                 
                 if (foundSeq) {
-                  console.log("[DOWNSELL-CALLBACK] Encontrou sequencia no fluxo:", foundSeq.id)
+                  console.log("[DOWNSELL-CALLBACK] Encontrou sequencia no fluxo:", foundSeq.id, "deliveryType:", foundSeq.deliveryType, "deliverableId:", foundSeq.deliverableId)
                   if (!dsDeliverableIdFromMeta && foundSeq.deliverableId) {
                     dsDeliverableIdFromMeta = foundSeq.deliverableId
                     console.log("[DOWNSELL-CALLBACK] Usando deliverableId da sequencia:", dsDeliverableIdFromMeta)
