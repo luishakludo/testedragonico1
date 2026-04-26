@@ -345,8 +345,14 @@ export async function GET(request: Request) {
       }
     })
     
+    console.log("[v0] entregavelEscolhido:", entregavelEscolhido)
+    console.log("[v0] deliveryTypeFinal:", deliveryTypeFinal)
+    console.log("[v0] deliverableIdFinal:", deliverableIdFinal)
+    
     if (entregavelEscolhido) {
+      console.log("[v0] ENTRANDO NO IF - vai enviar entregavel:", entregavelEscolhido.name)
       const envioResult = await sendDeliverableWithResult(botToken, chatIdNum, entregavelEscolhido)
+      console.log("[v0] Resultado do envio:", JSON.stringify(envioResult))
       
       resultado.etapas.push({
         nome: "ENVIAR_ENTREGAVEL",
