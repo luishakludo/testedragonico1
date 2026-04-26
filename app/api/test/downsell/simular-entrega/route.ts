@@ -56,11 +56,16 @@ async function createVipInviteLink(botToken: string, groupId: string): Promise<s
 interface Deliverable {
   id: string
   name: string
-  type: "link" | "vip_group" | "file" | "text"
-  content?: string
-  vipGroupId?: string
+  type: "link" | "vip_group" | "file" | "text" | "media"
+  // Para tipo "link"
+  link?: string
+  linkText?: string
+  // Para tipo "vip_group"
+  vipGroupChatId?: string
   vipGroupName?: string
-  buttonText?: string
+  // Para tipo "media"
+  medias?: Array<{ type: string; file_id?: string; url?: string }>
+  // Mensagem customizada
   message?: string
 }
 
@@ -73,19 +78,23 @@ async function sendDeliverable(
 
   switch (deliverable.type) {
     case "link": {
-      const buttonText = deliverable.buttonText || "Acessar Conteudo"
+      const buttonText = deliverable.linkText || "Acessar Conteudo"
       const message = deliverable.message || "Obrigado pela compra! Seu acesso foi liberado."
-      const keyboard = {
-        inline_keyboard: [
-          [{ text: buttonText, url: deliverable.content }]
-        ]
+      if (deliverable.link) {
+        const keyboard = {
+          inline_keyboard: [
+            [{ text: buttonText, url: deliverable.link }]
+          ]
+        }
+        await sendTelegramMessage(botToken, chatId, message, keyboard)
+      } else {
+        await sendTelegramMessage(botToken, chatId, message)
       }
-      await sendTelegramMessage(botToken, chatId, message, keyboard)
       break
     }
 
     case "vip_group": {
-      const inviteLink = await createVipInviteLink(botToken, deliverable.vipGroupId!)
+      const inviteLink = await createVipInviteLink(botToken, deliverable.vipGroupChatId!)
       if (inviteLink) {
         const groupName = deliverable.vipGroupName || "Grupo VIP"
         const message = deliverable.message || `Obrigado pela compra! Seu acesso ao <b>${groupName}</b> foi liberado.`
@@ -141,15 +150,20 @@ async function sendDeliverableWithResult(
   try {
     switch (deliverable.type) {
       case "link": {
-        const buttonText = deliverable.buttonText || "Acessar Conteudo"
+        const buttonText = deliverable.linkText || "Acessar Conteudo"
         const message = deliverable.message || "Obrigado pela compra! Seu acesso foi liberado."
-        const keyboard = {
-          inline_keyboard: [
-            [{ text: buttonText, url: deliverable.content }]
-          ]
+        if (deliverable.link) {
+          const keyboard = {
+            inline_keyboard: [
+              [{ text: buttonText, url: deliverable.link }]
+            ]
+          }
+          const result = await sendTelegramMessage(botToken, chatId, message, keyboard)
+          return { ok: result.ok, result }
+        } else {
+          const result = await sendTelegramMessage(botToken, chatId, message)
+          return { ok: result.ok, result, error: "Link vazio - enviou apenas mensagem" }
         }
-        const result = await sendTelegramMessage(botToken, chatId, message, keyboard)
-        return { ok: result.ok, result }
       }
 
       case "vip_group": {
