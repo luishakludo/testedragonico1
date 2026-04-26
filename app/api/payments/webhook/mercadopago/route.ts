@@ -1447,27 +1447,36 @@ export async function POST(request: NextRequest) {
                   }
                   
                   // 7. Enviar entrega - verificar se downsell tem entregavel especifico ou usa o global
-                  // Buscar a sequencia de downsell que foi comprada (pelo preco ou metadata)
-                  const dsSequences = dsConfig?.sequences || []
-                  let dsDeliverableId: string | undefined = undefined
+                  // PRIORIDADE 1: Usar deliverableId do metadata do pagamento (salvo quando usuario clicou para pagar)
+                  const paymentMetadata = (payment as { metadata?: Record<string, string> }).metadata || {}
+                  let dsDeliverableId: string | undefined = paymentMetadata.downsell_deliverable_id || undefined
+                  const dsDeliveryType = paymentMetadata.downsell_delivery_type || "main"
                   
-                  // Tentar encontrar a sequencia que corresponde ao preco pago
-                  for (const seq of dsSequences) {
-                    const seqPlans = seq.plans || []
-                    for (const plan of seqPlans) {
-                      if (Math.abs(plan.price - payment.amount) < 0.01) {
-                        // Encontrou o plano que foi comprado
-                        if (seq.deliveryType === "custom" && seq.deliverableId) {
-                          dsDeliverableId = seq.deliverableId
+                  console.log(`[DOWNSELL] Payment metadata:`, JSON.stringify(paymentMetadata))
+                  
+                  // PRIORIDADE 2 (Fallback): Se nao tem no metadata, buscar pelo preco nas sequencias
+                  if (!dsDeliverableId && dsDeliveryType !== "main") {
+                    const dsSequences = dsConfig?.sequences || []
+                    for (const seq of dsSequences) {
+                      const seqPlans = seq.plans || []
+                      for (const plan of seqPlans) {
+                        if (Math.abs(plan.price - payment.amount) < 0.01) {
+                          // Encontrou o plano que foi comprado
+                          if (seq.deliveryType === "custom" && seq.deliverableId) {
+                            dsDeliverableId = seq.deliverableId
+                          }
+                          break
                         }
-                        break
                       }
+                      if (dsDeliverableId) break
                     }
-                    if (dsDeliverableId) break
                   }
                   
-                  console.log(`[DOWNSELL] Sending delivery (deliverableId: ${dsDeliverableId || "main/global"})`)
-                  await sendDelivery(supabase, bot.token, chatId, dsFlowConfig, dsDeliverableId)
+                  // Se deliveryType for "main", nao passar deliverableId (usar entrega principal)
+                  const finalDeliverableId = dsDeliveryType === "main" ? undefined : dsDeliverableId
+                  
+                  console.log(`[DOWNSELL] Sending delivery (deliverableId: ${finalDeliverableId || "main/global"}, deliveryType: ${dsDeliveryType})`)
+                  await sendDelivery(supabase, bot.token, chatId, dsFlowConfig, finalDeliverableId)
                   
                   // 8. Marcar usuario como VIP
                   const { error: vipError } = await supabase
