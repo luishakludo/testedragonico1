@@ -1368,15 +1368,33 @@ export async function POST(request: NextRequest) {
                 }
                 
                 if (downsellFlowId) {
+                  console.log(`[DOWNSELL] ========== INICIO PROCESSAMENTO ENTREGA ==========`)
+                  console.log(`[DOWNSELL] flowId: ${downsellFlowId}`)
+                  
                   // Buscar config do fluxo
-                  const { data: dsFlowData } = await supabase
+                  const { data: dsFlowData, error: dsFlowError } = await supabase
                     .from("flows")
                     .select("config")
                     .eq("id", downsellFlowId)
                     .single()
                   
+                  if (dsFlowError) {
+                    console.log(`[DOWNSELL] ERRO ao buscar fluxo: ${dsFlowError.message}`)
+                  }
+                  
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const dsFlowConfig = dsFlowData?.config as Record<string, any> | null
+                  console.log(`[DOWNSELL] dsFlowConfig existe: ${!!dsFlowConfig}`)
+                  console.log(`[DOWNSELL] dsFlowConfig.deliverables count: ${dsFlowConfig?.deliverables?.length || 0}`)
+                  console.log(`[DOWNSELL] dsFlowConfig.mainDeliverableId: ${dsFlowConfig?.mainDeliverableId || "NAO DEFINIDO"}`)
+                  
+                  if (dsFlowConfig?.deliverables?.length > 0) {
+                    console.log(`[DOWNSELL] Lista de entregaveis disponeis:`)
+                    for (const d of dsFlowConfig.deliverables) {
+                      console.log(`[DOWNSELL]   - ${d.id}: ${d.name} (${d.type})`)
+                    }
+                  }
+                  
                   const dsConfig = dsFlowConfig?.downsell
                   const paymentMessages = dsFlowConfig?.paymentMessages as {
                     approvedMessage?: string
@@ -1466,6 +1484,13 @@ export async function POST(request: NextRequest) {
                   }>
                   
                   console.log(`[DOWNSELL] Buscando sequencia pelo preco ${payment.amount} em ${dsSequences.length} sequencias`)
+                  
+                  // Debug: mostrar todas as sequencias e seus planos
+                  for (let i = 0; i < dsSequences.length; i++) {
+                    const s = dsSequences[i]
+                    console.log(`[DOWNSELL] Sequencia ${i}: id=${s.id}, useDefaultPlans=${s.useDefaultPlans}, deliveryType=${s.deliveryType}, deliverableId=${s.deliverableId}`)
+                    console.log(`[DOWNSELL] Sequencia ${i} plans:`, JSON.stringify(s.plans || []))
+                  }
                   
                   for (const seq of dsSequences) {
                     // Se usa planos padrao, os precos foram calculados com desconto
