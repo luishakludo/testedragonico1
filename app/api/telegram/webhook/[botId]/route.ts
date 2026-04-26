@@ -2540,8 +2540,17 @@ Escaneie o QR Code ou copie o codigo abaixo:
         
         // FALLBACK: Se nao encontrou no metadata, buscar diretamente da sequencia no fluxo
         // Isso acontece quando a scheduled_message foi criada antes da correcao
-        if (!dsDeliverableIdFromMeta || !dsDeliveryTypeFromMeta) {
-          console.log("[DOWNSELL-CALLBACK] Metadata nao tem deliverableId/deliveryType, buscando da sequencia...")
+        // IMPORTANTE: Tambem acionar fallback se deliveryType for "custom" mas deliverableId estiver vazio!
+        const needsFallback = !dsDeliverableIdFromMeta || !dsDeliveryTypeFromMeta || 
+          (dsDeliveryTypeFromMeta === "custom" && !dsDeliverableIdFromMeta)
+        
+        console.log("[DOWNSELL-CALLBACK] DIAGNOSTICO INICIAL:")
+        console.log("[DOWNSELL-CALLBACK]   dsDeliverableIdFromMeta =", dsDeliverableIdFromMeta || "VAZIO")
+        console.log("[DOWNSELL-CALLBACK]   dsDeliveryTypeFromMeta =", dsDeliveryTypeFromMeta || "VAZIO")
+        console.log("[DOWNSELL-CALLBACK]   needsFallback =", needsFallback)
+        
+        if (needsFallback) {
+          console.log("[DOWNSELL-CALLBACK] Acionando FALLBACK - buscando da sequencia no fluxo...")
           const seqId = scheduledMsg?.sequence_id || (msgMetadata?.sequenceId as string)
           const seqIndex = scheduledMsg?.sequence_index ?? (msgMetadata?.sequenceIndex as number | undefined)
           // Verificar se veio do PIX gerado para buscar na config correta
@@ -2565,36 +2574,64 @@ Escaneie o QR Code ou copie o codigo abaixo:
                 const downsellPixConfigSeq = flowConfigSeq.downsellPix as { sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
                 const downsellConfigSeq = flowConfigSeq.downsell as { sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
                 
-                // Priorizar downsellPix se veio de PIX gerado, senao tentar ambos
-                let sequences = isFromPixGenerated 
-                  ? (downsellPixConfigSeq?.sequences || [])
-                  : (downsellConfigSeq?.sequences || [])
+                // IMPORTANTE: Tentar buscar em AMBAS as configs, priorizando a fonte certa
+                const allSequences = [
+                  ...(isFromPixGenerated 
+                    ? [...(downsellPixConfigSeq?.sequences || []), ...(downsellConfigSeq?.sequences || [])]
+                    : [...(downsellConfigSeq?.sequences || []), ...(downsellPixConfigSeq?.sequences || [])]
+                  )
+                ]
                 
-                // Se nao encontrou na primeira, tentar a outra
-                if (sequences.length === 0) {
-                  sequences = isFromPixGenerated 
-                    ? (downsellConfigSeq?.sequences || [])
-                    : (downsellPixConfigSeq?.sequences || [])
-                }
+                console.log(`[DOWNSELL-CALLBACK] isFromPixGenerated=${isFromPixGenerated}`)
+                console.log(`[DOWNSELL-CALLBACK] downsellConfigSeq?.sequences: ${(downsellConfigSeq?.sequences || []).length}`)
+                console.log(`[DOWNSELL-CALLBACK] downsellPixConfigSeq?.sequences: ${(downsellPixConfigSeq?.sequences || []).length}`)
+                console.log(`[DOWNSELL-CALLBACK] allSequences total: ${allSequences.length}`)
+                console.log(`[DOWNSELL-CALLBACK] Buscando por seqId=${seqId || "N/A"} ou seqIndex=${seqIndex ?? "N/A"}`)
                 
-                console.log(`[DOWNSELL-CALLBACK] isFromPixGenerated=${isFromPixGenerated}, sequences encontradas: ${sequences.length}`)
+                // Buscar sequencia por ID primeiro, depois por index
+                let foundSeq = seqId ? allSequences.find(s => s.id === seqId) : undefined
                 
-                // Buscar sequencia por ID ou index
-                let foundSeq = seqId ? sequences.find(s => s.id === seqId) : undefined
-                if (!foundSeq && seqIndex !== undefined && sequences[seqIndex]) {
-                  foundSeq = sequences[seqIndex]
+                if (!foundSeq && seqIndex !== undefined) {
+                  // Tentar pelo index na config correta
+                  const primarySequences = isFromPixGenerated 
+                    ? (downsellPixConfigSeq?.sequences || [])
+                    : (downsellConfigSeq?.sequences || [])
+                  
+                  if (primarySequences[seqIndex]) {
+                    foundSeq = primarySequences[seqIndex]
+                    console.log(`[DOWNSELL-CALLBACK] Encontrou pelo index ${seqIndex} na config primaria`)
+                  } else {
+                    // Fallback: tentar na outra config
+                    const secondarySequences = isFromPixGenerated 
+                      ? (downsellConfigSeq?.sequences || [])
+                      : (downsellPixConfigSeq?.sequences || [])
+                    
+                    if (secondarySequences[seqIndex]) {
+                      foundSeq = secondarySequences[seqIndex]
+                      console.log(`[DOWNSELL-CALLBACK] Encontrou pelo index ${seqIndex} na config secundaria`)
+                    }
+                  }
                 }
                 
                 if (foundSeq) {
-                  console.log("[DOWNSELL-CALLBACK] Encontrou sequencia no fluxo:", foundSeq.id, "deliveryType:", foundSeq.deliveryType, "deliverableId:", foundSeq.deliverableId)
-                  if (!dsDeliverableIdFromMeta && foundSeq.deliverableId) {
+                  console.log("[DOWNSELL-CALLBACK] ENCONTROU sequencia:", JSON.stringify({
+                    id: foundSeq.id,
+                    deliveryType: foundSeq.deliveryType,
+                    deliverableId: foundSeq.deliverableId
+                  }))
+                  
+                  // SEMPRE usar os valores da sequencia se existirem, mesmo se ja tiver valores do metadata
+                  // Isso garante que a configuracao ATUAL da sequencia seja usada, nao a antiga do metadata
+                  if (foundSeq.deliverableId) {
                     dsDeliverableIdFromMeta = foundSeq.deliverableId
                     console.log("[DOWNSELL-CALLBACK] Usando deliverableId da sequencia:", dsDeliverableIdFromMeta)
                   }
-                  if (!dsDeliveryTypeFromMeta && foundSeq.deliveryType) {
+                  if (foundSeq.deliveryType) {
                     dsDeliveryTypeFromMeta = foundSeq.deliveryType
                     console.log("[DOWNSELL-CALLBACK] Usando deliveryType da sequencia:", dsDeliveryTypeFromMeta)
                   }
+                } else {
+                  console.log("[DOWNSELL-CALLBACK] NAO encontrou sequencia! seqId=", seqId, "seqIndex=", seqIndex)
                 }
               }
             }
@@ -3805,6 +3842,14 @@ Escaneie o QR Code ou copie o codigo abaixo:
                 // Inserir na tabela scheduled_messages
                 console.log(`[DOWNSELL PIX] Agendando para ${scheduledFor.toISOString()} (delay: ${delayMinutes} min)`)
                 
+                const seqIndexForPixDownsell = downsellPixConfig.sequences.indexOf(seq)
+                
+                console.log(`[DOWNSELL PIX] IMPORTANTE - Salvando metadata:`)
+                console.log(`[DOWNSELL PIX]   sequence_id: ${seq.id}`)
+                console.log(`[DOWNSELL PIX]   sequence_index: ${seqIndexForPixDownsell}`)
+                console.log(`[DOWNSELL PIX]   deliveryType: ${seq.deliveryType || "NAO DEFINIDO"}`)
+                console.log(`[DOWNSELL PIX]   deliverableId: ${seq.deliverableId || "NAO DEFINIDO"}`)
+                
                 const { error: insertError } = await supabaseAdmin.from("scheduled_messages").insert({
                   bot_id: botUuid,
                   flow_id: flowForDownsell.id,
@@ -3812,7 +3857,7 @@ Escaneie o QR Code ou copie o codigo abaixo:
                   telegram_chat_id: String(chatId),
                   message_type: "downsell", // Usa o mesmo tipo para o cron processar igual
                   sequence_id: seq.id,
-                  sequence_index: downsellPixConfig.sequences.indexOf(seq),
+                  sequence_index: seqIndexForPixDownsell,
                   scheduled_for: scheduledFor.toISOString(),
                   status: "pending",
                   metadata: {
@@ -3820,6 +3865,7 @@ Escaneie o QR Code ou copie o codigo abaixo:
                     medias: seq.medias || [],
                     plans: plansToUse,
                     deliveryType: seq.deliveryType,
+                    sequenceIndex: seqIndexForPixDownsell, // Duplicar no metadata para fallback
                     deliverableId: seq.deliverableId,
                     customDelivery: seq.customDelivery,
                     botToken: botToken,
@@ -4174,6 +4220,14 @@ Escaneie o QR Code ou copie o codigo abaixo:
             // Salvar no banco para o cron processar
             console.log(`[DOWNSELL] Agendando downsell para ${scheduledFor.toISOString()} (delay: ${delayMinutes} min)`)
 
+            const seqIndexForDownsell = downsellConfig.sequences.indexOf(seq)
+            
+            console.log(`[DOWNSELL] IMPORTANTE - Salvando metadata:`)
+            console.log(`[DOWNSELL]   sequence_id: ${seq.id}`)
+            console.log(`[DOWNSELL]   sequence_index: ${seqIndexForDownsell}`)
+            console.log(`[DOWNSELL]   deliveryType: ${seq.deliveryType || "NAO DEFINIDO"}`)
+            console.log(`[DOWNSELL]   deliverableId: ${seq.deliverableId || "NAO DEFINIDO"}`)
+            
             const { error: insertError } = await supabaseAdmin.from("scheduled_messages").insert({
               bot_id: botUuid,
               flow_id: startFlow.id,
@@ -4181,7 +4235,7 @@ Escaneie o QR Code ou copie o codigo abaixo:
               telegram_chat_id: String(chatId),
               message_type: "downsell",
               sequence_id: seq.id,
-              sequence_index: downsellConfig.sequences.indexOf(seq),
+              sequence_index: seqIndexForDownsell,
               scheduled_for: scheduledFor.toISOString(),
               status: "pending",
               metadata: {
@@ -4190,6 +4244,8 @@ Escaneie o QR Code ou copie o codigo abaixo:
                 plans: plansToUse,
                 deliveryType: seq.deliveryType,
                 deliverableId: seq.deliverableId,
+                // Duplicar o index no metadata para fallback
+                sequenceIndex: seqIndexForDownsell,
                 customDelivery: seq.customDelivery,
                 botToken: botToken,
                 // Flag para mostrar preco no botao (ex: "Mensal por R$ 20,00")
