@@ -505,12 +505,12 @@ export async function GET(request: Request) {
     resultado.simulacao_pagamento = simulacaoCompleta
 
     const todosComCustomizado = simulacaoCompleta.every(s => s.resultado_final.fonte === "ENTREGAVEL_CUSTOMIZADO")
-    const algumSemEntregavel = simulacaoCompleta.some(s => s.resultado_final.entregavel_id === "NENHUM")
+    const algumSemEntregavelSimulacao = simulacaoCompleta.some(s => s.resultado_final.entregavel_id === "NENHUM")
 
     resultado.etapas.push({
       etapa: 7,
       nome: "SIMULACAO_WEBHOOK_COMPLETA",
-      status: algumSemEntregavel ? "ERRO" : (todosComCustomizado ? "OK" : "AVISO"),
+      status: algumSemEntregavelSimulacao ? "ERRO" : (todosComCustomizado ? "OK" : "AVISO"),
       dados: {
         titulo: "SIMULACAO REAL - EXATAMENTE O QUE O WEBHOOK FARIA",
         total_sequencias: simulacaoCompleta.length,
@@ -519,7 +519,7 @@ export async function GET(request: Request) {
         sem_entregavel: simulacaoCompleta.filter(s => s.resultado_final.entregavel_id === "NENHUM").length,
         detalhes: simulacaoCompleta
       },
-      problema: algumSemEntregavel 
+      problema: algumSemEntregavelSimulacao 
         ? "CRITICO: Algumas sequencias nao tem entregavel configurado!" 
         : (!todosComCustomizado ? "Algumas sequencias usam entrega principal ao inves de customizada" : undefined)
     })
