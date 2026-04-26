@@ -240,8 +240,26 @@ export async function GET(request: Request) {
     })
 
     const config = flow.config as Record<string, unknown>
-    const deliverables = (config.deliverables || []) as Deliverable[]
     const downsellConfig = config.downsell as { enabled?: boolean; sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
+
+    // Buscar deliverables da TABELA (nao do config!)
+    const { data: deliverables, error: delivError } = await supabase
+      .from("deliverables")
+      .select("*")
+      .eq("flow_id", flowId)
+    
+    if (delivError) {
+      return NextResponse.json({ error: "Erro ao buscar deliverables", delivError }, { status: 500 })
+    }
+
+    resultado.etapas.push({
+      nome: "BUSCAR_DELIVERABLES",
+      status: "OK",
+      dados: {
+        total: (deliverables || []).length,
+        lista: (deliverables || []).map(d => ({ id: d.id, name: d.name, type: d.type }))
+      }
+    })
 
     // 2. Buscar o bot (via flow_bots ou direto)
     let botId = flow.bot_id
@@ -309,7 +327,17 @@ export async function GET(request: Request) {
       metodoUsado = "FALLBACK_MAIN"
     }
 
-    const entregavelEscolhido = deliverables.find(d => d.id === deliverableIdFinal)
+    const entregavelDb = (deliverables || []).find(d => d.id === deliverableIdFinal)
+    const entregavelEscolhido: Deliverable | null = entregavelDb ? {
+      id: entregavelDb.id,
+      name: entregavelDb.name,
+      type: entregavelDb.type,
+      content: entregavelDb.content,
+      message: entregavelDb.message,
+      buttonText: entregavelDb.button_text,
+      vipGroupId: entregavelDb.vip_group_id,
+      vipGroupName: entregavelDb.vip_group_name
+    } : null
 
     resultado.etapas.push({
       nome: "DETERMINAR_ENTREGAVEL",
@@ -325,7 +353,7 @@ export async function GET(request: Request) {
           conteudo: entregavelEscolhido.type === "link" ? entregavelEscolhido.content : "(nao mostrado)"
         } : null,
         total_sequencias: sequences.length,
-        total_deliverables: deliverables.length
+        total_deliverables: (deliverables || []).length
       }
     })
 
