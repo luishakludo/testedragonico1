@@ -1472,11 +1472,27 @@ export async function POST(request: NextRequest) {
                     }
                   }
                   
-                  // Se deliveryType for "main", nao passar deliverableId (usar entrega principal)
-                  const finalDeliverableId = dsDeliveryType === "main" ? undefined : dsDeliverableId
+                  // Se deliveryType for "main" ou "global", nao passar deliverableId (usar entrega principal)
+                  // "global" = usa entrega principal do fluxo, "custom" = usa deliverableId especifico
+                  const finalDeliverableId = (dsDeliveryType === "main" || dsDeliveryType === "global") ? undefined : dsDeliverableId
                   
-                  console.log(`[DOWNSELL] Sending delivery (deliverableId: ${finalDeliverableId || "main/global"}, deliveryType: ${dsDeliveryType})`)
-                  await sendDelivery(supabase, bot.token, chatId, dsFlowConfig, finalDeliverableId)
+                  console.log(`[DOWNSELL] Entrega - deliveryType do metadata: "${dsDeliveryType}"`)
+                  console.log(`[DOWNSELL] Entrega - deliverableId do metadata: "${dsDeliverableId || 'NENHUM'}"`)
+                  console.log(`[DOWNSELL] Entrega - finalDeliverableId (antes validacao): "${finalDeliverableId || 'MAIN/GLOBAL'}"`)
+                  console.log(`[DOWNSELL] Entrega - dsFlowConfig.deliverables count: ${dsFlowConfig?.deliverables?.length || 0}`)
+                  
+                  // VALIDACAO: Se o deliverableId nao existe nos deliverables do fluxo, usar entrega principal
+                  let validatedDeliverableId = finalDeliverableId
+                  if (finalDeliverableId && dsFlowConfig?.deliverables) {
+                    const deliverableExists = dsFlowConfig.deliverables.some((d: { id: string }) => d.id === finalDeliverableId)
+                    if (!deliverableExists) {
+                      console.log(`[DOWNSELL] AVISO: Entregavel ${finalDeliverableId} NAO EXISTE no fluxo! Usando entrega principal.`)
+                      validatedDeliverableId = undefined // Fallback para entrega principal
+                    }
+                  }
+                  
+                  console.log(`[DOWNSELL] Entrega - validatedDeliverableId (final): "${validatedDeliverableId || 'MAIN/GLOBAL'}"`)
+                  await sendDelivery(supabase, bot.token, chatId, dsFlowConfig, validatedDeliverableId)
                   
                   // 8. Marcar usuario como VIP
                   const { error: vipError } = await supabase

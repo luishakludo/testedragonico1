@@ -183,10 +183,8 @@ export async function GET(request: Request) {
     }> = []
 
     // Buscar entregaveis do fluxo para validar
-    const { data: deliverables } = await db
-      .from("deliverables")
-      .select("id, name, type")
-      .eq("flow_id", flowId)
+    // IMPORTANTE: Os entregaveis ficam salvos em config.deliverables (JSON), NAO em uma tabela separada
+    const deliverables = (config.deliverables || []) as Array<{ id: string; name: string; type: string }>
 
     const deliverableMap = new Map((deliverables || []).map(d => [d.id, d]))
 
@@ -240,9 +238,18 @@ export async function GET(request: Request) {
           id: d.id,
           nome: d.name,
           tipo: d.type
-        }))
+        })),
+        mainDeliverableId: config.mainDeliverableId || "NAO DEFINIDO",
+        config_keys: Object.keys(config),
+        // Info para debug: mostrar se tem delivery legado
+        delivery_legado: config.delivery ? {
+          type: (config.delivery as Record<string, unknown>).type,
+          hasLink: !!(config.delivery as Record<string, unknown>).link,
+          hasMedias: !!((config.delivery as Record<string, unknown>).medias as unknown[] | undefined)?.length,
+          hasVipGroup: !!(config.delivery as Record<string, unknown>).vipGroupId
+        } : null
       },
-      problema: (deliverables || []).length === 0 ? "Nenhum entregavel configurado" : undefined
+      problema: (deliverables || []).length === 0 ? "Nenhum entregavel configurado - VOCE PRECISA CRIAR UM ENTREGAVEL NA ABA 'ENTREGA' E SELECIONA-LO NA SEQUENCIA DE DOWNSELL" : undefined
     })
 
     // =========================================================================
@@ -278,177 +285,250 @@ export async function GET(request: Request) {
     })
 
     // =========================================================================
-    // ETAPA 7: SIMULAR FLUXO DE PAGAMENTO APROVADO
+    // ETAPA 6.5: VERIFICAR SCHEDULED_MESSAGES PENDENTES
     // =========================================================================
-    // Simular o que aconteceria se um pagamento de downsell fosse aprovado
-    const simulacao = {
-      titulo: "SIMULACAO: PAGAMENTO DOWNSELL APROVADO",
-      cenarios: sequences.map((seq: { id: string; message: string; deliveryType?: string; deliverableId?: string }, i: number) => {
-        const deliveryType = seq.deliveryType || "main"
-        const deliverableId = seq.deliverableId || null
-
-        let entregavelUsado: string
-        let fonte: string
-
-        if (deliveryType === "main") {
-          entregavelUsado = "ENTREGA PRINCIPAL DO FLUXO"
-          fonte = "Vai usar o entregavel principal configurado no fluxo"
-        } else if (deliveryType === "custom" && deliverableId) {
-          const entregavel = deliverableMap.get(deliverableId)
-          entregavelUsado = entregavel ? `${entregavel.name} (${entregavel.type})` : `ID: ${deliverableId} (NAO ENCONTRADO!)`
-          fonte = "Vai usar entregavel customizado da sequencia"
-        } else {
-          entregavelUsado = "NAO DEFINIDO - PODE DAR ERRO"
-          fonte = "Configuracao incompleta"
-        }
-
-        return {
-          sequencia: i + 1,
-          sequencia_id: seq.id,
-          mensagem: (seq.message || "").substring(0, 40) + "...",
-          delivery_type: deliveryType,
-          deliverable_id: deliverableId,
-          entregavel_que_sera_usado: entregavelUsado,
-          fonte_do_entregavel: fonte,
-          fluxo_no_webhook: [
-            "1. Pagamento aprovado pelo MercadoPago",
-            "2. Webhook recebe notificacao",
-            "3. Busca payment.metadata.downsell_deliverable_id",
-            deliverableId 
-              ? `4. Encontra deliverableId: ${deliverableId}`
-              : "4. Nao encontra deliverableId no metadata, usa entrega principal",
-            "5. Chama sendDelivery() com o entregavel correto",
-            "6. Atualiza status do pagamento para 'approved'",
-            "7. Registra venda no painel"
-          ]
-        }
-      })
-    }
-
-    resultado.simulacao_pagamento = simulacao
+    const { data: scheduledMsgs } = await db
+      .from("scheduled_messages")
+      .select("id, telegram_chat_id, message_type, sequence_id, status, metadata, scheduled_for")
+      .eq("bot_id", botId)
+      .eq("message_type", "downsell")
+      .order("created_at", { ascending: false })
+      .limit(5)
 
     resultado.etapas.push({
-      etapa: 7,
-      nome: "SIMULACAO_APROVACAO",
-      status: "OK",
-      dados: simulacao
+      etapa: 6.5,
+      nome: "SCHEDULED_MESSAGES_DOWNSELL",
+      status: (scheduledMsgs || []).length > 0 ? "OK" : "INFO",
+      dados: {
+        total: (scheduledMsgs || []).length,
+        mensagens: (scheduledMsgs || []).map(m => {
+          const meta = m.metadata as Record<string, unknown> | null
+          return {
+            id: m.id,
+            chat_id: m.telegram_chat_id,
+            sequence_id: m.sequence_id,
+            status: m.status,
+            scheduled_for: m.scheduled_for,
+            // IMPORTANTE: Verificar se deliverableId e deliveryType estao no metadata
+            metadata_deliverableId: meta?.deliverableId || "NAO DEFINIDO",
+            metadata_deliveryType: meta?.deliveryType || "NAO DEFINIDO",
+            metadata_keys: Object.keys(meta || {})
+          }
+        })
+      },
+      nota: "Se metadata_deliverableId e metadata_deliveryType estiverem vazios, o pagamento nao vai ter esses dados"
     })
 
     // =========================================================================
-    // ETAPA 8: TESTE REAL - CRIAR PAGAMENTO E SIMULAR APROVACAO
+    // ETAPA 7: SIMULACAO COMPLETA - TESTAR EXATAMENTE O QUE O WEBHOOK FARIA
     // =========================================================================
-    const simularReal = url.searchParams.get("simular") === "true"
     
-    if (simularReal && sequences.length > 0 && bot?.token) {
-      const seqTeste = sequences[0]
-      const telegramUserIdTeste = "TESTE_" + Date.now()
-      const valorTeste = 0.01
+    // Simular EXATAMENTE o que o webhook do MercadoPago faria ao receber pagamento aprovado
+    const simulacaoCompleta = await Promise.all(sequences.map(async (seq: { id: string; message: string; deliveryType?: string; deliverableId?: string; useDefaultPlans?: boolean; plans?: Array<{ buttonText: string; price: number }> }, i: number) => {
+      const deliveryType = seq.deliveryType || "main"
+      const deliverableId = seq.deliverableId || null
       
-      // Simular metadata que seria salvo pelo callback do downsell
-      const metadataTeste: Record<string, string> = {}
-      if (seqTeste.deliverableId) metadataTeste.downsell_deliverable_id = seqTeste.deliverableId
-      if (seqTeste.deliveryType) metadataTeste.downsell_delivery_type = seqTeste.deliveryType
-      metadataTeste.sequence_index = "0"
-      metadataTeste.TESTE = "true"
+      // SIMULAR: Logica IDENTICA ao webhook do MercadoPago (linhas 1475-1496)
+      // Se deliveryType for "main" ou "global", nao passar deliverableId (usar entrega principal)
+      const finalDeliverableId = (deliveryType === "main" || deliveryType === "global") ? undefined : deliverableId
       
-      // Buscar user_id do dono do bot
-      const { data: botOwner } = await db
-        .from("bots")
-        .select("user_id")
-        .eq("id", botId)
-        .single()
-      
-      // Criar pagamento de teste
-      const { data: pagamentoTeste, error: errPagTeste } = await db
-        .from("payments")
-        .insert({
-          user_id: botOwner?.user_id,
-          bot_id: botId,
-          telegram_user_id: telegramUserIdTeste,
-          telegram_username: "USUARIO_TESTE",
-          telegram_first_name: "Teste",
-          amount: valorTeste,
-          status: "pending",
-          payment_method: "pix",
-          gateway: "mercadopago",
-          external_payment_id: "TESTE_" + Date.now(),
-          description: "TESTE DOWNSELL",
-          product_name: "TESTE - Oferta Especial",
-          product_type: "downsell",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          metadata: Object.keys(metadataTeste).length > 0 ? metadataTeste : null,
-        })
-        .select()
-        .single()
-      
-      if (errPagTeste || !pagamentoTeste) {
-        resultado.etapas.push({
-          etapa: 8,
-          nome: "TESTE_REAL_CRIAR_PAGAMENTO",
-          status: "ERRO",
-          dados: { erro: errPagTeste?.message },
-          problema: "Nao conseguiu criar pagamento de teste"
-        })
-      } else {
-        // Verificar se metadata foi salvo corretamente
-        const metadataSalvo = pagamentoTeste.metadata || {}
-        const temDeliverableId = !!metadataSalvo.downsell_deliverable_id
-        const temDeliveryType = !!metadataSalvo.downsell_delivery_type
-        
-        // Simular aprovacao - atualizar status
-        const { error: errUpdate } = await db
-          .from("payments")
-          .update({ 
-            status: "approved",
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", pagamentoTeste.id)
-        
-        // Verificar se aparece no painel de vendas
-        const { data: vendaNoSistema } = await db
-          .from("payments")
-          .select("*")
-          .eq("id", pagamentoTeste.id)
-          .single()
-        
-        resultado.etapas.push({
-          etapa: 8,
-          nome: "TESTE_REAL_CRIAR_PAGAMENTO",
-          status: temDeliverableId ? "OK" : "AVISO",
-          dados: {
-            pagamento_id: pagamentoTeste.id,
-            metadata_salvo: metadataSalvo,
-            tem_deliverable_id: temDeliverableId,
-            tem_delivery_type: temDeliveryType,
-            status_apos_aprovacao: vendaNoSistema?.status,
-            vai_entregar_corretamente: temDeliverableId 
-              ? `SIM - Vai usar entregavel ${metadataSalvo.downsell_deliverable_id}`
-              : "AVISO - Vai usar entrega principal (deliverableId nao encontrado)",
-            conclusao: temDeliverableId
-              ? "CORREÇÃO FUNCIONANDO - O metadata esta sendo salvo corretamente"
-              : "ATENCAO - Sequencia nao tem deliverableId configurado"
-          },
-          problema: !temDeliverableId ? "Sequencia sem deliverableId configurado" : undefined
-        })
-        
-        // Limpar pagamento de teste
-        await db.from("payments").delete().eq("id", pagamentoTeste.id)
-        
-        resultado.etapas.push({
-          etapa: 9,
-          nome: "LIMPEZA_TESTE",
-          status: "OK",
-          dados: { pagamento_deletado: pagamentoTeste.id }
-        })
+      // SIMULAR: Validacao - Se o deliverableId nao existe nos deliverables do fluxo, usar entrega principal
+      let validatedDeliverableId = finalDeliverableId
+      let validacaoResultado = "OK"
+      if (finalDeliverableId && deliverables.length > 0) {
+        const deliverableExists = deliverables.some(d => d.id === finalDeliverableId)
+        if (!deliverableExists) {
+          validatedDeliverableId = undefined // Fallback para entrega principal
+          validacaoResultado = `FALLBACK - ID ${finalDeliverableId} nao existe, usando principal`
+        }
       }
-    } else if (simularReal) {
+      
+      // SIMULAR: Qual entregavel seria usado (logica identica ao sendDelivery linhas 459-485)
+      let entregavelFinal: { id: string; name: string; type: string } | null = null
+      let fonteEntregavel = ""
+      
+      if (validatedDeliverableId && deliverables.length > 0) {
+        // Buscar entregavel especifico
+        entregavelFinal = deliverables.find(d => d.id === validatedDeliverableId) || null
+        fonteEntregavel = entregavelFinal 
+          ? "ENTREGAVEL_CUSTOMIZADO" 
+          : "NAO_ENCONTRADO_VAI_USAR_PRINCIPAL"
+      }
+      
+      if (!entregavelFinal && config.mainDeliverableId && deliverables.length > 0) {
+        // Usar entregavel principal
+        entregavelFinal = deliverables.find(d => d.id === config.mainDeliverableId) || null
+        fonteEntregavel = entregavelFinal 
+          ? "ENTREGAVEL_PRINCIPAL" 
+          : "PRINCIPAL_NAO_ENCONTRADO_VAI_USAR_LEGADO"
+      }
+      
+      if (!entregavelFinal && config.delivery) {
+        // Fallback para sistema legado
+        const delivery = config.delivery as { type?: string; link?: string; vipGroupId?: string }
+        entregavelFinal = {
+          id: "LEGADO",
+          name: delivery.type === "vip_group" ? "Grupo VIP (legado)" : "Entrega Legado",
+          type: delivery.type || "unknown"
+        }
+        fonteEntregavel = "SISTEMA_LEGADO"
+      }
+      
+      return {
+        sequencia: i + 1,
+        sequencia_id: seq.id,
+        usa_planos_padrao: seq.useDefaultPlans || false,
+        planos: seq.plans?.map(p => `${p.buttonText}: R$ ${p.price}`) || "nenhum",
+        config_na_sequencia: {
+          deliveryType,
+          deliverableId,
+        },
+        processamento_webhook: {
+          passo_1: `deliveryType = "${deliveryType}"`,
+          passo_2: `finalDeliverableId = ${finalDeliverableId ? `"${finalDeliverableId}"` : "undefined (usa principal)"}`,
+          passo_3_validacao: validacaoResultado,
+          passo_4: `validatedDeliverableId = ${validatedDeliverableId ? `"${validatedDeliverableId}"` : "undefined"}`,
+        },
+        resultado_final: {
+          entregavel_usado: entregavelFinal ? `${entregavelFinal.name} (${entregavelFinal.type})` : "NENHUM - ERRO!",
+          entregavel_id: entregavelFinal?.id || "NENHUM",
+          fonte: fonteEntregavel,
+          eh_diferente_do_principal: entregavelFinal?.id !== config.mainDeliverableId,
+        },
+        veredicto: entregavelFinal 
+          ? (fonteEntregavel === "ENTREGAVEL_CUSTOMIZADO" 
+              ? "OK - DOWNSELL VAI ENTREGAR ENTREGAVEL CUSTOMIZADO"
+              : "AVISO - VAI USAR ENTREGAVEL PRINCIPAL")
+          : "ERRO - NAO VAI ENTREGAR NADA"
+      }
+    }))
+
+    resultado.simulacao_pagamento = simulacaoCompleta
+
+    const todosComCustomizado = simulacaoCompleta.every(s => s.resultado_final.fonte === "ENTREGAVEL_CUSTOMIZADO")
+    const algumSemEntregavel = simulacaoCompleta.some(s => s.resultado_final.entregavel_id === "NENHUM")
+
+    resultado.etapas.push({
+      etapa: 7,
+      nome: "SIMULACAO_WEBHOOK_COMPLETA",
+      status: algumSemEntregavel ? "ERRO" : (todosComCustomizado ? "OK" : "AVISO"),
+      dados: {
+        titulo: "SIMULACAO REAL - EXATAMENTE O QUE O WEBHOOK FARIA",
+        total_sequencias: simulacaoCompleta.length,
+        usando_entregavel_customizado: simulacaoCompleta.filter(s => s.resultado_final.fonte === "ENTREGAVEL_CUSTOMIZADO").length,
+        usando_principal: simulacaoCompleta.filter(s => s.resultado_final.fonte === "ENTREGAVEL_PRINCIPAL").length,
+        sem_entregavel: simulacaoCompleta.filter(s => s.resultado_final.entregavel_id === "NENHUM").length,
+        detalhes: simulacaoCompleta
+      },
+      problema: algumSemEntregavel 
+        ? "CRITICO: Algumas sequencias nao tem entregavel configurado!" 
+        : (!todosComCustomizado ? "Algumas sequencias usam entrega principal ao inves de customizada" : undefined)
+    })
+
+    // =========================================================================
+    // ETAPA 8: TESTE COM SCHEDULED_MESSAGE REAL
+    // =========================================================================
+    // Usar uma scheduled_message real para simular o fluxo completo
+    const { data: scheduledMsgReal } = await db
+      .from("scheduled_messages")
+      .select("*")
+      .eq("bot_id", botId)
+      .eq("message_type", "downsell")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (scheduledMsgReal) {
+      const msgMeta = scheduledMsgReal.metadata as Record<string, unknown> | null
+      const deliverableIdFromMsg = (msgMeta?.deliverableId as string) || ""
+      const deliveryTypeFromMsg = (msgMeta?.deliveryType as string) || "main"
+      
+      // Simular EXATAMENTE o que o callback faria (linhas 2531-2540 do telegram webhook)
+      const dsDeliverableIdFromMeta = deliverableIdFromMsg
+      const dsDeliveryTypeFromMeta = deliveryTypeFromMsg
+      
+      // Simular EXATAMENTE o que o webhook do MP faria (linhas 1475-1496)
+      const finalDeliverableId = (dsDeliveryTypeFromMeta === "main" || dsDeliveryTypeFromMeta === "global") 
+        ? undefined 
+        : dsDeliverableIdFromMeta
+      
+      let validatedDeliverableId = finalDeliverableId
+      let validacaoResultado = "OK"
+      if (finalDeliverableId && deliverables.length > 0) {
+        const deliverableExists = deliverables.some(d => d.id === finalDeliverableId)
+        if (!deliverableExists) {
+          validatedDeliverableId = undefined
+          validacaoResultado = `FALLBACK - ID ${finalDeliverableId} nao existe nos deliverables`
+        }
+      }
+      
+      // Determinar qual entregavel seria usado
+      let entregavelFinal: { id: string; name: string; type: string } | null = null
+      let fonteEntregavel = ""
+      
+      if (validatedDeliverableId) {
+        entregavelFinal = deliverables.find(d => d.id === validatedDeliverableId) || null
+        fonteEntregavel = entregavelFinal ? "ENTREGAVEL_CUSTOMIZADO_DO_DOWNSELL" : "NAO_ENCONTRADO"
+      }
+      
+      if (!entregavelFinal && config.mainDeliverableId) {
+        entregavelFinal = deliverables.find(d => d.id === config.mainDeliverableId) || null
+        fonteEntregavel = entregavelFinal ? "ENTREGAVEL_PRINCIPAL_DO_FLUXO" : "PRINCIPAL_NAO_ENCONTRADO"
+      }
+      
+      if (!entregavelFinal && config.delivery) {
+        const delivery = config.delivery as { type?: string }
+        entregavelFinal = { id: "LEGADO", name: "Sistema Legado", type: delivery.type || "unknown" }
+        fonteEntregavel = "SISTEMA_LEGADO"
+      }
+      
+      const ehCustomizado = fonteEntregavel === "ENTREGAVEL_CUSTOMIZADO_DO_DOWNSELL"
+      
       resultado.etapas.push({
         etapa: 8,
-        nome: "TESTE_REAL",
+        nome: "TESTE_SCHEDULED_MESSAGE_REAL",
+        status: ehCustomizado ? "OK" : "AVISO",
+        dados: {
+          titulo: "SIMULACAO USANDO SCHEDULED_MESSAGE REAL",
+          scheduled_message_id: scheduledMsgReal.id,
+          scheduled_for: scheduledMsgReal.scheduled_for,
+          metadata_da_msg: {
+            deliverableId: deliverableIdFromMsg || "NAO DEFINIDO",
+            deliveryType: deliveryTypeFromMsg,
+            todas_keys: Object.keys(msgMeta || {})
+          },
+          processamento_callback: {
+            dsDeliverableIdFromMeta,
+            dsDeliveryTypeFromMeta,
+          },
+          processamento_webhook_mp: {
+            finalDeliverableId: finalDeliverableId || "undefined (usa principal)",
+            validacao: validacaoResultado,
+            validatedDeliverableId: validatedDeliverableId || "undefined",
+          },
+          resultado_entrega: {
+            entregavel: entregavelFinal ? `${entregavelFinal.name} (${entregavelFinal.type})` : "NENHUM",
+            entregavel_id: entregavelFinal?.id || "NENHUM",
+            fonte: fonteEntregavel,
+            eh_entregavel_customizado_do_downsell: ehCustomizado,
+            eh_diferente_do_principal: entregavelFinal?.id !== config.mainDeliverableId
+          },
+          veredicto: ehCustomizado 
+            ? "SUCESSO - DOWNSELL VAI ENTREGAR O ENTREGAVEL CORRETO (CUSTOMIZADO)"
+            : entregavelFinal 
+              ? "AVISO - DOWNSELL VAI ENTREGAR O ENTREGAVEL PRINCIPAL (NAO O CUSTOMIZADO)"
+              : "ERRO - DOWNSELL NAO VAI ENTREGAR NADA"
+        },
+        problema: !ehCustomizado 
+          ? "O downsell nao esta usando entregavel customizado! Verifique se a sequencia tem deliverableId configurado." 
+          : undefined
+      })
+    } else {
+      resultado.etapas.push({
+        etapa: 8,
+        nome: "TESTE_SCHEDULED_MESSAGE_REAL",
         status: "AVISO",
-        dados: null,
-        problema: "Nao foi possivel simular - falta bot ou sequencias"
+        dados: { mensagem: "Nenhuma scheduled_message de downsell encontrada para testar" }
       })
     }
 
