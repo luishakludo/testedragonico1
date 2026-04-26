@@ -1729,10 +1729,11 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                         showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
                         source: "pix_generated",
                         deliverableId: (seq as { deliverableId?: string }).deliverableId || "",
-                        deliveryType: (seq as { deliveryType?: string }).deliveryType || "main"
+                        deliveryType: (seq as { deliveryType?: string }).deliveryType || "main",
+                        sequenceIndex: downsellPixConfigPack.sequences.indexOf(seq)
                       }
                     })
-                    console.log(`[DOWNSELL PIX PACK] Agendado para ${scheduledFor.toISOString()}`)
+                    console.log(`[DOWNSELL PIX PACK] Agendado para ${scheduledFor.toISOString()} (seq ${downsellPixConfigPack.sequences.indexOf(seq)}, deliverableId: ${(seq as { deliverableId?: string }).deliverableId || "main"})`)
                   }
                 }
               }
@@ -2318,10 +2319,11 @@ Escaneie o QR Code ou copie o codigo abaixo:
                     showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
                     source: "pix_generated",
                     deliverableId: (seq as { deliverableId?: string }).deliverableId || "",
-                    deliveryType: (seq as { deliveryType?: string }).deliveryType || "main"
+                    deliveryType: (seq as { deliveryType?: string }).deliveryType || "main",
+                    sequenceIndex: downsellPixConfigOB.sequences.indexOf(seq)
                   }
                 })
-                console.log(`[DOWNSELL PIX OB] Agendado para ${scheduledFor.toISOString()}`)
+                console.log(`[DOWNSELL PIX OB] Agendado para ${scheduledFor.toISOString()} (seq ${downsellPixConfigOB.sequences.indexOf(seq)}, deliverableId: ${(seq as { deliverableId?: string }).deliverableId || "main"})`)
               }
             }
           }
@@ -2639,7 +2641,14 @@ Escaneie o QR Code ou copie o codigo abaixo:
           }
 
           // Salvar pagamento do downsell (igual ao plano normal - SEM flow_id para evitar problema de FK)
-          console.log("[v0] Saving downsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: downsell", "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "external_payment_id:", pixResult.paymentId)
+          // Incluir deliverableId e deliveryType no metadata para que o webhook de aprovacao use o entregavel correto
+          const dsPaymentMetadata: Record<string, string> = {}
+          if (dsDeliverableIdFromMeta) dsPaymentMetadata.downsell_deliverable_id = dsDeliverableIdFromMeta
+          if (dsDeliveryTypeFromMeta) dsPaymentMetadata.downsell_delivery_type = dsDeliveryTypeFromMeta
+          // Guardar o sequence_index para fallback
+          if (msgMetadata?.sequenceIndex !== undefined) dsPaymentMetadata.sequence_index = String(msgMetadata.sequenceIndex)
+          
+          console.log("[v0] Saving downsell payment - user_id:", botOwner.user_id, "bot_id:", botUuid, "amount:", price, "product_type: downsell", "telegram_user_id:", telegramUserId, "telegram_username:", userUsername, "external_payment_id:", pixResult.paymentId, "metadata:", JSON.stringify(dsPaymentMetadata))
           const { data: savedDsPayment, error: dsPaymentError } = await supabase.from("payments").insert({
             user_id: botOwner.user_id,
             bot_id: botUuid,
@@ -2661,6 +2670,7 @@ Escaneie o QR Code ou copie o codigo abaixo:
             pix_code: pixResult.copyPaste || pixResult.qrCode,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            metadata: Object.keys(dsPaymentMetadata).length > 0 ? dsPaymentMetadata : null,
           }).select().single()
 
           if (dsPaymentError) {
