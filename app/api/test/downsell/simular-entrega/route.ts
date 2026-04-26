@@ -242,22 +242,15 @@ export async function GET(request: Request) {
     const config = flow.config as Record<string, unknown>
     const downsellConfig = config.downsell as { enabled?: boolean; sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
 
-    // Buscar deliverables da TABELA (nao do config!)
-    const { data: deliverables, error: delivError } = await supabase
-      .from("deliverables")
-      .select("*")
-      .eq("flow_id", flowId)
-    
-    if (delivError) {
-      return NextResponse.json({ error: "Erro ao buscar deliverables", delivError }, { status: 500 })
-    }
+    // IMPORTANTE: Entregaveis ficam em config.deliverables (JSON), NAO em tabela separada!
+    const deliverables = (config.deliverables || []) as Deliverable[]
 
     resultado.etapas.push({
       nome: "BUSCAR_DELIVERABLES",
-      status: "OK",
+      status: deliverables.length > 0 ? "OK" : "ERRO",
       dados: {
-        total: (deliverables || []).length,
-        lista: (deliverables || []).map(d => ({ id: d.id, name: d.name, type: d.type }))
+        total: deliverables.length,
+        lista: deliverables.map(d => ({ id: d.id, name: d.name, type: d.type }))
       }
     })
 
@@ -327,17 +320,8 @@ export async function GET(request: Request) {
       metodoUsado = "FALLBACK_MAIN"
     }
 
-    const entregavelDb = (deliverables || []).find(d => d.id === deliverableIdFinal)
-    const entregavelEscolhido: Deliverable | null = entregavelDb ? {
-      id: entregavelDb.id,
-      name: entregavelDb.name,
-      type: entregavelDb.type,
-      content: entregavelDb.content,
-      message: entregavelDb.message,
-      buttonText: entregavelDb.button_text,
-      vipGroupId: entregavelDb.vip_group_id,
-      vipGroupName: entregavelDb.vip_group_name
-    } : null
+    // Deliverables ja vem no formato certo do config.deliverables
+    const entregavelEscolhido = deliverables.find(d => d.id === deliverableIdFinal) || null
 
     resultado.etapas.push({
       nome: "DETERMINAR_ENTREGAVEL",
@@ -397,18 +381,18 @@ export async function GET(request: Request) {
     } else if (deliveryTypeFinal === "main") {
       // Usar entregavel principal
       const mainDeliverableId = config.mainDeliverableId as string | undefined
-      const mainDeliverable = mainDeliverableId ? deliverables.find(d => d.id === mainDeliverableId) : null
+      const mainDeliverableFound = mainDeliverableId ? deliverables.find(d => d.id === mainDeliverableId) : null
       
-      if (mainDeliverable) {
-        await sendDeliverable(botToken, chatIdNum, mainDeliverable)
+      if (mainDeliverableFound) {
+        await sendDeliverable(botToken, chatIdNum, mainDeliverableFound)
         
         resultado.etapas.push({
           nome: "ENVIAR_ENTREGAVEL_PRINCIPAL",
           status: "ENVIADO",
           dados: {
             chat_id: chatIdNum,
-            entregavel_enviado: mainDeliverable.name,
-            tipo: mainDeliverable.type,
+            entregavel_enviado: mainDeliverableFound.name,
+            tipo: mainDeliverableFound.type,
             aviso: "Usou entregavel PRINCIPAL porque nao encontrou customizado"
           }
         })
