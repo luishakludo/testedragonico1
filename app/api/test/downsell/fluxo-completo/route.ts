@@ -567,6 +567,89 @@ export async function GET(request: Request) {
     })
 
     // =========================================================================
+    // ETAPA 9: DIAGNOSTICO - COMPARAR SCHEDULED_MESSAGE COM PAGAMENTO
+    // =========================================================================
+    // Encontrar um pagamento recente e a scheduled_message correspondente
+    const ultimoPagamentoDs = pagamentosDoFluxo.find(p => p.status === "approved" || p.status === "pending")
+    
+    if (ultimoPagamentoDs) {
+      const pagMeta = (ultimoPagamentoDs.metadata || {}) as Record<string, string>
+      
+      // Tentar encontrar a scheduled_message que pode ter gerado este pagamento
+      // Buscar pelo sequence_index se existir
+      const seqIndex = pagMeta.sequence_index ? parseInt(pagMeta.sequence_index, 10) : 0
+      const seqConfig = sequences[seqIndex] as { id: string; deliveryType?: string; deliverableId?: string } | undefined
+      
+      resultado.etapas.push({
+        etapa: 9,
+        nome: "DIAGNOSTICO_PAGAMENTO_VS_SEQUENCIA",
+        status: pagMeta.downsell_deliverable_id ? "OK" : "PROBLEMA",
+        dados: {
+          titulo: "COMPARACAO: O QUE O PAGAMENTO TEM vs O QUE A SEQUENCIA TEM",
+          pagamento: {
+            id: ultimoPagamentoDs.id,
+            status: ultimoPagamentoDs.status,
+            valor: ultimoPagamentoDs.amount,
+            sequence_index_do_metadata: pagMeta.sequence_index || "NAO TEM",
+            downsell_deliverable_id: pagMeta.downsell_deliverable_id || "NAO TEM <<<< PROBLEMA!",
+            downsell_delivery_type: pagMeta.downsell_delivery_type || "NAO TEM",
+            metadata_completo: pagMeta
+          },
+          sequencia_correspondente: seqConfig ? {
+            id: seqConfig.id,
+            deliveryType: seqConfig.deliveryType || "NAO CONFIGURADO",
+            deliverableId: seqConfig.deliverableId || "NAO CONFIGURADO",
+          } : "SEQUENCIA NAO ENCONTRADA",
+          analise: {
+            pagamento_tem_deliverable_id: !!pagMeta.downsell_deliverable_id,
+            sequencia_tem_deliverable_id: !!seqConfig?.deliverableId,
+            ids_sao_iguais: pagMeta.downsell_deliverable_id === seqConfig?.deliverableId,
+            problema_detectado: !pagMeta.downsell_deliverable_id 
+              ? "PAGAMENTO NAO TEM downsell_deliverable_id - O CALLBACK NAO SALVOU!" 
+              : (pagMeta.downsell_deliverable_id !== seqConfig?.deliverableId)
+                ? "IDs SAO DIFERENTES - VERIFICAR PORQUE"
+                : "OK - IDs SAO IGUAIS"
+          },
+          solucao_se_problema: !pagMeta.downsell_deliverable_id 
+            ? "O callback do Telegram (ds_buy) nao esta passando o deliverableId para o pagamento. Verificar dsDeliverableIdFromMeta no callback."
+            : undefined
+        }
+      })
+    }
+
+    // =========================================================================
+    // ETAPA 10: VERIFICAR O QUE A FUNCAO sendDelivery FARIA
+    // =========================================================================
+    // Simular EXATAMENTE a logica da funcao sendDelivery para este fluxo
+    const mainDeliverableId = config.mainDeliverableId as string | undefined
+    const mainDeliverable = mainDeliverableId 
+      ? deliverables.find(d => d.id === mainDeliverableId)
+      : null
+    
+    resultado.etapas.push({
+      etapa: 10,
+      nome: "LOGICA_SEND_DELIVERY",
+      status: "INFO",
+      dados: {
+        titulo: "O QUE A FUNCAO sendDelivery FAZ",
+        mainDeliverableId: mainDeliverableId || "NAO DEFINIDO",
+        mainDeliverable: mainDeliverable ? `${mainDeliverable.name} (${mainDeliverable.type})` : "NAO ENCONTRADO",
+        total_deliverables_no_fluxo: deliverables.length,
+        tem_delivery_legado: !!config.delivery,
+        fluxo_da_funcao: [
+          "1. Se receber deliverableId especifico, busca esse deliverable",
+          "2. Se NAO encontrar ou NAO receber, usa mainDeliverableId",
+          "3. Se NAO tiver mainDeliverableId, usa sistema legado (config.delivery)",
+          `4. NO SEU CASO: mainDeliverableId = ${mainDeliverableId || "NAO DEFINIDO"}`,
+          `5. NO SEU CASO: mainDeliverable = ${mainDeliverable?.name || "NAO ENCONTRADO"} (tipo: ${mainDeliverable?.type || "?"})`,
+        ],
+        conclusao: mainDeliverable?.type === "vip_group" || mainDeliverable?.type === "channel"
+          ? "O ENTREGAVEL PRINCIPAL E UM CANAL/GRUPO - POR ISSO APARECE 'ENTRAR NO CANAL' QUANDO O DOWNSELL NAO TEM deliverableId"
+          : "OK"
+      }
+    })
+
+    // =========================================================================
     // RESUMO FINAL
     // =========================================================================
     resultado.resumo.total_etapas = resultado.etapas.length
