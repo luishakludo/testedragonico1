@@ -1396,6 +1396,7 @@ export async function POST(request: NextRequest) {
                   }
                   
                   const dsConfig = dsFlowConfig?.downsell
+                  const dsConfigPix = dsFlowConfig?.downsellPix // Tambem buscar config do downsell PIX
                   const paymentMessages = dsFlowConfig?.paymentMessages as {
                     approvedMessage?: string
                     approvedMedias?: string[]
@@ -1473,17 +1474,16 @@ export async function POST(request: NextRequest) {
                   console.log(`[DOWNSELL] Payment metadata:`, JSON.stringify(paymentMetadata))
                   console.log(`[DOWNSELL] Metadata - deliverableId: ${dsDeliverableId || "NAO TEM"}, deliveryType: ${dsDeliveryType || "NAO TEM"}`)
                   
-                  // PRIORIDADE 2 (Fallback SEMPRE): Buscar da sequencia de downsell pelo preco
-                  // Isso garante que mesmo que o metadata nao tenha, vamos encontrar o entregavel correto
-                  const dsSequences = (dsConfig?.sequences || []) as Array<{
-                    id: string
-                    plans?: Array<{ price: number }>
-                    useDefaultPlans?: boolean
-                    deliveryType?: string
-                    deliverableId?: string
-                  }>
+                  // PRIORIDADE 2 (Fallback): Buscar da sequencia de downsell pelo preco
+                  // IMPORTANTE: Buscar tanto em downsell.sequences quanto em downsellPix.sequences
+                  // pois o downsell pode ter vindo de qualquer um dos dois
+                  const dsSequencesNormal = ((dsConfig as { sequences?: Array<{ id: string; plans?: Array<{ price: number }>; useDefaultPlans?: boolean; deliveryType?: string; deliverableId?: string }> })?.sequences || [])
+                  const dsSequencesPix = ((dsConfigPix as { sequences?: Array<{ id: string; plans?: Array<{ price: number }>; useDefaultPlans?: boolean; deliveryType?: string; deliverableId?: string }> })?.sequences || [])
                   
-                  console.log(`[DOWNSELL] Buscando sequencia pelo preco ${payment.amount} em ${dsSequences.length} sequencias`)
+                  // Combinar as sequencias (priorizar PIX pois e mais comum vir de la)
+                  const dsSequences = [...dsSequencesPix, ...dsSequencesNormal]
+                  
+                  console.log(`[DOWNSELL] Buscando sequencia pelo preco ${payment.amount} em ${dsSequences.length} sequencias (pix: ${dsSequencesPix.length}, normal: ${dsSequencesNormal.length})`)
                   
                   // Debug: mostrar todas as sequencias e seus planos
                   for (let i = 0; i < dsSequences.length; i++) {
@@ -1492,25 +1492,43 @@ export async function POST(request: NextRequest) {
                     console.log(`[DOWNSELL] Sequencia ${i} plans:`, JSON.stringify(s.plans || []))
                   }
                   
-                  for (const seq of dsSequences) {
-                    // Se usa planos padrao, os precos foram calculados com desconto
-                    // Buscar em seq.plans (que pode ter sido preenchido com planos padrao)
-                    const seqPlans = seq.plans || []
-                    for (const plan of seqPlans) {
-                      if (Math.abs(plan.price - payment.amount) < 0.01) {
-                        console.log(`[DOWNSELL] Encontrou sequencia ${seq.id} com plano de preco ${plan.price}`)
-                        // SEMPRE usar o entregavel da sequencia se ela tiver um configurado
-                        if (seq.deliveryType === "custom" && seq.deliverableId) {
-                          dsDeliverableId = seq.deliverableId
-                          dsDeliveryType = seq.deliveryType
-                          console.log(`[DOWNSELL] Usando entregavel da sequencia: ${dsDeliverableId}`)
-                        } else if (!dsDeliveryType) {
-                          dsDeliveryType = seq.deliveryType || "main"
-                        }
-                        break
-                      }
+                  // Se ainda nao tem deliverableId do metadata, buscar da sequencia
+                  // IMPORTANTE: Quando useDefaultPlans=true, os planos sao calculados com desconto na hora do agendamento
+                  // mas NAO ficam salvos no config do fluxo! Por isso o metadata do pagamento e a fonte principal.
+                  // Se nao tem no metadata, tentar achar pelo sequence_index salvo no metadata
+                  if (!dsDeliverableId && paymentMetadata.sequence_index !== undefined) {
+                    const seqIndex = parseInt(paymentMetadata.sequence_index)
+                    // Buscar primeiro nas sequencias PIX, depois nas normais
+                    const foundSeq = dsSequencesPix[seqIndex] || dsSequencesNormal[seqIndex]
+                    if (foundSeq && foundSeq.deliveryType === "custom" && foundSeq.deliverableId) {
+                      dsDeliverableId = foundSeq.deliverableId
+                      dsDeliveryType = foundSeq.deliveryType
+                      console.log(`[DOWNSELL] Encontrou entregavel via sequence_index ${seqIndex}: ${dsDeliverableId}`)
                     }
-                    if (dsDeliverableId) break
+                  }
+                  
+                  // Fallback: buscar pelo preco (menos confiavel quando useDefaultPlans=true)
+                  if (!dsDeliverableId) {
+                    for (const seq of dsSequences) {
+                      // Se usa planos padrao, os precos foram calculados com desconto
+                      // Buscar em seq.plans (que pode ter sido preenchido com planos padrao)
+                      const seqPlans = seq.plans || []
+                      for (const plan of seqPlans) {
+                        if (Math.abs(plan.price - payment.amount) < 0.01) {
+                          console.log(`[DOWNSELL] Encontrou sequencia ${seq.id} com plano de preco ${plan.price}`)
+                          // SEMPRE usar o entregavel da sequencia se ela tiver um configurado
+                          if (seq.deliveryType === "custom" && seq.deliverableId) {
+                            dsDeliverableId = seq.deliverableId
+                            dsDeliveryType = seq.deliveryType
+                            console.log(`[DOWNSELL] Usando entregavel da sequencia: ${dsDeliverableId}`)
+                          } else if (!dsDeliveryType) {
+                            dsDeliveryType = seq.deliveryType || "main"
+                          }
+                          break
+                        }
+                      }
+                      if (dsDeliverableId) break
+                    }
                   }
                   
                   // Se ainda nao achou e nao tem deliveryType, usar main como default
