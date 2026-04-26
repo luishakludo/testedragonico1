@@ -1727,7 +1727,9 @@ async function processUpdate(botId: string, update: Record<string, unknown>) {
                       metadata: {
                         message: seq.message, medias: seq.medias || [], plans: plansToUsePack, botToken: botToken,
                         showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
-                        source: "pix_generated"
+                        source: "pix_generated",
+                        deliverableId: (seq as { deliverableId?: string }).deliverableId || "",
+                        deliveryType: (seq as { deliveryType?: string }).deliveryType || "main"
                       }
                     })
                     console.log(`[DOWNSELL PIX PACK] Agendado para ${scheduledFor.toISOString()}`)
@@ -2314,7 +2316,9 @@ Escaneie o QR Code ou copie o codigo abaixo:
                   metadata: {
                     message: seq.message, medias: seq.medias || [], plans: plansToUseOB, botToken: botToken,
                     showPriceInButton: seq.showPriceInButton === true, userFirstName: userFirstName || "", userUsername: userUsername || "",
-                    source: "pix_generated"
+                    source: "pix_generated",
+                    deliverableId: (seq as { deliverableId?: string }).deliverableId || "",
+                    deliveryType: (seq as { deliveryType?: string }).deliveryType || "main"
                   }
                 })
                 console.log(`[DOWNSELL PIX OB] Agendado para ${scheduledFor.toISOString()}`)
@@ -2520,6 +2524,10 @@ Escaneie o QR Code ou copie o codigo abaixo:
         const plans = (msgMetadata?.plans as Array<{ id: string; buttonText: string; price: number }>) || []
         const selectedPlan = plans[planIndex]
         const planName = selectedPlan?.buttonText || "Oferta Especial"
+        
+        // Obter deliverableId e deliveryType do metadata da sequencia de downsell
+        const dsDeliverableIdFromMeta = (msgMetadata?.deliverableId as string) || ""
+        const dsDeliveryTypeFromMeta = (msgMetadata?.deliveryType as string) || "main"
 
         // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
