@@ -2486,13 +2486,20 @@ Escaneie o QR Code ou copie o codigo abaixo:
         console.log(`[v0] Downsell: shortMsgId=${shortMsgId}, planIndex=${planIndex}, price=${price}`)
 
         // Buscar a mensagem original pelo shortMsgId (ultimos 8 chars do id)
-        const { data: scheduledMsg } = await supabase
+        const { data: scheduledMsg, error: scheduledMsgError } = await supabase
           .from("scheduled_messages")
           .select("*")
           .like("id", `%${shortMsgId}`)
           .order("created_at", { ascending: false })
           .limit(1)
           .single()
+
+        console.log("[v0] Downsell: scheduledMsg encontrado?", !!scheduledMsg)
+        console.log("[v0] Downsell: scheduledMsg.id =", scheduledMsg?.id)
+        console.log("[v0] Downsell: scheduledMsg.metadata =", JSON.stringify(scheduledMsg?.metadata))
+        if (scheduledMsgError) {
+          console.log("[v0] Downsell: Erro ao buscar scheduledMsg:", scheduledMsgError.message)
+        }
 
         // Se nao encontrou a mensagem agendada, buscar o flow_id diretamente do bot
         let flowId = scheduledMsg?.flow_id || ""
