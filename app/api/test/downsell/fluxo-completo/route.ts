@@ -335,7 +335,125 @@ export async function GET(request: Request) {
     })
 
     // =========================================================================
-    // ETAPA 8: VERIFICAR MENSAGENS AGENDADAS
+    // ETAPA 8: TESTE REAL - CRIAR PAGAMENTO E SIMULAR APROVACAO
+    // =========================================================================
+    const simularReal = url.searchParams.get("simular") === "true"
+    
+    if (simularReal && sequences.length > 0 && bot?.token) {
+      const seqTeste = sequences[0]
+      const telegramUserIdTeste = "TESTE_" + Date.now()
+      const valorTeste = 0.01
+      
+      // Simular metadata que seria salvo pelo callback do downsell
+      const metadataTeste: Record<string, string> = {}
+      if (seqTeste.deliverableId) metadataTeste.downsell_deliverable_id = seqTeste.deliverableId
+      if (seqTeste.deliveryType) metadataTeste.downsell_delivery_type = seqTeste.deliveryType
+      metadataTeste.sequence_index = "0"
+      metadataTeste.TESTE = "true"
+      
+      // Buscar user_id do dono do bot
+      const { data: botOwner } = await db
+        .from("bots")
+        .select("user_id")
+        .eq("id", botId)
+        .single()
+      
+      // Criar pagamento de teste
+      const { data: pagamentoTeste, error: errPagTeste } = await db
+        .from("payments")
+        .insert({
+          user_id: botOwner?.user_id,
+          bot_id: botId,
+          telegram_user_id: telegramUserIdTeste,
+          telegram_username: "USUARIO_TESTE",
+          telegram_first_name: "Teste",
+          amount: valorTeste,
+          status: "pending",
+          payment_method: "pix",
+          gateway: "mercadopago",
+          external_payment_id: "TESTE_" + Date.now(),
+          description: "TESTE DOWNSELL",
+          product_name: "TESTE - Oferta Especial",
+          product_type: "downsell",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          metadata: Object.keys(metadataTeste).length > 0 ? metadataTeste : null,
+        })
+        .select()
+        .single()
+      
+      if (errPagTeste || !pagamentoTeste) {
+        resultado.etapas.push({
+          etapa: 8,
+          nome: "TESTE_REAL_CRIAR_PAGAMENTO",
+          status: "ERRO",
+          dados: { erro: errPagTeste?.message },
+          problema: "Nao conseguiu criar pagamento de teste"
+        })
+      } else {
+        // Verificar se metadata foi salvo corretamente
+        const metadataSalvo = pagamentoTeste.metadata || {}
+        const temDeliverableId = !!metadataSalvo.downsell_deliverable_id
+        const temDeliveryType = !!metadataSalvo.downsell_delivery_type
+        
+        // Simular aprovacao - atualizar status
+        const { error: errUpdate } = await db
+          .from("payments")
+          .update({ 
+            status: "approved",
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", pagamentoTeste.id)
+        
+        // Verificar se aparece no painel de vendas
+        const { data: vendaNoSistema } = await db
+          .from("payments")
+          .select("*")
+          .eq("id", pagamentoTeste.id)
+          .single()
+        
+        resultado.etapas.push({
+          etapa: 8,
+          nome: "TESTE_REAL_CRIAR_PAGAMENTO",
+          status: temDeliverableId ? "OK" : "AVISO",
+          dados: {
+            pagamento_id: pagamentoTeste.id,
+            metadata_salvo: metadataSalvo,
+            tem_deliverable_id: temDeliverableId,
+            tem_delivery_type: temDeliveryType,
+            status_apos_aprovacao: vendaNoSistema?.status,
+            vai_entregar_corretamente: temDeliverableId 
+              ? `SIM - Vai usar entregavel ${metadataSalvo.downsell_deliverable_id}`
+              : "AVISO - Vai usar entrega principal (deliverableId nao encontrado)",
+            conclusao: temDeliverableId
+              ? "CORREÇÃO FUNCIONANDO - O metadata esta sendo salvo corretamente"
+              : "ATENCAO - Sequencia nao tem deliverableId configurado"
+          },
+          problema: !temDeliverableId ? "Sequencia sem deliverableId configurado" : undefined
+        })
+        
+        // Limpar pagamento de teste
+        await db.from("payments").delete().eq("id", pagamentoTeste.id)
+        
+        resultado.etapas.push({
+          etapa: 9,
+          nome: "LIMPEZA_TESTE",
+          status: "OK",
+          dados: { pagamento_deletado: pagamentoTeste.id }
+        })
+      }
+    } else if (simularReal) {
+      resultado.etapas.push({
+        etapa: 8,
+        nome: "TESTE_REAL",
+        status: "AVISO",
+        dados: null,
+        problema: "Nao foi possivel simular - falta bot ou sequencias"
+      })
+    }
+
+    // =========================================================================
+    // ETAPA 9/10: VERIFICAR MENSAGENS AGENDADAS
     // =========================================================================
     const { data: agendadas } = await db
       .from("scheduled_messages")
