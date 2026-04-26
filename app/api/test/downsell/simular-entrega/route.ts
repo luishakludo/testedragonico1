@@ -127,9 +127,77 @@ async function sendDeliverable(
       await sendTelegramMessage(botToken, chatId, message)
       break
     }
+  }
+}
 
-    default:
-      await sendTelegramMessage(botToken, chatId, "Obrigado pela compra! Seu acesso foi liberado.")
+// Versao que retorna o resultado para debug
+async function sendDeliverableWithResult(
+  botToken: string,
+  chatId: number,
+  deliverable: Deliverable
+): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+  console.log(`[TEST] Enviando entregavel: ${deliverable.name} (${deliverable.type})`)
+
+  try {
+    switch (deliverable.type) {
+      case "link": {
+        const buttonText = deliverable.buttonText || "Acessar Conteudo"
+        const message = deliverable.message || "Obrigado pela compra! Seu acesso foi liberado."
+        const keyboard = {
+          inline_keyboard: [
+            [{ text: buttonText, url: deliverable.content }]
+          ]
+        }
+        const result = await sendTelegramMessage(botToken, chatId, message, keyboard)
+        return { ok: result.ok, result }
+      }
+
+      case "vip_group": {
+        const inviteLink = await createVipInviteLink(botToken, deliverable.vipGroupId!)
+        if (inviteLink) {
+          const groupName = deliverable.vipGroupName || "Grupo VIP"
+          const message = deliverable.message || `Obrigado pela compra! Seu acesso ao <b>${groupName}</b> foi liberado.`
+          const keyboard = {
+            inline_keyboard: [
+              [{ text: `Entrar no ${groupName}`, url: inviteLink }]
+            ]
+          }
+          const result = await sendTelegramMessage(botToken, chatId, message, keyboard)
+          return { ok: result.ok, result }
+        } else {
+          return { ok: false, error: "Nao conseguiu criar link VIP" }
+        }
+      }
+
+      case "file": {
+        const message = deliverable.message || "Obrigado pela compra! Aqui esta seu arquivo:"
+        await sendTelegramMessage(botToken, chatId, message)
+        if (deliverable.content) {
+          const response = await fetch(`${TELEGRAM_API}${botToken}/sendDocument`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              document: deliverable.content
+            })
+          })
+          const result = await response.json()
+          return { ok: result.ok, result }
+        }
+        return { ok: true }
+      }
+
+      case "text": {
+        const message = deliverable.message || deliverable.content || "Obrigado pela compra!"
+        const result = await sendTelegramMessage(botToken, chatId, message)
+        return { ok: result.ok, result }
+      }
+
+      default:
+        return { ok: false, error: "Tipo de entregavel desconhecido" }
+    }
+  } catch (error) {
+    return { ok: false, error: String(error) }
   }
 }
 
