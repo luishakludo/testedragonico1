@@ -348,7 +348,9 @@ export async function GET(request: Request) {
           id: entregavelEscolhido.id,
           nome: entregavelEscolhido.name,
           tipo: entregavelEscolhido.type,
-          conteudo: entregavelEscolhido.type === "link" ? entregavelEscolhido.content : "(nao mostrado)"
+          link: entregavelEscolhido.link || "(SEM LINK)",
+          linkText: entregavelEscolhido.linkText || "(SEM LINK TEXT)",
+          dados_completos: entregavelEscolhido
         } : null,
         total_sequencias: sequences.length,
         total_deliverables: (deliverables || []).length
