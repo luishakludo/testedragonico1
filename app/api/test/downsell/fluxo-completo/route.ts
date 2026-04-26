@@ -666,7 +666,209 @@ export async function GET(request: Request) {
     })
 
     // =========================================================================
-    // ETAPA 9: DIAGNOSTICO - COMPARAR SCHEDULED_MESSAGE COM PAGAMENTO
+    // ETAPA 9: SIMULACAO DO CALLBACK ds_buy (QUANDO USUARIO CLICA PARA COMPRAR)
+    // =========================================================================
+    // Esta etapa simula EXATAMENTE o que o callback faz para determinar o deliverableId
+    
+    const simulacaoCallback: Array<{
+      scheduled_message_id: string
+      sequence_index: number | null
+      sequence_id: string | null
+      metadata_tem_deliverableId: boolean
+      metadata_deliverableId: string
+      metadata_deliveryType: string
+      fallback_acionado: boolean
+      fallback_encontrou_sequencia: boolean
+      sequencia_encontrada_id: string | null
+      sequencia_encontrada_deliverableId: string | null
+      sequencia_encontrada_deliveryType: string | null
+      resultado_final_deliverableId: string
+      resultado_final_deliveryType: string
+      entregavel_que_seria_enviado: string
+      status: string
+    }> = []
+    
+    for (const msg of (agendadas || [])) {
+      const msgMeta = (msg.metadata || {}) as Record<string, unknown>
+      
+      // Simular exatamente a logica do callback
+      let dsDeliverableIdFromMeta = (msgMeta.deliverableId as string) || ""
+      let dsDeliveryTypeFromMeta = (msgMeta.deliveryType as string) || ""
+      
+      const seqId = msg.sequence_id || (msgMeta.sequenceId as string) || ""
+      const seqIndex = msg.sequence_index ?? (msgMeta.sequenceIndex as number) ?? undefined
+      
+      const needsFallback = !dsDeliverableIdFromMeta || !dsDeliveryTypeFromMeta || 
+        (dsDeliveryTypeFromMeta === "custom" && !dsDeliverableIdFromMeta)
+      
+      let fallbackEncontrouSeq = false
+      let seqEncontradaId: string | null = null
+      let seqEncontradaDeliverableId: string | null = null
+      let seqEncontradaDeliveryType: string | null = null
+      
+      if (needsFallback) {
+        // Buscar sequencia por ID ou index (igual ao callback)
+        let foundSeq = seqId ? sequences.find(s => s.id === seqId) : undefined
+        
+        if (!foundSeq && seqIndex !== undefined && sequences[seqIndex]) {
+          foundSeq = sequences[seqIndex]
+        }
+        
+        // Fallback extra: se nao tem ID/index mas so tem 1 sequencia
+        if (!foundSeq && !seqId && seqIndex === undefined && sequences.length === 1) {
+          foundSeq = sequences[0]
+        }
+        
+        // Fallback extra 2: se tem mais de 1, usar primeira com entregavel customizado
+        if (!foundSeq && !seqId && seqIndex === undefined && sequences.length > 1) {
+          foundSeq = sequences.find(s => s.deliveryType === "custom" && s.deliverableId)
+        }
+        
+        if (foundSeq) {
+          fallbackEncontrouSeq = true
+          seqEncontradaId = foundSeq.id
+          seqEncontradaDeliverableId = foundSeq.deliverableId || null
+          seqEncontradaDeliveryType = foundSeq.deliveryType || null
+          
+          if (foundSeq.deliverableId) {
+            dsDeliverableIdFromMeta = foundSeq.deliverableId
+          }
+          if (foundSeq.deliveryType) {
+            dsDeliveryTypeFromMeta = foundSeq.deliveryType
+          }
+        }
+      }
+      
+      // Fallback final
+      if (!dsDeliveryTypeFromMeta) {
+        dsDeliveryTypeFromMeta = "main"
+      }
+      
+      // Determinar qual entregavel seria enviado
+      let entregavelQueSeriaEnviado = "DESCONHECIDO"
+      if (dsDeliveryTypeFromMeta === "custom" && dsDeliverableIdFromMeta) {
+        const deliv = deliverables.find(d => d.id === dsDeliverableIdFromMeta)
+        entregavelQueSeriaEnviado = deliv ? `${deliv.name} (${deliv.type})` : `ID: ${dsDeliverableIdFromMeta} (NAO ENCONTRADO!)`
+      } else if (dsDeliveryTypeFromMeta === "main") {
+        const mainDeliv = deliverables.find(d => d.id === (config.mainDeliverableId as string))
+        entregavelQueSeriaEnviado = mainDeliv ? `PRINCIPAL: ${mainDeliv.name} (${mainDeliv.type})` : "PRINCIPAL NAO CONFIGURADO"
+      } else if (dsDeliveryTypeFromMeta === "none") {
+        entregavelQueSeriaEnviado = "NENHUM (configurado para nao entregar)"
+      }
+      
+      const status = dsDeliveryTypeFromMeta === "custom" && dsDeliverableIdFromMeta
+        ? "OK"
+        : dsDeliveryTypeFromMeta === "none"
+          ? "OK"
+          : dsDeliveryTypeFromMeta === "main"
+            ? "AVISO - VAI USAR ENTREGAVEL PRINCIPAL"
+            : "ERRO - SEM ENTREGAVEL"
+      
+      simulacaoCallback.push({
+        scheduled_message_id: msg.id,
+        sequence_index: msg.sequence_index,
+        sequence_id: msg.sequence_id,
+        metadata_tem_deliverableId: !!msgMeta.deliverableId,
+        metadata_deliverableId: (msgMeta.deliverableId as string) || "NAO TEM",
+        metadata_deliveryType: (msgMeta.deliveryType as string) || "NAO TEM",
+        fallback_acionado: needsFallback,
+        fallback_encontrou_sequencia: fallbackEncontrouSeq,
+        sequencia_encontrada_id: seqEncontradaId,
+        sequencia_encontrada_deliverableId: seqEncontradaDeliverableId,
+        sequencia_encontrada_deliveryType: seqEncontradaDeliveryType,
+        resultado_final_deliverableId: dsDeliverableIdFromMeta || "NENHUM",
+        resultado_final_deliveryType: dsDeliveryTypeFromMeta,
+        entregavel_que_seria_enviado: entregavelQueSeriaEnviado,
+        status
+      })
+    }
+    
+    resultado.etapas.push({
+      etapa: 9,
+      nome: "SIMULACAO_CALLBACK_COMPRA",
+      status: simulacaoCallback.every(s => s.status === "OK") ? "OK" : 
+              simulacaoCallback.some(s => s.status.startsWith("ERRO")) ? "ERRO" : "AVISO",
+      dados: {
+        titulo: "SIMULACAO: O QUE ACONTECE QUANDO O USUARIO CLICA PARA COMPRAR",
+        descricao: "Esta simulacao mostra EXATAMENTE a logica do callback ds_buy",
+        total_scheduled_messages: simulacaoCallback.length,
+        resultados: simulacaoCallback,
+        legenda: {
+          metadata_tem_deliverableId: "Se a scheduled_message ja tem o deliverableId salvo no metadata",
+          fallback_acionado: "Se precisou buscar o deliverableId da sequencia no fluxo",
+          fallback_encontrou_sequencia: "Se o fallback conseguiu encontrar a sequencia correspondente",
+          resultado_final: "O deliverableId e deliveryType que serao usados no pagamento"
+        }
+      }
+    })
+
+    // =========================================================================
+    // ETAPA 9.5: SIMULACAO PIOR CASO - QUANDO scheduledMsg NAO E ENCONTRADA
+    // =========================================================================
+    // Este e o cenario real que estava acontecendo - o shortMsgId nao bate
+    // e a scheduledMsg nao e encontrada, entao precisamos do fallback final
+    
+    let piorCasoDeliverableId = ""
+    let piorCasoDeliveryType = ""
+    let piorCasoStatus = "ERRO"
+    let piorCasoEntregavel = "NENHUM"
+    let piorCasoMetodo = "NENHUM"
+    
+    // Simular o fallback final (buscar direto do fluxo)
+    // Todas as sequencias do fluxo
+    const allSeqsFallback = [
+      ...sequences,
+      ...(downsellPixConfig?.sequences || [])
+    ]
+    
+    if (allSeqsFallback.length === 1 && allSeqsFallback[0].deliverableId) {
+      // Caso 1: So tem 1 sequencia - usar essa
+      piorCasoDeliverableId = allSeqsFallback[0].deliverableId
+      piorCasoDeliveryType = allSeqsFallback[0].deliveryType || "custom"
+      piorCasoMetodo = "UNICA_SEQUENCIA"
+    } else if (allSeqsFallback.length > 1) {
+      // Caso 2: Tem mais de 1, usar primeira com entregavel customizado
+      const firstWithDeliverable = allSeqsFallback.find(s => s.deliveryType === "custom" && s.deliverableId)
+      if (firstWithDeliverable) {
+        piorCasoDeliverableId = firstWithDeliverable.deliverableId!
+        piorCasoDeliveryType = firstWithDeliverable.deliveryType!
+        piorCasoMetodo = "PRIMEIRA_COM_ENTREGAVEL_CUSTOMIZADO"
+      }
+    }
+    
+    // Determinar resultado
+    if (piorCasoDeliveryType === "custom" && piorCasoDeliverableId) {
+      const deliv = deliverables.find(d => d.id === piorCasoDeliverableId)
+      piorCasoEntregavel = deliv ? `${deliv.name} (${deliv.type})` : `ID: ${piorCasoDeliverableId}`
+      piorCasoStatus = "OK"
+    } else if (piorCasoDeliveryType === "none") {
+      piorCasoEntregavel = "NENHUM (configurado assim)"
+      piorCasoStatus = "OK"
+    } else {
+      piorCasoStatus = "ERRO - FALLBACK NAO ENCONTROU ENTREGAVEL"
+    }
+    
+    resultado.etapas.push({
+      etapa: 9.5,
+      nome: "SIMULACAO_PIOR_CASO",
+      status: piorCasoStatus.startsWith("OK") ? "OK" : "ERRO",
+      dados: {
+        titulo: "PIOR CASO: SE A SCHEDULED_MESSAGE NAO FOR ENCONTRADA",
+        descricao: "Simula o que acontece quando o shortMsgId nao bate e a scheduledMsg nao e encontrada. Este e o novo fallback que foi adicionado.",
+        cenario: "Usuario clica no botao mas a scheduled_message original nao e encontrada pelo ID",
+        total_sequencias_no_fluxo: allSeqsFallback.length,
+        metodo_usado: piorCasoMetodo,
+        resultado: {
+          deliverableId: piorCasoDeliverableId || "NENHUM",
+          deliveryType: piorCasoDeliveryType || "NENHUM",
+          entregavel_que_seria_enviado: piorCasoEntregavel
+        },
+        veredicto: piorCasoStatus
+      }
+    })
+
+    // =========================================================================
+    // ETAPA 10: DIAGNOSTICO - COMPARAR SCHEDULED_MESSAGE COM PAGAMENTO
     // =========================================================================
     // Encontrar um pagamento recente e a scheduled_message correspondente
     const ultimoPagamentoDs = pagamentosDoFluxo.find(p => p.status === "approved" || p.status === "pending")
@@ -680,7 +882,7 @@ export async function GET(request: Request) {
       const seqConfig = sequences[seqIndex] as { id: string; deliveryType?: string; deliverableId?: string } | undefined
       
       resultado.etapas.push({
-        etapa: 9,
+        etapa: 10.5,
         nome: "DIAGNOSTICO_PAGAMENTO_VS_SEQUENCIA",
         status: pagMeta.downsell_deliverable_id ? "OK" : "PROBLEMA",
         dados: {
@@ -717,7 +919,7 @@ export async function GET(request: Request) {
     }
 
     // =========================================================================
-    // ETAPA 10: VERIFICAR O QUE A FUNCAO sendDelivery FARIA
+    // ETAPA 11: VERIFICAR O QUE A FUNCAO sendDelivery FARIA
     // =========================================================================
     // Simular EXATAMENTE a logica da funcao sendDelivery para este fluxo
     const mainDeliverableId = config.mainDeliverableId as string | undefined
@@ -726,7 +928,7 @@ export async function GET(request: Request) {
       : null
     
     resultado.etapas.push({
-      etapa: 10,
+      etapa: 11,
       nome: "LOGICA_SEND_DELIVERY",
       status: "INFO",
       dados: {

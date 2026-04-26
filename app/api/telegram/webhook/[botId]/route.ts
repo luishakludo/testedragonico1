@@ -2534,6 +2534,11 @@ Escaneie o QR Code ou copie o codigo abaixo:
         const selectedPlan = plans[planIndex]
         const planName = selectedPlan?.buttonText || "Oferta Especial"
         
+        // IMPORTANTE: Log se a scheduledMsg nao foi encontrada
+        if (!scheduledMsg) {
+          console.log("[DOWNSELL-CALLBACK] ATENCAO: scheduledMsg NAO ENCONTRADA pelo shortMsgId! Vamos buscar do fluxo...")
+        }
+        
         // Obter deliverableId e deliveryType do metadata da sequencia de downsell
         let dsDeliverableIdFromMeta = (msgMetadata?.deliverableId as string) || ""
         let dsDeliveryTypeFromMeta = (msgMetadata?.deliveryType as string) || ""
@@ -2557,10 +2562,12 @@ Escaneie o QR Code ou copie o codigo abaixo:
           const sourceFromMeta = (msgMetadata?.source as string) || ""
           const isFromPixGenerated = sourceFromMeta === "pix_generated"
           
-          if (seqId || seqIndex !== undefined) {
-            // Buscar o fluxo para pegar a config da sequencia
-            const flowIdForSeq = scheduledMsg?.flow_id || ""
-            if (flowIdForSeq) {
+          // Buscar o fluxo para pegar a config da sequencia
+          const flowIdForSeq = scheduledMsg?.flow_id || ""
+          console.log(`[DOWNSELL-CALLBACK] flowIdForSeq = ${flowIdForSeq || "VAZIO"}`)
+          console.log(`[DOWNSELL-CALLBACK] seqId = ${seqId || "VAZIO"}, seqIndex = ${seqIndex ?? "UNDEFINED"}`)
+          
+          if (flowIdForSeq) {
               const { data: flowForSeq } = await supabase
                 .from("flows")
                 .select("config")
@@ -2631,7 +2638,112 @@ Escaneie o QR Code ou copie o codigo abaixo:
                     console.log("[DOWNSELL-CALLBACK] Usando deliveryType da sequencia:", dsDeliveryTypeFromMeta)
                   }
                 } else {
-                  console.log("[DOWNSELL-CALLBACK] NAO encontrou sequencia! seqId=", seqId, "seqIndex=", seqIndex)
+                  console.log("[DOWNSELL-CALLBACK] NAO encontrou sequencia por ID/index! seqId=", seqId, "seqIndex=", seqIndex)
+                  
+                  // FALLBACK EXTRA: Se nao tem seqId nem seqIndex, e so tem 1 sequencia, usar essa
+                  if (!seqId && seqIndex === undefined && allSequences.length === 1) {
+                    const singleSeq = allSequences[0]
+                    console.log("[DOWNSELL-CALLBACK] FALLBACK: Usando unica sequencia disponivel:", singleSeq.id)
+                    if (singleSeq.deliverableId) {
+                      dsDeliverableIdFromMeta = singleSeq.deliverableId
+                      console.log("[DOWNSELL-CALLBACK] Usando deliverableId da unica sequencia:", dsDeliverableIdFromMeta)
+                    }
+                    if (singleSeq.deliveryType) {
+                      dsDeliveryTypeFromMeta = singleSeq.deliveryType
+                      console.log("[DOWNSELL-CALLBACK] Usando deliveryType da unica sequencia:", dsDeliveryTypeFromMeta)
+                    }
+                  } else if (!seqId && seqIndex === undefined && allSequences.length > 1) {
+                    // Se tem mais de 1 sequencia e nao sabemos qual, tentar primeira que tem entregavel customizado
+                    console.log("[DOWNSELL-CALLBACK] FALLBACK: Buscando primeira sequencia com entregavel customizado...")
+                    const seqWithDeliverable = allSequences.find(s => s.deliveryType === "custom" && s.deliverableId)
+                    if (seqWithDeliverable) {
+                      console.log("[DOWNSELL-CALLBACK] Encontrou sequencia com entregavel:", seqWithDeliverable.id)
+                      dsDeliverableIdFromMeta = seqWithDeliverable.deliverableId!
+                      dsDeliveryTypeFromMeta = seqWithDeliverable.deliveryType!
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // FALLBACK FINAL: Se ainda nao tem deliverableId, buscar do fluxo diretamente
+        // Isso acontece principalmente quando a scheduledMsg nao foi encontrada pelo shortMsgId
+        if (!dsDeliverableIdFromMeta) {
+          // Garantir que temos um flowId para o fallback
+          let flowIdForFinalFallback = flowId
+          if (!flowIdForFinalFallback) {
+            console.log("[DOWNSELL-CALLBACK] FALLBACK FINAL: flowId vazio, buscando do bot...")
+            // Tentar buscar flow do bot
+            const { data: botFlowFinal } = await supabase
+              .from("flows")
+              .select("id")
+              .eq("bot_id", botUuid)
+              .limit(1)
+              .single()
+            
+            if (botFlowFinal?.id) {
+              flowIdForFinalFallback = botFlowFinal.id
+            } else {
+              // Tentar via flow_bots
+              const { data: flowBotFinal } = await supabase
+                .from("flow_bots")
+                .select("flow_id")
+                .eq("bot_id", botUuid)
+                .limit(1)
+                .single()
+              
+              if (flowBotFinal?.flow_id) {
+                flowIdForFinalFallback = flowBotFinal.flow_id
+              }
+            }
+          }
+          
+          console.log("[DOWNSELL-CALLBACK] FALLBACK FINAL: Buscando sequencias do fluxo", flowIdForFinalFallback || "VAZIO!")
+          
+          if (flowIdForFinalFallback) {
+            const { data: flowForFallback } = await supabase
+              .from("flows")
+              .select("config")
+              .eq("id", flowIdForFinalFallback)
+              .single()
+          
+            if (flowForFallback?.config) {
+              const configFallback = flowForFallback.config as Record<string, unknown>
+              const dsConfigFallback = configFallback.downsell as { sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
+              const dsPixConfigFallback = configFallback.downsellPix as { sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
+              
+              const allSeqsFallback = [
+                ...(dsConfigFallback?.sequences || []),
+                ...(dsPixConfigFallback?.sequences || [])
+              ]
+              
+              console.log("[DOWNSELL-CALLBACK] FALLBACK FINAL: Total sequencias encontradas:", allSeqsFallback.length)
+              
+              // Se tem apenas 1 sequencia, usar essa
+              if (allSeqsFallback.length === 1 && allSeqsFallback[0].deliverableId) {
+                dsDeliverableIdFromMeta = allSeqsFallback[0].deliverableId
+                dsDeliveryTypeFromMeta = allSeqsFallback[0].deliveryType || "custom"
+                console.log("[DOWNSELL-CALLBACK] FALLBACK FINAL: Usando unica sequencia:", dsDeliverableIdFromMeta)
+              } else if (allSeqsFallback.length > 1) {
+                // Se tem mais de 1, tentar encontrar pelo preco
+                const matchByPrice = allSeqsFallback.find(seq => {
+                  const seqAsAny = seq as { plans?: Array<{ price: number }> }
+                  return seqAsAny.plans?.some(p => Math.abs(p.price - price) < 0.01)
+                })
+                if (matchByPrice?.deliverableId) {
+                  dsDeliverableIdFromMeta = matchByPrice.deliverableId
+                  dsDeliveryTypeFromMeta = matchByPrice.deliveryType || "custom"
+                  console.log("[DOWNSELL-CALLBACK] FALLBACK FINAL: Encontrou por preco:", dsDeliverableIdFromMeta)
+                } else {
+                  // Ultima opcao: usar primeira com entregavel customizado
+                  const firstWithDeliverable = allSeqsFallback.find(s => s.deliveryType === "custom" && s.deliverableId)
+                  if (firstWithDeliverable) {
+                    dsDeliverableIdFromMeta = firstWithDeliverable.deliverableId!
+                    dsDeliveryTypeFromMeta = firstWithDeliverable.deliveryType!
+                    console.log("[DOWNSELL-CALLBACK] FALLBACK FINAL: Usando primeira com entregavel:", dsDeliverableIdFromMeta)
+                  }
                 }
               }
             }
