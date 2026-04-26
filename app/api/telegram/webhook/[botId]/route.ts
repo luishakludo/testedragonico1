@@ -2535,16 +2535,65 @@ Escaneie o QR Code ou copie o codigo abaixo:
         const planName = selectedPlan?.buttonText || "Oferta Especial"
         
         // Obter deliverableId e deliveryType do metadata da sequencia de downsell
-        const dsDeliverableIdFromMeta = (msgMetadata?.deliverableId as string) || ""
-        const dsDeliveryTypeFromMeta = (msgMetadata?.deliveryType as string) || "main"
+        let dsDeliverableIdFromMeta = (msgMetadata?.deliverableId as string) || ""
+        let dsDeliveryTypeFromMeta = (msgMetadata?.deliveryType as string) || ""
+        
+        // FALLBACK: Se nao encontrou no metadata, buscar diretamente da sequencia no fluxo
+        // Isso acontece quando a scheduled_message foi criada antes da correcao
+        if (!dsDeliverableIdFromMeta || !dsDeliveryTypeFromMeta) {
+          console.log("[DOWNSELL-CALLBACK] Metadata nao tem deliverableId/deliveryType, buscando da sequencia...")
+          const seqId = scheduledMsg?.sequence_id || (msgMetadata?.sequenceId as string)
+          const seqIndex = scheduledMsg?.sequence_index ?? (msgMetadata?.sequenceIndex as number | undefined)
+          
+          if (seqId || seqIndex !== undefined) {
+            // Buscar o fluxo para pegar a config da sequencia
+            const flowIdForSeq = scheduledMsg?.flow_id || ""
+            if (flowIdForSeq) {
+              const { data: flowForSeq } = await supabase
+                .from("flows")
+                .select("config")
+                .eq("id", flowIdForSeq)
+                .single()
+              
+              if (flowForSeq?.config) {
+                const flowConfigSeq = flowForSeq.config as Record<string, unknown>
+                const downsellConfigSeq = flowConfigSeq.downsell as { sequences?: Array<{ id: string; deliveryType?: string; deliverableId?: string }> } | undefined
+                const sequences = downsellConfigSeq?.sequences || []
+                
+                // Buscar sequencia por ID ou index
+                let foundSeq = seqId ? sequences.find(s => s.id === seqId) : undefined
+                if (!foundSeq && seqIndex !== undefined && sequences[seqIndex]) {
+                  foundSeq = sequences[seqIndex]
+                }
+                
+                if (foundSeq) {
+                  console.log("[DOWNSELL-CALLBACK] Encontrou sequencia no fluxo:", foundSeq.id)
+                  if (!dsDeliverableIdFromMeta && foundSeq.deliverableId) {
+                    dsDeliverableIdFromMeta = foundSeq.deliverableId
+                    console.log("[DOWNSELL-CALLBACK] Usando deliverableId da sequencia:", dsDeliverableIdFromMeta)
+                  }
+                  if (!dsDeliveryTypeFromMeta && foundSeq.deliveryType) {
+                    dsDeliveryTypeFromMeta = foundSeq.deliveryType
+                    console.log("[DOWNSELL-CALLBACK] Usando deliveryType da sequencia:", dsDeliveryTypeFromMeta)
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // Se ainda nao tem deliveryType, usar "main" como fallback final
+        if (!dsDeliveryTypeFromMeta) {
+          dsDeliveryTypeFromMeta = "main"
+        }
         
         // DEBUG: Log para verificar se os campos estao vindo do metadata
         console.log("[DOWNSELL-CALLBACK] scheduledMsg.id:", scheduledMsg?.id)
         console.log("[DOWNSELL-CALLBACK] msgMetadata keys:", Object.keys(msgMetadata || {}))
         console.log("[DOWNSELL-CALLBACK] msgMetadata.deliverableId:", msgMetadata?.deliverableId)
         console.log("[DOWNSELL-CALLBACK] msgMetadata.deliveryType:", msgMetadata?.deliveryType)
-        console.log("[DOWNSELL-CALLBACK] dsDeliverableIdFromMeta (final):", dsDeliverableIdFromMeta)
-        console.log("[DOWNSELL-CALLBACK] dsDeliveryTypeFromMeta (final):", dsDeliveryTypeFromMeta)
+        console.log("[DOWNSELL-CALLBACK] dsDeliverableIdFromMeta (FINAL):", dsDeliverableIdFromMeta)
+        console.log("[DOWNSELL-CALLBACK] dsDeliveryTypeFromMeta (FINAL):", dsDeliveryTypeFromMeta)
 
         // Buscar user_id do bot owner primeiro (igual ao plano normal)
         const { data: botOwner } = await supabase
