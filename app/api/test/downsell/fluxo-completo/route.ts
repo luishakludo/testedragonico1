@@ -183,10 +183,8 @@ export async function GET(request: Request) {
     }> = []
 
     // Buscar entregaveis do fluxo para validar
-    const { data: deliverables } = await db
-      .from("deliverables")
-      .select("id, name, type")
-      .eq("flow_id", flowId)
+    // IMPORTANTE: Os entregaveis ficam salvos em config.deliverables (JSON), NAO em uma tabela separada
+    const deliverables = (config.deliverables || []) as Array<{ id: string; name: string; type: string }>
 
     const deliverableMap = new Map((deliverables || []).map(d => [d.id, d]))
 
@@ -240,9 +238,18 @@ export async function GET(request: Request) {
           id: d.id,
           nome: d.name,
           tipo: d.type
-        }))
+        })),
+        mainDeliverableId: config.mainDeliverableId || "NAO DEFINIDO",
+        config_keys: Object.keys(config),
+        // Info para debug: mostrar se tem delivery legado
+        delivery_legado: config.delivery ? {
+          type: (config.delivery as Record<string, unknown>).type,
+          hasLink: !!(config.delivery as Record<string, unknown>).link,
+          hasMedias: !!((config.delivery as Record<string, unknown>).medias as unknown[] | undefined)?.length,
+          hasVipGroup: !!(config.delivery as Record<string, unknown>).vipGroupId
+        } : null
       },
-      problema: (deliverables || []).length === 0 ? "Nenhum entregavel configurado" : undefined
+      problema: (deliverables || []).length === 0 ? "Nenhum entregavel configurado - VOCE PRECISA CRIAR UM ENTREGAVEL NA ABA 'ENTREGA' E SELECIONA-LO NA SEQUENCIA DE DOWNSELL" : undefined
     })
 
     // =========================================================================
