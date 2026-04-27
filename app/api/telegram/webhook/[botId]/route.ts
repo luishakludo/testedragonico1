@@ -4022,393 +4022,393 @@ Escaneie o QR Code ou copie o codigo abaixo:
   // 4. Check if /start command
   const isStart = text.toLowerCase().startsWith("/start")
 
-    // 5. Get or create lead AND bot_user
-    if (telegramUserId && isStart) {
-      // 5.1 Insert/Update bot_users (for Clientes page)
-      const { data: existingBotUser } = await supabase
+  // 5. Get or create lead AND bot_user
+  if (telegramUserId && isStart) {
+    // 5.1 Insert/Update bot_users (for Clientes page)
+    const { data: existingBotUser } = await supabase
+      .from("bot_users")
+      .select("id")
+      .eq("bot_id", botUuid)
+      .eq("telegram_user_id", telegramUserId)
+      .limit(1)
+      .single()
+
+    if (existingBotUser) {
+      // Update existing user
+      await supabase
         .from("bot_users")
-        .select("id")
+        .update({
+          first_name: (from.first_name as string) || null,
+          last_name: (from.last_name as string) || null,
+        username: (from.username as string) || null,
+        last_activity: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("bot_id", botUuid)
+      .eq("telegram_user_id", telegramUserId)
+    } else {
+      // Insert new user
+      const { error: botUserError } = await supabase.from("bot_users").insert({
+        bot_id: botUuid,
+        telegram_user_id: telegramUserId,
+        chat_id: chatId,
+        first_name: (from.first_name as string) || null,
+        last_name: (from.last_name as string) || null,
+        username: (from.username as string) || null,
+        funnel_step: 1,
+        is_subscriber: false,
+        last_activity: new Date().toISOString(),
+      })
+
+      if (botUserError) {
+        console.error("[webhook] Erro ao inserir bot_user:", botUserError.message, botUserError.code)
+      }
+    }
+
+    // 5.2 Insert lead (legacy support)
+    const { data: existingLead } = await supabase
+      .from("leads")
+      .select("id")
+      .eq("bot_id", botUuid)
+      .eq("telegram_id", String(telegramUserId))
+      .single()
+
+    if (!existingLead) {
+      const { error: leadError } = await supabase.from("leads").insert({
+        bot_id: botUuid,
+        telegram_id: String(telegramUserId),
+        chat_id: String(chatId),
+        first_name: (from.first_name as string) || "",
+        last_name: (from.last_name as string) || "",
+        username: (from.username as string) || "",
+        status: "active",
+        source: "telegram"
+      })
+
+      if (leadError) {
+        console.error("[webhook] Erro ao inserir lead:", leadError.message, leadError.code)
+      }
+    }
+  }
+
+  // 6. Process /start - execute welcome flow
+  if (isStart) {
+    // Find flow for this bot
+    let startFlow = null
+
+    // Strategy 1: Check flows.bot_id (direct link)
+    const { data: directFlow } = await supabase
+      .from("flows")
+      .select("*")
+      .eq("bot_id", botUuid)
+      .eq("status", "ativo")
+      .order("is_primary", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (directFlow) {
+      startFlow = directFlow
+    } else {
+      // Strategy 2: Check flow_bots table (many-to-many link from /fluxos page)
+      const { data: flowBotLink } = await supabase
+        .from("flow_bots")
+        .select("flow_id")
         .eq("bot_id", botUuid)
-        .eq("telegram_user_id", telegramUserId)
         .limit(1)
         .single()
 
-      if (existingBotUser) {
-        // Update existing user
-        await supabase
-          .from("bot_users")
-          .update({
-            first_name: (from.first_name as string) || null,
-            last_name: (from.last_name as string) || null,
-            username: (from.username as string) || null,
-            last_activity: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("bot_id", botUuid)
-          .eq("telegram_user_id", telegramUserId)
-      } else {
-        // Insert new user
-        const { error: botUserError } = await supabase.from("bot_users").insert({
-          bot_id: botUuid,
-          telegram_user_id: telegramUserId,
-          chat_id: chatId,
-          first_name: (from.first_name as string) || null,
-          last_name: (from.last_name as string) || null,
-          username: (from.username as string) || null,
-          funnel_step: 1,
-          is_subscriber: false,
-          last_activity: new Date().toISOString(),
-        })
+      if (flowBotLink) {
+        const { data: linkedFlow } = await supabase
+          .from("flows")
+          .select("*")
+          .eq("id", flowBotLink.flow_id)
+          .single()
 
-        if (botUserError) {
-          console.error("[webhook] Erro ao inserir bot_user:", botUserError.message, botUserError.code)
-        }
-      }
-
-      // 5.2 Insert lead (legacy support)
-      const { data: existingLead } = await supabase
-        .from("leads")
-        .select("id")
-        .eq("bot_id", botUuid)
-        .eq("telegram_id", String(telegramUserId))
-        .single()
-
-      if (!existingLead) {
-        const { error: leadError } = await supabase.from("leads").insert({
-          bot_id: botUuid,
-          telegram_id: String(telegramUserId),
-          chat_id: String(chatId),
-          first_name: (from.first_name as string) || "",
-          last_name: (from.last_name as string) || "",
-          username: (from.username as string) || "",
-          status: "active",
-          source: "telegram"
-        })
-
-        if (leadError) {
-          console.error("[webhook] Erro ao inserir lead:", leadError.message, leadError.code)
+        if (linkedFlow) {
+          startFlow = linkedFlow
         }
       }
     }
 
-    // 6. Process /start - execute welcome flow
-    if (isStart) {
-      // Find flow for this bot
-      let startFlow = null
-
-      // Strategy 1: Check flows.bot_id (direct link)
-      const { data: directFlow } = await supabase
+    // Strategy 3: Any flow from user (last resort)
+    if (!startFlow) {
+      const { data: anyUserFlow } = await supabase
         .from("flows")
         .select("*")
-        .eq("bot_id", botUuid)
+        .eq("user_id", bot.user_id)
         .eq("status", "ativo")
-        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(1)
         .single()
 
-      if (directFlow) {
-        startFlow = directFlow
-      } else {
-        // Strategy 2: Check flow_bots table (many-to-many link from /fluxos page)
-        const { data: flowBotLink } = await supabase
-          .from("flow_bots")
-          .select("flow_id")
-          .eq("bot_id", botUuid)
-          .limit(1)
-          .single()
+      startFlow = anyUserFlow
+    }
 
-        if (flowBotLink) {
-          const { data: linkedFlow } = await supabase
-            .from("flows")
-            .select("*")
-            .eq("id", flowBotLink.flow_id)
-            .single()
+    if (startFlow) {
+      // Get flow config (contains all settings from /fluxos/[id] page)
+      const flowConfig = (startFlow.config as Record<string, unknown>) || {}
 
-          if (linkedFlow) {
-            startFlow = linkedFlow
-          }
-        }
+      // Helper to replace variables and convert link syntax
+      const replaceVars = (text: string) => {
+        if (!text) return ""
+        return text
+          .replace(/\{nome\}/gi, (from?.first_name as string) || "")
+          .replace(/\{username\}/gi, (from?.username as string) ? `@${from.username}` : "")
+          .replace(/\{bot\.username\}/gi, bot.username ? `@${bot.username}` : bot.name || "")
+          // Converter sintaxe [LINK: text | url] para HTML <a href="url">text</a>
+          // Caso a mensagem tenha sido salva no formato display ao inves de HTML
+          .replace(/\[LINK:\s*([^|]+)\s*\|\s*([^\]]+)\]/gi, '<a href="$2">$1</a>')
       }
 
-      // Strategy 3: Any flow from user (last resort)
-      if (!startFlow) {
-        const { data: anyUserFlow } = await supabase
-          .from("flows")
-          .select("*")
-          .eq("user_id", bot.user_id)
-          .eq("status", "ativo")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single()
+      // Get welcome message - try config first, then table field
+      const welcomeMsg = (flowConfig.welcomeMessage as string) || (startFlow.welcome_message as string) || ""
 
-        startFlow = anyUserFlow
-      }
+      // Get medias - filter out base64 (Telegram only accepts URLs)
+      const allMedias = (flowConfig.welcomeMedias as string[]) || []
+      const welcomeMedias = allMedias.filter(m => m && !m.startsWith("data:") && (m.startsWith("http") || m.startsWith("/")))
 
-      if (startFlow) {
-        // Get flow config (contains all settings from /fluxos/[id] page)
-        const flowConfig = (startFlow.config as Record<string, unknown>) || {}
+      const ctaButtonEnabled = flowConfig.ctaButtonEnabled !== false // default true
+      const ctaButtonText = (flowConfig.ctaButtonText as string) || "Ver Planos"
+      const redirectButton = flowConfig.redirectButton as { enabled?: boolean; text?: string; url?: string } || {}
+      const secondaryMsg = flowConfig.secondaryMessage as { enabled?: boolean; message?: string } || {}
 
-        // Helper to replace variables and convert link syntax
-        const replaceVars = (text: string) => {
-          if (!text) return ""
-          return text
-            .replace(/\{nome\}/gi, (from?.first_name as string) || "")
-            .replace(/\{username\}/gi, (from?.username as string) ? `@${from.username}` : "")
-            .replace(/\{bot\.username\}/gi, bot.username ? `@${bot.username}` : bot.name || "")
-            // Converter sintaxe [LINK: text | url] para HTML <a href="url">text</a>
-            // Caso a mensagem tenha sido salva no formato display ao inves de HTML
-            .replace(/\[LINK:\s*([^|]+)\s*\|\s*([^\]]+)\]/gi, '<a href="$2">$1</a>')
-        }
+      // Verificar se Packs esta habilitado
+      const packsConfig = flowConfig.packs as { enabled?: boolean; buttonText?: string; list?: Array<{ id: string; active?: boolean }> } | undefined
+      const packsEnabled = packsConfig?.enabled && packsConfig?.list && packsConfig.list.filter(p => p.active !== false).length > 0
+      const packsButtonText = packsConfig?.buttonText || "Packs Disponiveis"
 
-        // Get welcome message - try config first, then table field
-        const welcomeMsg = (flowConfig.welcomeMessage as string) || (startFlow.welcome_message as string) || ""
-
-        // Get medias - filter out base64 (Telegram only accepts URLs)
-        const allMedias = (flowConfig.welcomeMedias as string[]) || []
-        const welcomeMedias = allMedias.filter(m => m && !m.startsWith("data:") && (m.startsWith("http") || m.startsWith("/")))
-
-        const ctaButtonEnabled = flowConfig.ctaButtonEnabled !== false // default true
-        const ctaButtonText = (flowConfig.ctaButtonText as string) || "Ver Planos"
-        const redirectButton = flowConfig.redirectButton as { enabled?: boolean; text?: string; url?: string } || {}
-        const secondaryMsg = flowConfig.secondaryMessage as { enabled?: boolean; message?: string } || {}
-
-        // Verificar se Packs esta habilitado
-        const packsConfig = flowConfig.packs as { enabled?: boolean; buttonText?: string; list?: Array<{ id: string; active?: boolean }> } | undefined
-        const packsEnabled = packsConfig?.enabled && packsConfig?.list && packsConfig.list.filter(p => p.active !== false).length > 0
-        const packsButtonText = packsConfig?.buttonText || "Packs Disponiveis"
-
-        // Pegar planos para mostrar direto (se ctaButtonEnabled = false)
-        // Primeiro tenta da tabela flow_plans, depois do config
-        // Verificar se deve mostrar preco no botao
-        const showPriceInButton = flowConfig.showPriceInButton === true
-        let plansToShow: Array<{ id: string; name: string; price?: number }> = []
-        if (!ctaButtonEnabled) {
-          const { data: flowPlans } = await supabase
-            .from("flow_plans")
-            .select("id, name, price")
-            .eq("flow_id", startFlow.id)
-            .eq("is_active", true)
-            .order("position", { ascending: true })
-
-          if (flowPlans && flowPlans.length > 0) {
-            plansToShow = flowPlans
-          } else {
-            // Fallback: planos do config
-            const configPlans = (flowConfig.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
-            plansToShow = configPlans.filter(p => p.active !== false)
-          }
-        }
-
-        // Always send welcome flow (we have at least a default message)
-        const finalMsg = replaceVars(welcomeMsg) || `Ola! Bem-vindo ao ${bot.name || "bot"}.`
-
-        // Build inline keyboard with buttons
-        const inlineKeyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = []
-
-        // Se CTA Button ativado: mostra botao "Ver Planos"
-        // Se CTA Button desativado: mostra planos direto na boas-vindas
-        if (ctaButtonEnabled) {
-          // CTA Button (Ver Planos) - callback button
-          inlineKeyboard.push([{ text: ctaButtonText, callback_data: "ver_planos" }])
-        } else {
-          // Mostrar planos direto na mensagem de boas-vindas
-          for (const plan of plansToShow) {
-            // Mostrar preco no botao se a opcao estiver ativada
-            const buttonText = showPriceInButton && plan.price && plan.price > 0
-              ? `${plan.name} por R$ ${Number(plan.price).toFixed(2).replace(".", ",")}`
-              : plan.name
-            inlineKeyboard.push([{ text: buttonText, callback_data: `plan_${plan.id}` }])
-          }
-        }
-
-        // Packs Button - se habilitado, adiciona na mensagem de boas-vindas
-        if (packsEnabled) {
-          inlineKeyboard.push([{ text: packsButtonText, callback_data: "show_packs" }])
-        }
-
-        // Redirect Button - URL button (if enabled)
-        if (redirectButton.enabled && redirectButton.text && redirectButton.url) {
-          inlineKeyboard.push([{ text: redirectButton.text, url: redirectButton.url }])
-        }
-
-        const replyMarkup = { inline_keyboard: inlineKeyboard }
-
-        // STEP 1: Send medias (if any valid URLs) - grouped as album
-        if (welcomeMedias.length > 0) {
-          // Send all medias together as album with welcome message as caption
-          const mediaResult = await sendMediaGroup(botToken, chatId, welcomeMedias, finalMsg)
-
-          if (mediaResult.ok) {
-            // Media group enviado com sucesso, enviar botoes separadamente
-            await sendTelegramMessage(botToken, chatId, "Escolha uma opcao:", replyMarkup)
-          } else {
-            // Se media group falhou, tentar enviar mensagem normalmente com botoes
-            console.log("[v0] Welcome - mediaGroup falhou, enviando mensagem sem midia")
-            await sendTelegramMessage(botToken, chatId, finalMsg, replyMarkup)
-          }
-        } else {
-          // STEP 2: No medias - send welcome message with buttons
-          await sendTelegramMessage(botToken, chatId, finalMsg, replyMarkup)
-        }
-
-        // STEP 3: Send secondary message (if enabled)
-        if (secondaryMsg.enabled && secondaryMsg.message) {
-          await new Promise(resolve => setTimeout(resolve, 500))
-          await sendTelegramMessage(botToken, chatId, replaceVars(secondaryMsg.message))
-        }
-
-        // STEP 4: Send/Schedule downsell sequences (enviadas para quem NAO pagou)
-        const downsellConfig = flowConfig.downsell as {
-          enabled?: boolean; sequences?: Array<{
-            id: string; message: string; medias?: string[]; sendTiming?: string; sendDelayValue?: number; sendDelayUnit?: string;
-            plans?: Array<{ id: string; buttonText: string; price: number }>; deliveryType?: string; deliverableId?: string; customDelivery?: string;
-            useDefaultPlans?: boolean; discountPercent?: number; showPriceInButton?: boolean
-          }>
-        } | undefined
-
-        if (downsellConfig?.enabled && downsellConfig.sequences && downsellConfig.sequences.length > 0) {
-          const now = new Date()
-          const supabaseAdmin = getSupabaseAdmin() // Usar admin pra bypassar RLS
-
-          // Cancelar agendamentos anteriores deste usuario
-          await supabaseAdmin
-            .from("scheduled_messages")
-            .update({ status: "cancelled" })
-            .eq("bot_id", botUuid)
-            .eq("telegram_user_id", String(telegramUserId))
-            .eq("status", "pending")
-
-          // Buscar planos do flow principal (para usar quando useDefaultPlans = true)
-          // Primeiro tenta da tabela flow_plans, se vazio usa o config JSON
-          const { data: mainFlowPlans } = await supabase
-            .from("flow_plans")
-            .select("id, name, price")
-            .eq("flow_id", startFlow.id)
-            .eq("is_active", true)
-            .order("position", { ascending: true })
-
-          // Fallback: se nao tem planos na tabela, pegar do config JSON (planos legados)
-          let defaultPlansToUse = mainFlowPlans || []
-          if (defaultPlansToUse.length === 0) {
-            const configPlans = (flowConfig.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
-            defaultPlansToUse = configPlans.filter(p => p.active !== false).map(p => ({
-              id: p.id,
-              name: p.name,
-              price: p.price
-            }))
-            console.log(`[DOWNSELL] Usando planos do config JSON (fallback):`, JSON.stringify(defaultPlansToUse))
-          }
-
-          // Processar todas as sequencias de downsell
-          for (const seq of downsellConfig.sequences) {
-            // Calcular delay em minutos
-            let delayMinutes = seq.sendDelayValue || 1
-            if (seq.sendDelayUnit === "hours") delayMinutes = (seq.sendDelayValue || 1) * 60
-            else if (seq.sendDelayUnit === "days") delayMinutes = (seq.sendDelayValue || 1) * 60 * 24
-
-            // Calcular horario exato para envio
-            const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
-
-            // Determinar quais planos usar: se useDefaultPlans = true, usa os planos do fluxo principal com desconto
-            let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
-            const useDefaultPlans = seq.useDefaultPlans !== false // default true
-            const discountPercent = seq.discountPercent || 20 // default 20%
-
-            if (useDefaultPlans && defaultPlansToUse && defaultPlansToUse.length > 0) {
-              // Usar planos do fluxo principal com desconto aplicado
-              plansToUse = defaultPlansToUse.map(plan => {
-                const discountedPrice = plan.price * (1 - discountPercent / 100)
-                return {
-                  id: plan.id,
-                  buttonText: plan.name,
-                  name: plan.name,
-                  price: Math.round(discountedPrice * 100) / 100 // Arredondar para 2 casas decimais
-                }
-              })
-              console.log(`[DOWNSELL] Usando planos do fluxo principal com ${discountPercent}% desconto:`, JSON.stringify(plansToUse))
-            } else {
-              // Usar planos personalizados da sequencia
-              plansToUse = seq.plans || []
-              console.log(`[DOWNSELL] Usando planos personalizados da sequencia:`, JSON.stringify(plansToUse))
-            }
-
-            // Salvar no banco para o cron processar
-            console.log(`[DOWNSELL] Agendando downsell para ${scheduledFor.toISOString()} (delay: ${delayMinutes} min)`)
-
-            const seqIndexForDownsell = downsellConfig.sequences.indexOf(seq)
-            
-            console.log(`[DOWNSELL] IMPORTANTE - Salvando metadata:`)
-            console.log(`[DOWNSELL]   sequence_id: ${seq.id}`)
-            console.log(`[DOWNSELL]   sequence_index: ${seqIndexForDownsell}`)
-            console.log(`[DOWNSELL]   deliveryType: ${seq.deliveryType || "NAO DEFINIDO"}`)
-            console.log(`[DOWNSELL]   deliverableId: ${seq.deliverableId || "NAO DEFINIDO"}`)
-            
-            const { error: insertError } = await supabaseAdmin.from("scheduled_messages").insert({
-              bot_id: botUuid,
-              flow_id: startFlow.id,
-              telegram_user_id: String(telegramUserId),
-              telegram_chat_id: String(chatId),
-              message_type: "downsell",
-              sequence_id: seq.id,
-              sequence_index: seqIndexForDownsell,
-              scheduled_for: scheduledFor.toISOString(),
-              status: "pending",
-              metadata: {
-                message: seq.message,
-                medias: seq.medias || [],
-                plans: plansToUse,
-                deliveryType: seq.deliveryType,
-                deliverableId: seq.deliverableId,
-                // Duplicar o index no metadata para fallback
-                sequenceIndex: seqIndexForDownsell,
-                customDelivery: seq.customDelivery,
-                botToken: botToken,
-                // Flag para mostrar preco no botao (ex: "Mensal por R$ 20,00")
-                showPriceInButton: seq.showPriceInButton === true,
-                // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
-                userFirstName: from?.first_name || "",
-                userUsername: from?.username || "",
-                // Info de desconto (para referencia)
-                useDefaultPlans: useDefaultPlans,
-                discountPercent: useDefaultPlans ? discountPercent : undefined,
-              }
-            })
-
-            if (insertError) {
-              console.error(`[DOWNSELL] ERRO ao agendar: ${insertError.message}`)
-            } else {
-              console.log(`[DOWNSELL] Agendado com sucesso para user ${telegramUserId}`)
-              console.log(`[DOWNSELL] sequence_id salvo: ${seq.id}`)
-              console.log(`[DOWNSELL] deliveryType salvo: ${seq.deliveryType || "NAO DEFINIDO"}`)
-              console.log(`[DOWNSELL] deliverableId salvo: ${seq.deliverableId || "NAO DEFINIDO"}`)
-              console.log(`[DOWNSELL] Planos salvos: ${JSON.stringify(plansToUse)}`)
-            }
-          }
-
-          console.log(`[DOWNSELL] Total: ${downsellConfig.sequences.length} downsell(s) agendados para user ${telegramUserId}`)
-        }
-
-        return
-
-        // Fallback: Get flow nodes
-        const { data: nodes } = await supabase
-          .from("flow_nodes")
-          .select("*")
+      // Pegar planos para mostrar direto (se ctaButtonEnabled = false)
+      // Primeiro tenta da tabela flow_plans, depois do config
+      // Verificar se deve mostrar preco no botao
+      const showPriceInButton = flowConfig.showPriceInButton === true
+      let plansToShow: Array<{ id: string; name: string; price?: number }> = []
+      if (!ctaButtonEnabled) {
+        const { data: flowPlans } = await supabase
+          .from("flow_plans")
+          .select("id, name, price")
           .eq("flow_id", startFlow.id)
+          .eq("is_active", true)
           .order("position", { ascending: true })
 
-        if (nodes && nodes.length > 0) {
-          for (const node of nodes) {
-            await executeNode(botToken, chatId, node, from as Record<string, unknown>)
-            await new Promise(resolve => setTimeout(resolve, 300))
-          }
+        if (flowPlans && flowPlans.length > 0) {
+          plansToShow = flowPlans
         } else {
-          await sendTelegramMessage(botToken, chatId, `Ola! Bem-vindo ao ${bot.name || "bot"}.`)
+          // Fallback: planos do config
+          const configPlans = (flowConfig.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+          plansToShow = configPlans.filter(p => p.active !== false)
+        }
+      }
+
+      // Always send welcome flow (we have at least a default message)
+      const finalMsg = replaceVars(welcomeMsg) || `Ola! Bem-vindo ao ${bot.name || "bot"}.`
+
+      // Build inline keyboard with buttons
+      const inlineKeyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = []
+
+      // Se CTA Button ativado: mostra botao "Ver Planos"
+      // Se CTA Button desativado: mostra planos direto na boas-vindas
+      if (ctaButtonEnabled) {
+        // CTA Button (Ver Planos) - callback button
+        inlineKeyboard.push([{ text: ctaButtonText, callback_data: "ver_planos" }])
+      } else {
+        // Mostrar planos direto na mensagem de boas-vindas
+        for (const plan of plansToShow) {
+          // Mostrar preco no botao se a opcao estiver ativada
+          const buttonText = showPriceInButton && plan.price && plan.price > 0
+            ? `${plan.name} por R$ ${Number(plan.price).toFixed(2).replace(".", ",")}`
+            : plan.name
+          inlineKeyboard.push([{ text: buttonText, callback_data: `plan_${plan.id}` }])
+        }
+      }
+
+      // Packs Button - se habilitado, adiciona na mensagem de boas-vindas
+      if (packsEnabled) {
+        inlineKeyboard.push([{ text: packsButtonText, callback_data: "show_packs" }])
+      }
+
+      // Redirect Button - URL button (if enabled)
+      if (redirectButton.enabled && redirectButton.text && redirectButton.url) {
+        inlineKeyboard.push([{ text: redirectButton.text, url: redirectButton.url }])
+      }
+
+      const replyMarkup = { inline_keyboard: inlineKeyboard }
+
+      // STEP 1: Send medias (if any valid URLs) - grouped as album
+      if (welcomeMedias.length > 0) {
+        // Send all medias together as album with welcome message as caption
+        const mediaResult = await sendMediaGroup(botToken, chatId, welcomeMedias, finalMsg)
+
+        if (mediaResult.ok) {
+          // Media group enviado com sucesso, enviar botoes separadamente
+          await sendTelegramMessage(botToken, chatId, "Escolha uma opcao:", replyMarkup)
+        } else {
+          // Se media group falhou, tentar enviar mensagem normalmente com botoes
+          console.log("[v0] Welcome - mediaGroup falhou, enviando mensagem sem midia")
+          await sendTelegramMessage(botToken, chatId, finalMsg, replyMarkup)
+        }
+      } else {
+        // STEP 2: No medias - send welcome message with buttons
+        await sendTelegramMessage(botToken, chatId, finalMsg, replyMarkup)
+      }
+
+      // STEP 3: Send secondary message (if enabled)
+      if (secondaryMsg.enabled && secondaryMsg.message) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await sendTelegramMessage(botToken, chatId, replaceVars(secondaryMsg.message))
+      }
+
+      // STEP 4: Send/Schedule downsell sequences (enviadas para quem NAO pagou)
+      const downsellConfig = flowConfig.downsell as {
+        enabled?: boolean; sequences?: Array<{
+          id: string; message: string; medias?: string[]; sendTiming?: string; sendDelayValue?: number; sendDelayUnit?: string;
+          plans?: Array<{ id: string; buttonText: string; price: number }>; deliveryType?: string; deliverableId?: string; customDelivery?: string;
+          useDefaultPlans?: boolean; discountPercent?: number; showPriceInButton?: boolean
+        }>
+      } | undefined
+
+      if (downsellConfig?.enabled && downsellConfig.sequences && downsellConfig.sequences.length > 0) {
+        const now = new Date()
+        const supabaseAdmin = getSupabaseAdmin() // Usar admin pra bypassar RLS
+
+        // Cancelar agendamentos anteriores deste usuario
+        await supabaseAdmin
+          .from("scheduled_messages")
+          .update({ status: "cancelled" })
+          .eq("bot_id", botUuid)
+          .eq("telegram_user_id", String(telegramUserId))
+          .eq("status", "pending")
+
+        // Buscar planos do flow principal (para usar quando useDefaultPlans = true)
+        // Primeiro tenta da tabela flow_plans, se vazio usa o config JSON
+        const { data: mainFlowPlans } = await supabase
+          .from("flow_plans")
+          .select("id, name, price")
+          .eq("flow_id", startFlow.id)
+          .eq("is_active", true)
+          .order("position", { ascending: true })
+
+        // Fallback: se nao tem planos na tabela, pegar do config JSON (planos legados)
+        let defaultPlansToUse = mainFlowPlans || []
+        if (defaultPlansToUse.length === 0) {
+          const configPlans = (flowConfig.plans as Array<{ id: string; name: string; price: number; active?: boolean }>) || []
+          defaultPlansToUse = configPlans.filter(p => p.active !== false).map(p => ({
+            id: p.id,
+            name: p.name,
+            price: p.price
+          }))
+          console.log(`[DOWNSELL] Usando planos do config JSON (fallback):`, JSON.stringify(defaultPlansToUse))
+        }
+
+        // Processar todas as sequencias de downsell
+        for (const seq of downsellConfig.sequences) {
+          // Calcular delay em minutos
+          let delayMinutes = seq.sendDelayValue || 1
+          if (seq.sendDelayUnit === "hours") delayMinutes = (seq.sendDelayValue || 1) * 60
+          else if (seq.sendDelayUnit === "days") delayMinutes = (seq.sendDelayValue || 1) * 60 * 24
+
+          // Calcular horario exato para envio
+          const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000)
+
+          // Determinar quais planos usar: se useDefaultPlans = true, usa os planos do fluxo principal com desconto
+          let plansToUse: Array<{ id: string; buttonText?: string; name?: string; price: number }> = []
+          const useDefaultPlans = seq.useDefaultPlans !== false // default true
+          const discountPercent = seq.discountPercent || 20 // default 20%
+
+          if (useDefaultPlans && defaultPlansToUse && defaultPlansToUse.length > 0) {
+            // Usar planos do fluxo principal com desconto aplicado
+            plansToUse = defaultPlansToUse.map(plan => {
+              const discountedPrice = plan.price * (1 - discountPercent / 100)
+              return {
+                id: plan.id,
+                buttonText: plan.name,
+                name: plan.name,
+                price: Math.round(discountedPrice * 100) / 100 // Arredondar para 2 casas decimais
+              }
+            })
+            console.log(`[DOWNSELL] Usando planos do fluxo principal com ${discountPercent}% desconto:`, JSON.stringify(plansToUse))
+          } else {
+            // Usar planos personalizados da sequencia
+            plansToUse = seq.plans || []
+            console.log(`[DOWNSELL] Usando planos personalizados da sequencia:`, JSON.stringify(plansToUse))
+          }
+
+          // Salvar no banco para o cron processar
+          console.log(`[DOWNSELL] Agendando downsell para ${scheduledFor.toISOString()} (delay: ${delayMinutes} min)`)
+
+          const seqIndexForDownsell = downsellConfig.sequences.indexOf(seq)
+          
+          console.log(`[DOWNSELL] IMPORTANTE - Salvando metadata:`)
+          console.log(`[DOWNSELL]   sequence_id: ${seq.id}`)
+          console.log(`[DOWNSELL]   sequence_index: ${seqIndexForDownsell}`)
+          console.log(`[DOWNSELL]   deliveryType: ${seq.deliveryType || "NAO DEFINIDO"}`)
+          console.log(`[DOWNSELL]   deliverableId: ${seq.deliverableId || "NAO DEFINIDO"}`)
+          
+          const { error: insertError } = await supabaseAdmin.from("scheduled_messages").insert({
+            bot_id: botUuid,
+            flow_id: startFlow.id,
+            telegram_user_id: String(telegramUserId),
+            telegram_chat_id: String(chatId),
+            message_type: "downsell",
+            sequence_id: seq.id,
+            sequence_index: seqIndexForDownsell,
+            scheduled_for: scheduledFor.toISOString(),
+            status: "pending",
+            metadata: {
+              message: seq.message,
+              medias: seq.medias || [],
+              plans: plansToUse,
+              deliveryType: seq.deliveryType,
+              deliverableId: seq.deliverableId,
+              // Duplicar o index no metadata para fallback
+              sequenceIndex: seqIndexForDownsell,
+              customDelivery: seq.customDelivery,
+              botToken: botToken,
+              // Flag para mostrar preco no botao (ex: "Mensal por R$ 20,00")
+              showPriceInButton: seq.showPriceInButton === true,
+              // Dados do usuario para substituir variaveis {NOME} e {USERNAME}
+              userFirstName: from?.first_name || "",
+              userUsername: from?.username || "",
+              // Info de desconto (para referencia)
+              useDefaultPlans: useDefaultPlans,
+              discountPercent: useDefaultPlans ? discountPercent : undefined,
+            }
+          })
+
+          if (insertError) {
+            console.error(`[DOWNSELL] ERRO ao agendar: ${insertError.message}`)
+          } else {
+            console.log(`[DOWNSELL] Agendado com sucesso para user ${telegramUserId}`)
+            console.log(`[DOWNSELL] sequence_id salvo: ${seq.id}`)
+            console.log(`[DOWNSELL] deliveryType salvo: ${seq.deliveryType || "NAO DEFINIDO"}`)
+            console.log(`[DOWNSELL] deliverableId salvo: ${seq.deliverableId || "NAO DEFINIDO"}`)
+            console.log(`[DOWNSELL] Planos salvos: ${JSON.stringify(plansToUse)}`)
+          }
+        }
+
+        console.log(`[DOWNSELL] Total: ${downsellConfig.sequences.length} downsell(s) agendados para user ${telegramUserId}`)
+      }
+
+      return
+
+      // Fallback: Get flow nodes
+      const { data: nodes } = await supabase
+        .from("flow_nodes")
+        .select("*")
+        .eq("flow_id", startFlow.id)
+        .order("position", { ascending: true })
+
+      if (nodes && nodes.length > 0) {
+        for (const node of nodes) {
+          await executeNode(botToken, chatId, node, from as Record<string, unknown>)
+          await new Promise(resolve => setTimeout(resolve, 300))
         }
       } else {
         await sendTelegramMessage(botToken, chatId, `Ola! Bem-vindo ao ${bot.name || "bot"}.`)
       }
+    } else {
+      await sendTelegramMessage(botToken, chatId, `Ola! Bem-vindo ao ${bot.name || "bot"}.`)
     }
+  }
   } catch (error) {
     console.error("[webhook] Error processing:", error)
   }
