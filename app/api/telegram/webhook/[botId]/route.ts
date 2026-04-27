@@ -4016,10 +4016,11 @@ Escaneie o QR Code ou copie o codigo abaixo:
         return
       }
     }
-    // ========== FIM HANDLE CALLBACKS ==========
+  }
+  // ========== FIM HANDLE CALLBACKS ==========
 
-    // 4. Check if /start command
-    const isStart = text.toLowerCase().startsWith("/start")
+  // 4. Check if /start command
+  const isStart = text.toLowerCase().startsWith("/start")
 
     // 5. Get or create lead AND bot_user
     if (telegramUserId && isStart) {
